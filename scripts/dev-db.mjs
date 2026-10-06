@@ -11,7 +11,9 @@ import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 
 const port = Number(process.env.DEV_DB_PORT ?? 5432);
 const db = await PGlite.create(process.env.DEV_DB_DIR ?? "./.pgdata");
-const server = new PGLiteSocketServer({ db, port, host: "127.0.0.1" });
+// PGlite es de una sola conexión; el servidor multiplexa varias sobre ella
+// para que la app (con su pool) y los scripts puedan conectarse a la vez.
+const server = new PGLiteSocketServer({ db, port, host: "127.0.0.1", maxConnections: 20 });
 await server.start();
 console.log(`PostgreSQL de desarrollo en postgres://crm:crm@localhost:${port}/crm`);
 
