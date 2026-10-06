@@ -9,7 +9,8 @@
 // Para usar una IA real, ponla en Ajustes → Modelo de IA (con tu clave).
 // Abre http://localhost:3000 y para con Ctrl+C.
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync, unlinkSync } from "node:fs";
+import net from "node:net";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -17,10 +18,48 @@ import path from "node:path";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const DATA = path.join(root, ".demo-data");
-const DB_PORT = Number(process.env.DEMO_DB_PORT ?? 54329);
-const MOCK_PORT = Number(process.env.DEMO_MOCK_PORT ?? 3998);
-const APP_PORT = Number(process.env.PORT ?? 3000);
-const fresh = args.includes("--reset") || !existsSync(DATA);
+const PIDFILE = path.join(root, ".demo.pid");
+const reset = args.includes("--reset") || process.env.npm_config_reset === "true"; // también «npm run demo --reset»
+const simulatedAi = args.includes("--ia-simulada") || process.env["npm_config_ia_simulada"] === "true";
+const fail = (msg) => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
+
+// Comprobaciones previas, con mensajes claros.
+const [major] = process.versions.node.split(".").map(Number);
+if (major < 22) fail(`Hace falta Node.js 22 o superior (tienes ${process.versions.node}). Instálalo desde nodejs.org o con «brew install node».`);
+if (!existsSync(path.join(root, "node_modules", "next"))) fail("Faltan las dependencias: ejecuta primero «npm install».");
+
+// Si hay una demo anterior abierta (en otra terminal), se cierra: si no, la base de datos y los puertos siguen ocupados.
+async function stopPrevious() {
+  if (!existsSync(PIDFILE)) return;
+  const pid = Number(readFileSync(PIDFILE, "utf8"));
+  try {
+    process.kill(pid, 0);
+    console.log("▸ Cerrando la demo que seguía abierta…");
+    process.kill(pid, "SIGTERM");
+    for (let i = 0; i < 50; i++) { await new Promise((r) => setTimeout(r, 200)); try { process.kill(pid, 0); } catch { break; } }
+  } catch { /* ya no estaba en marcha */ }
+  try { unlinkSync(PIDFILE); } catch { /* nada */ }
+}
+await stopPrevious();
+
+/** Primer puerto libre a partir de `from`. */
+async function freePort(from) {
+  for (let port = from; port < from + 50; port++) {
+    const ok = await new Promise((resolve) => {
+      const srv = net.createServer().once("error", () => resolve(false)).once("listening", () => srv.close(() => resolve(true)));
+      srv.listen(port, "127.0.0.1");
+    });
+    if (ok) return port;
+  }
+  fail(`No hay puertos libres a partir del ${from}.`);
+}
+const DB_PORT = await freePort(Number(process.env.DEMO_DB_PORT ?? 54329));
+const MOCK_PORT = await freePort(Number(process.env.DEMO_MOCK_PORT ?? 3998));
+const APP_PORT = await freePort(Number(process.env.PORT ?? 3000));
+
+// «--reset»: se empieza de cero de verdad (también arregla una carpeta de datos que quedó a medias al cortar la demo).
+if (reset && existsSync(DATA)) rmSync(DATA, { recursive: true, force: true });
+const fresh = !existsSync(DATA);
 const MOCK = `http://127.0.0.1:${MOCK_PORT}`;
 
 const env = {
@@ -41,29 +80,40 @@ const env = {
 };
 
 const children = [];
+const logs = new Map();
 function start(name, cmd, cmdArgs, extraEnv = {}, waitFor) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, cmdArgs, { cwd: root, env: { ...env, ...extraEnv }, stdio: ["ignore", "pipe", "pipe"] });
     children.push(child);
+    logs.set(name, "");
     let done = !waitFor;
     if (done) resolve(child);
     const onData = (buf) => {
       const text = buf.toString();
+      logs.set(name, (logs.get(name) + text).slice(-4000));
       if (process.env.DEMO_VERBOSE || name === "app") process.stdout.write(text.split("\n").filter(Boolean).map((l) => `[${name}] ${l}\n`).join(""));
       if (!done && waitFor.test(text)) { done = true; resolve(child); }
     };
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
-    child.on("exit", (code) => { if (!done) reject(new Error(`${name} terminó (código ${code})`)); });
+    child.on("exit", (code) => {
+      if (!done) reject(new Error(`«${name}» se cerró al arrancar (código ${code}). Últimas líneas:\n${logs.get(name).trim().split("\n").slice(-15).join("\n")}`));
+      else if (name === "app" && code !== 0 && code !== null) { console.error(`\n✗ La aplicación se ha cerrado (código ${code}).`); stop(); process.exit(1); }
+    });
   });
 }
 const run = (cmdArgs) => new Promise((resolve, reject) => {
   const child = spawn(process.execPath, cmdArgs, { cwd: root, env, stdio: "inherit" });
   child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${cmdArgs.join(" ")} falló`))));
 });
-const stop = () => { for (const c of children) c.kill("SIGTERM"); };
+const stop = () => {
+  for (const c of children) c.kill("SIGTERM");
+  try { if (readFileSync(PIDFILE, "utf8") === String(process.pid)) unlinkSync(PIDFILE); } catch { /* nada */ }
+};
 process.on("SIGINT", () => { stop(); process.exit(0); });
 process.on("SIGTERM", () => { stop(); process.exit(0); });
+process.on("SIGHUP", () => { stop(); process.exit(0); });
+writeFileSync(PIDFILE, String(process.pid));
 
 try {
   console.log("▸ Base de datos de la demo");
@@ -74,7 +124,7 @@ try {
   } else {
     await run(["scripts/db.mjs", "migrate"]);
   }
-  if (args.includes("--ia-simulada")) {
+  if (simulatedAi) {
     // Mismo cifrado que src/lib/crypto.ts.
     const key = createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
     const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", key, iv);
@@ -106,7 +156,8 @@ try {
   Para parar: Ctrl+C. Los datos se guardan en .demo-data (npm run demo -- --reset para empezar de cero).
 `);
 } catch (err) {
-  console.error(`✗ ${err.message}`);
+  console.error(`\n✗ ${err.message}\n`);
+  console.error("  Si no lo ves claro, prueba «npm run demo -- --reset» o copia este mensaje y pásamelo.\n");
   stop();
   process.exit(1);
 }
