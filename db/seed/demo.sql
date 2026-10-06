@@ -42,7 +42,7 @@ INSERT INTO products (id, name, code, unit_price, billing) VALUES
 
 -- Campos personalizados de ejemplo -------------------------------------
 INSERT INTO custom_field_definitions (entity_type, key, label, field_type, options, position) VALUES
-  ('organization', 'sector_cliente', 'Sector', 'single_option',
+  ('organization', 'segmento', 'Segmento', 'single_option',
      '[{"key":"retail","label":"Retail"},{"key":"saas","label":"SaaS"},{"key":"industria","label":"Industria"}]', 1),
   ('deal', 'competidor', 'Competidor principal', 'text', NULL, 1),
   ('deal', 'fecha_renovacion', 'Fecha de renovación', 'date', NULL, 2),
@@ -57,7 +57,7 @@ INSERT INTO tags (id, name, color) VALUES
 -- Empresa Paco con dos contactos (uno antiguo) -------------------------
 INSERT INTO organizations (id, name, domain, website, industry, employee_count, country, owner_id, custom) VALUES
   ('60000000-0000-0000-0000-000000000001', 'Paco S.L.', 'paco.example', 'https://paco.example', 'Retail', 120, 'ES',
-   '00000000-0000-0000-0000-000000000001', '{"sector_cliente":"retail"}');
+   '00000000-0000-0000-0000-000000000001', '{"segmento":"retail"}');
 
 INSERT INTO persons (id, first_name, last_name, owner_id, marketing_consent, marketing_consent_at, custom) VALUES
   ('70000000-0000-0000-0000-000000000001', 'Ana', 'García', '00000000-0000-0000-0000-000000000001', true, now() - interval '200 days', '{"idioma":"es"}'),

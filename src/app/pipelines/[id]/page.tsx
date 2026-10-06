@@ -45,7 +45,7 @@ export default async function PipelineBoard({ params, searchParams }: {
         <Link href={`/deals/new?pipeline=${id}`} className="btn">Nuevo deal</Link>
       </div>
       <p className="meta" style={{ marginTop: -8 }}>
-        {count} deal{count === 1 ? "" : "s"} abiertos · {money(total)}
+        {count} deal{count === 1 ? " abierto" : "s abiertos"} · {money(total)}
         {rotten > 0 && <> · <span className="badge warn">{rotten} parado{rotten === 1 ? "" : "s"}</span></>}
         {" "}· Arrastra un deal para cambiarlo de fase.
       </p>

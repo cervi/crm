@@ -1,6 +1,6 @@
 export function money(value: string | number | null | undefined, currency = "EUR") {
   if (value === null || value === undefined || value === "") return "—";
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency, maximumFractionDigits: 0 })
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency, maximumFractionDigits: 0, useGrouping: "always" })
     .format(Number(value));
 }
 

@@ -43,3 +43,12 @@ BASE_URL="http://127.0.0.1:${APP_PORT}" node scripts/e2e.mjs || { echo "--- regi
 if grep -qiE "error|unhandled" "$DATA_DIR.app.log"; then
   echo "--- avisos en el registro de la app:"; grep -iE "error|unhandled" "$DATA_DIR.app.log" | head -20
 fi
+
+# Pruebas con navegador, si Playwright está instalado (npm i -D playwright && npx playwright install chromium).
+if node -e "require.resolve('playwright')" 2>/dev/null; then
+  echo "▸ Pruebas con navegador"
+  node scripts/db.mjs reset > /dev/null
+  BASE_URL="http://127.0.0.1:${APP_PORT}" node scripts/ui-check.mjs
+else
+  echo "▸ (Pruebas con navegador omitidas: Playwright no está instalado)"
+fi

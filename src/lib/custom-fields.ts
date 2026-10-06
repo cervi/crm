@@ -128,8 +128,8 @@ export function formatCustomValue(def: FieldDefinition, value: unknown, users: {
     case "boolean": return value ? "Sí" : "No";
     case "single_option": return optLabel(value);
     case "multi_option": return Array.isArray(value) ? value.map(optLabel).join(", ") : "—";
-    case "money": return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(value));
-    case "number": return new Intl.NumberFormat("es-ES").format(Number(value));
+    case "money": return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", useGrouping: "always" }).format(Number(value));
+    case "number": return new Intl.NumberFormat("es-ES", { useGrouping: "always" }).format(Number(value));
     case "date": return new Date(`${value}T00:00:00`).toLocaleDateString("es-ES");
     case "datetime": return new Date(String(value)).toLocaleString("es-ES");
     case "user": return users.find((u) => u.id === value)?.name ?? "—";

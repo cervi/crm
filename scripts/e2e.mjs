@@ -42,7 +42,7 @@ const pages = {
   "/persons": ["Ana García"], [`/persons/${PERSON}`]: ["Recorrido como lead", "Paco S.L."], [`/persons/${PERSON}/edit`]: ["ana@paco.example"],
   "/persons/new": ["Nuevo contacto"], "/activities": null, "/activities?view=done": ["No se presentó"],
   "/settings": ["Pipelines y fases"], "/settings/pipelines": ["Inbound"], [`/settings/pipelines/${P.inbound}`]: ["Demo solicitada"],
-  "/settings/fields": ["Competidor principal"], "/settings/fields?entity=organization": ["Sector"],
+  "/settings/fields": ["Competidor principal"], "/settings/fields?entity=organization": ["Segmento"],
   "/settings/lost-reasons": ["Sin presupuesto ahora"], "/settings/api": ["/api/v1/leads"],
 };
 

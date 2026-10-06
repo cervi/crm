@@ -7,7 +7,7 @@ import type { BoardDeal, BoardStage } from "@/lib/pipelines";
 
 const money = (v: string | number | null, currency = "EUR") =>
   v === null || v === "" ? "—"
-    : new Intl.NumberFormat("es-ES", { style: "currency", currency, maximumFractionDigits: 0 }).format(Number(v));
+    : new Intl.NumberFormat("es-ES", { style: "currency", currency, maximumFractionDigits: 0, useGrouping: "always" }).format(Number(v));
 
 type Move = { dealId: string; to: string };
 
