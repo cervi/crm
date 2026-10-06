@@ -210,6 +210,7 @@ export async function moveDealToStage(actor: Actor, dealId: string, stageId: str
       FROM deals d JOIN stages s ON s.id = d.stage_id
       WHERE d.id = ${dealId} AND d.deleted_at IS NULL FOR UPDATE OF d`;
     if (!d) throw new UserError("El deal no existe.");
+    if (d.status !== "open") throw new UserError("Solo se pueden mover deals abiertos. Reábrelo primero.");
     if (d.stage_id === stageId) return;
     const [target] = await tx<{ pipeline_id: string; name: string; is_active: boolean }[]>`
       SELECT pipeline_id, name, is_active FROM stages WHERE id = ${stageId}`;
@@ -231,7 +232,7 @@ export async function winDeal(actor: Actor, dealId: string) {
     const d = await getDeal(dealId, tx);
     if (!d) throw new UserError("El deal no existe.");
     if (d.status === "won") return;
-    await tx`UPDATE deals SET status = 'won' WHERE id = ${dealId}`;
+    await tx`UPDATE deals SET status = 'won', lost_reason_id = NULL, lost_note = NULL WHERE id = ${dealId}`;
     // deal.won es el disparador del traspaso a Customer Success (resumen con IA, fase 2).
     await recordEvent(tx, actor, "deal", dealId, "deal.won", {
       value: d.value, organization_id: d.organization_id, pipeline_id: d.pipeline_id,
@@ -251,6 +252,7 @@ export async function loseDeal(actor: Actor, dealId: string, data: unknown) {
   return transaction(async (tx) => {
     const d = await getDeal(dealId, tx);
     if (!d) throw new UserError("El deal no existe.");
+    if (d.status === "lost") throw new UserError("El deal ya está perdido.");
     const [reason] = await tx<{ label: string; followup_days: number | null }[]>`
       SELECT label, followup_days FROM lost_reasons WHERE id = ${v.lost_reason_id!} AND is_active`;
     if (!reason) throw new UserError("Motivo de pérdida no válido.");

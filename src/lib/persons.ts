@@ -201,8 +201,11 @@ export async function changeCompany(
 
 /** Busca un contacto por email (deduplicación). */
 export async function findPersonByEmail(db: Db, email: string) {
-  const [row] = await db<{ id: string }[]>`
-    SELECT p.id FROM person_emails e JOIN persons p ON p.id = e.person_id
-    WHERE lower(e.email) = ${email.toLowerCase()} AND p.deleted_at IS NULL`;
+  // El email es único también entre contactos borrados: si vuelve a entrar,
+  // se recupera ese contacto en lugar de chocar con el índice único.
+  const [row] = await db<{ id: string; deleted: boolean }[]>`
+    SELECT p.id, p.deleted_at IS NOT NULL AS deleted FROM person_emails e JOIN persons p ON p.id = e.person_id
+    WHERE lower(e.email) = ${email.toLowerCase()}`;
+  if (row?.deleted) await db`UPDATE persons SET deleted_at = NULL WHERE id = ${row.id}`;
   return row?.id ?? null;
 }

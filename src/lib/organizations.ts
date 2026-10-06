@@ -149,11 +149,16 @@ export async function findOrCreateOrganization(
   }
   const cleanName = name?.trim();
   if (!cleanName && !d) return null;
-  if (!d && cleanName) {
+  if (cleanName) {
+    // Misma empresa dada de alta sin dominio: se reutiliza (y se le asigna el dominio si llega uno).
     const [byName] = await db<{ id: string }[]>`
-      SELECT id FROM organizations WHERE lower(name) = ${cleanName.toLowerCase()} AND deleted_at IS NULL
+      SELECT id FROM organizations
+      WHERE lower(name) = ${cleanName.toLowerCase()} AND deleted_at IS NULL AND (${d === null} OR domain IS NULL)
       ORDER BY created_at LIMIT 1`;
-    if (byName) return { id: byName.id, created: false };
+    if (byName) {
+      if (d) await db`UPDATE organizations SET domain = ${d} WHERE id = ${byName.id} AND domain IS NULL`;
+      return { id: byName.id, created: false };
+    }
   }
   const id = await createOrganization(actor, { name: cleanName || d, domain: d ?? undefined }, {}, db);
   return { id, created: true };

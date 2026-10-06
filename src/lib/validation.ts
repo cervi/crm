@@ -7,9 +7,12 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export const id = z.string().regex(UUID_RE, "Identificador no válido");
 export const isId = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
 
-/** Convierte "" y null en undefined antes de validar (campos vacíos de formulario). */
+/** Convierte vacíos (null, "" o solo espacios) en undefined antes de validar. */
 export const optional = <T extends z.ZodTypeAny>(schema: T) =>
-  z.preprocess((v) => (v === "" || v === null ? undefined : v), schema.optional());
+  z.preprocess(
+    (v) => (v === null || (typeof v === "string" && v.trim() === "") ? undefined : v),
+    schema.optional(),
+  );
 
 export const text = (label: string, max = 500) =>
   z.string().trim().min(1, `${label} es obligatorio`).max(max, `${label} es demasiado largo`);

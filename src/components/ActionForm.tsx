@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useTransition } from "react";
 import type { ActionState } from "@/lib/errors";
 
 type Props = {
@@ -16,9 +16,14 @@ type Props = {
   secondary?: boolean;
 };
 
-/** Formulario que envía una acción de servidor y muestra su error, si lo hay. */
+/**
+ * Formulario que envía una acción de servidor y muestra su error, si lo hay.
+ * Se envía con onSubmit (no con `action`) porque React 19 vacía los campos
+ * tras cada envío con `action`, y así se perdería lo escrito al haber un error.
+ */
 export function ActionForm({ action, children, submitLabel, pendingLabel, className, resetOnSuccess, danger, good, secondary }: Props) {
   const [state, formAction, pending] = useActionState(action, undefined);
+  const [, startTransition] = useTransition();
   const ref = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
@@ -26,7 +31,15 @@ export function ActionForm({ action, children, submitLabel, pendingLabel, classN
   }, [state, resetOnSuccess]);
 
   return (
-    <form ref={ref} action={formAction} className={className ?? "form"}>
+    <form
+      ref={ref}
+      className={className ?? "form"}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const data = new FormData(e.currentTarget);
+        startTransition(() => formAction(data));
+      }}
+    >
       {children}
       {state?.error && <p className="form-error" role="alert">{state.error}</p>}
       <div className="form-actions">

@@ -37,6 +37,10 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://crm:crm@db:5432/crm
+      TZ: ${TZ:-Europe/Madrid}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER:?Define BASIC_AUTH_USER}
+      BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:?Define BASIC_AUTH_PASSWORD}
+      INBOUND_API_KEYS: ${INBOUND_API_KEYS:-}
     ports:
       - "3000:3000"
 

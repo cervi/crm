@@ -5,7 +5,7 @@ import { UserError } from "./errors";
 import { findOrCreateOrganization } from "./organizations";
 import { createPerson, findPersonByEmail } from "./persons";
 import { createDeal } from "./deals";
-import { checkbox, companyDomainFromEmail, id, optId, optMoney, optText, optional, parse, text } from "./validation";
+import { checkbox, companyDomainFromEmail, id, normalizeDomain, optId, optMoney, optText, optional, parse, text } from "./validation";
 
 export type LeadListRow = {
   id: string;
@@ -163,11 +163,16 @@ export async function ingestLead(actor: Actor, data: unknown): Promise<IngestRes
   const v = parse(inboundSchema, data);
   return transaction(async (tx) => {
     const created = { person: false, organization: false, lead: false, deal: false };
+    const domain = normalizeDomain(v.domain) ?? companyDomainFromEmail(v.email);
+
+    // Dos envíos simultáneos del mismo formulario (doble clic, reintento de un
+    // webhook) se procesan uno detrás de otro en vez de chocar al crear.
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${`person:${v.email}`}))`;
+    const orgKey = domain ?? v.company?.trim().toLowerCase();
+    if (orgKey) await tx`SELECT pg_advisory_xact_lock(hashtext(${`org:${orgKey}`}))`;
 
     // Empresa: dominio explícito o el del email (si no es de correo personal).
-    const org = await findOrCreateOrganization(tx, actor, {
-      name: v.company, domain: v.domain ?? companyDomainFromEmail(v.email),
-    });
+    const org = await findOrCreateOrganization(tx, actor, { name: v.company, domain });
     created.organization = org?.created ?? false;
 
     // Contacto: por email.
@@ -251,10 +256,11 @@ export async function ingestLead(actor: Actor, data: unknown): Promise<IngestRes
           source: v.source,
         }, {}, { db: tx, leadId });
         created.deal = true;
-        await tx`UPDATE leads SET status = 'converted', converted_deal_id = ${dealId}, converted_at = now()
-                 WHERE id = ${leadId} AND status = 'open'`;
-        await recordEvent(tx, actor, "lead", leadId, "lead.converted", { deal_id: dealId });
       }
+      const [converted] = await tx<{ id: string }[]>`
+        UPDATE leads SET status = 'converted', converted_deal_id = ${dealId}, converted_at = now()
+        WHERE id = ${leadId} AND status = 'open' RETURNING id`;
+      if (converted) await recordEvent(tx, actor, "lead", leadId, "lead.converted", { deal_id: dealId });
       await tx`
         INSERT INTO activities (type, subject, note, due_at, deal_id, person_id, organization_id, owner_id)
         SELECT 'task', 'Contactar: nueva solicitud de demo', ${v.message ?? null}, now(), ${dealId}, ${personId},

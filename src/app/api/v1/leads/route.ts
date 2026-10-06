@@ -40,7 +40,8 @@ export async function POST(req: NextRequest) {
     const result = await ingestLead(INTEGRATION_ACTOR, body);
     return NextResponse.json(result, { status: result.created.lead || result.created.deal ? 201 : 200 });
   } catch (err) {
-    const status = err instanceof UserError ? 422 : 500;
+    const code = (err as { code?: string })?.code;
+    const status = err instanceof UserError ? 422 : code === "23505" ? 409 : 500;
     return NextResponse.json({ error: toUserMessage(err) }, { status });
   }
 }

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Comprobación completa en local, sin Docker: base de datos de desarrollo
+# temporal, migraciones + datos de ejemplo + comprobaciones del modelo,
+# tipos, compilación y pruebas de extremo a extremo contra la app arrancada.
+#
+#   npm run check
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+DB_PORT="${CHECK_DB_PORT:-55432}"
+APP_PORT="${CHECK_APP_PORT:-3999}"
+DATA_DIR="$(mktemp -d)"
+export DATABASE_URL="postgres://crm:crm@127.0.0.1:${DB_PORT}/crm"
+export INBOUND_API_KEYS="clave-de-pruebas-0123456789"
+export BASIC_AUTH_USER="pruebas" BASIC_AUTH_PASSWORD="contraseña-de-pruebas"
+export TZ="${TZ:-Europe/Madrid}" NEXT_TELEMETRY_DISABLED=1
+
+pids=()
+cleanup() { for p in "${pids[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$DATA_DIR"; }
+trap cleanup EXIT
+
+echo "▸ Base de datos de desarrollo (puerto ${DB_PORT})"
+DEV_DB_PORT="$DB_PORT" DEV_DB_DIR="$DATA_DIR" node scripts/dev-db.mjs > "$DATA_DIR.db.log" 2>&1 &
+pids+=($!)
+for _ in $(seq 1 50); do grep -q "PostgreSQL de desarrollo" "$DATA_DIR.db.log" 2>/dev/null && break; sleep 0.2; done
+
+echo "▸ Migraciones, datos de ejemplo y comprobaciones del modelo"
+node scripts/db.mjs reset
+
+echo "▸ Tipos"
+npx tsc --noEmit
+
+echo "▸ Compilación"
+npx next build > "$DATA_DIR.build.log" 2>&1 || { cat "$DATA_DIR.build.log"; exit 1; }
+
+echo "▸ Pruebas de extremo a extremo"
+PORT="$APP_PORT" npx next start > "$DATA_DIR.app.log" 2>&1 &
+pids+=($!)
+for _ in $(seq 1 100); do curl -s -o /dev/null "http://127.0.0.1:${APP_PORT}/settings/api" && break; sleep 0.2; done
+BASE_URL="http://127.0.0.1:${APP_PORT}" node scripts/e2e.mjs || { echo "--- registro de la app:"; tail -40 "$DATA_DIR.app.log"; exit 1; }
+if grep -qiE "error|unhandled" "$DATA_DIR.app.log"; then
+  echo "--- avisos en el registro de la app:"; grep -iE "error|unhandled" "$DATA_DIR.app.log" | head -20
+fi
