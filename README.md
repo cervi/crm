@@ -23,7 +23,20 @@ Tecnología: **Next.js 16 + TypeScript + PostgreSQL**, empaquetado con Docker pa
 | **Correo, calendario y documentos** | Cada usuario puede conectar su cuenta de **Microsoft 365** (Outlook, calendario, OneDrive/SharePoint) o de **Google Workspace** (Gmail, Google Calendar, Drive). Los correos del CRM (los que escribes en la ficha del deal y los que propone o envía la IA) salen desde su correo y quedan en «Enviados». Los correos y reuniones con contactos del CRM se registran solos en sus deals (sin duplicar). La IA ofrece tus huecos libres (`{huecos}`) según tu horario, duración, margen y antelación; al programar una actividad puedes invitar al contacto desde tu calendario con Teams o Meet. En cada deal, «Documentos» enlaza presentaciones y propuestas buscándolas en tu Drive/OneDrive o pegando un enlace. Accesos cifrados en la base de datos. Todo es opcional: sin configurar nada, el CRM funciona igual. |
 | **Historial** | Todo queda registrado como evento (quién, qué y cuándo): es el historial de cada ficha y será la base de las automatizaciones y de la auditoría de la IA. |
 
-## Arrancar en local
+## Probarlo en local (un comando)
+
+Requisito: Node.js 22 o superior.
+
+```bash
+npm install
+npm run demo                  # http://localhost:3000 — Ctrl+C para parar
+npm run demo -- --reset       # vuelve a los datos de ejemplo
+npm run demo -- --ia-simulada # con una IA simulada ya configurada
+```
+
+Arranca la base de datos con datos de ejemplo, Microsoft 365 y Google simulados (se puede pulsar «Conectar» y enviar sin tocar cuentas reales) y la aplicación. Los datos se guardan en `.demo-data/`. Para resúmenes de verdad, pon tu clave en Ajustes → Modelo de IA.
+
+## Arrancar en local (desarrollo)
 
 Requisito: Node.js 22 o superior. No hace falta Docker ni instalar PostgreSQL.
 
