@@ -33,7 +33,7 @@ export function CustomRuleForm({ action, types, stages, initial, submitLabel, wi
 }) {
   const [trigger, setTrigger] = useState(initial?.trigger?.kind ?? "activity_done");
   const [kind, setKind] = useState(initial?.action?.kind ?? "create_activity");
-  const a = initial?.action ?? {};
+  const a: NonNullable<Initial["action"]> = initial?.action ?? { kind: "" };
   const isEmail = kind === "draft_email";
   return (
     <ActionForm action={action} submitLabel={submitLabel} resetOnSuccess={!initial}>
