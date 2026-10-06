@@ -47,6 +47,7 @@ export async function createProposal(actor: Actor, dealId: string): Promise<stri
   if (!d) throw new UserError("El deal no existe.");
   const raw = await dealLines(dealId);
   if (raw.length === 0) throw new UserError("Añade antes los productos del deal: la propuesta se hace con ellos.");
+  if (raw.some((l) => l.discount_status === "pending")) throw new UserError("Hay un descuento esperando la aprobación de un administrador: la propuesta se prepara cuando esté decidido.");
   const lines: ProposalLine[] = raw.map((l) => ({
     name: l.name, billing: BILLING_LABELS[l.billing], quantity: Number(l.quantity), unit_price: Number(l.unit_price),
     discount_pct: Number(l.discount_pct), subtotal: Math.round(l.subtotal * 100) / 100,

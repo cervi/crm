@@ -1008,3 +1008,21 @@ a.btn.small svg { width: 14px; height: 14px; }
 .muted-row td { color: var(--muted); }
 .pager { display: flex; gap: 8px; margin: 12px 0; }
 .movers li .health { margin-right: 6px; }
+
+/* ---- Agente ejecutivo de deal ---- */
+.plan-steps { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.plan-steps li { display: grid; grid-template-columns: 26px 1fr auto auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border); }
+.plan-steps.public li { grid-template-columns: 26px 1fr auto auto; }
+.plan-steps li.done .plan-title { text-decoration: line-through; color: var(--muted); }
+.plan-steps li.overdue { border-color: var(--bad); }
+.plan-check { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--border-strong); background: var(--panel); color: var(--good); font-weight: 700; display: inline-grid; place-items: center; padding: 0; cursor: pointer; }
+.plan-steps li.done .plan-check { background: var(--good-soft); border-color: var(--good); }
+.close-plan { margin-bottom: 16px; }
+.close-plan .section-title { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 760px) { .plan-steps li { grid-template-columns: 26px 1fr; } .plan-steps li > .meta, .plan-steps li > form:last-child { grid-column: 2; } }
+.prep summary { display: inline-flex; align-items: center; gap: 4px; }
+.prep .note-body { background: var(--sunken); border-radius: 8px; padding: 8px 10px; }
+.discount-pending { display: grid; gap: 4px; justify-items: end; margin-top: 4px; }
+.discount-actions { display: flex; gap: 4px; }
+.insights dd { white-space: normal; }
+.shared-plan { max-width: 760px; }

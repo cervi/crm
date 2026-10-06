@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { guard } from "@/lib/auth";
-import { attempt, toUserMessage, type ActionState } from "@/lib/errors";
+import { attempt, toUserMessage, UserError, type ActionState } from "@/lib/errors";
+import { sql } from "@/lib/db";
 import { addLine, removeLine, saveProduct } from "@/lib/products";
 import { createProposal, decide, markSent, updateProposal } from "@/lib/proposals";
 
@@ -12,6 +13,18 @@ export async function saveProductAction(productId: string | null, _: ActionState
   const res = await attempt(() => saveProduct(productId, Object.fromEntries(form)));
   revalidatePath("/settings/products");
   return res;
+}
+
+export async function saveDiscountLimitAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
+  return attempt(async () => {
+    const raw = String(form.get("max_discount_pct") ?? "").trim();
+    const v = raw === "" ? null : Number(raw);
+    if (v !== null && (!Number.isFinite(v) || v < 0 || v > 100)) throw new UserError("El descuento máximo va de 0 a 100.");
+    await sql`UPDATE app_settings SET max_discount_pct = ${v}`;
+    revalidatePath("/settings/products");
+  });
 }
 
 export async function addLineAction(dealId: string, back: string, _: ActionState, form: FormData): Promise<ActionState> {

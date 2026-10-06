@@ -20,13 +20,16 @@ export const AI_PROVIDERS: { value: AiProvider; label: string; baseUrl: string; 
   { value: "compatible", label: "Otro compatible con la API de OpenAI", baseUrl: "", kind: "openai", modelHint: "nombre del modelo" },
 ];
 
-export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff" | "lead_chat" | "report_question" | "proposal";
+export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff" | "lead_chat" | "report_question" | "proposal"
+  | "meeting_prep" | "call_extraction";
 
 export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "deal_brief", label: "Resumen del deal", help: "Arriba de cada ficha: cómo va, riesgos y siguiente paso." },
   { value: "meeting_recap", label: "Resumen tras una reunión", help: "El correo de seguimiento al contacto después de una demo o llamada." },
   { value: "daily_digest", label: "Parte del día", help: "El enfoque del día que encabeza tu parte diario." },
   { value: "handoff", label: "Traspaso a Customer Success", help: "El resumen de un deal ganado para el equipo de CS." },
+  { value: "meeting_prep", label: "Preparación de reuniones", help: "La ficha que el agente deja antes de cada reunión: contexto, objetivo y preguntas." },
+  { value: "call_extraction", label: "Extracción tras una reunión", help: "Necesidades, decisores, presupuesto, plazos, objeciones y próximos pasos a partir de la transcripción o las notas." },
   { value: "proposal", label: "Propuestas", help: "El texto de las propuestas que se envían al cliente con los productos del deal." },
   { value: "report_question", label: "Preguntas sobre los datos", help: "Convierte una pregunta («¿cuánto ganamos por origen este trimestre?») en un informe." },
   { value: "lead_chat", label: "Chat de la web", help: "El asistente de los formularios web: responde, cualifica al visitante y recoge sus datos." },
@@ -43,6 +46,11 @@ Con las notas o la transcripción de la reunión, responde SOLO con un JSON: {"r
 Con el parte del día, escribe un párrafo breve (máximo 5 frases) con las 3 prioridades del día y por qué, empezando por lo más urgente. Sin saludos ni despedidas.`,
   handoff: `Eres el asistente comercial del CRM. ${COMMON}
 Redacta el resumen de traspaso a Customer Success de un deal ganado: cliente y contexto, qué compra, personas clave, cómo fue la venta, compromisos y riesgos a vigilar, y primeros pasos recomendados. Texto plano con apartados cortos.`,
+  meeting_prep: `Eres el asistente comercial del CRM y preparas al comercial para una reunión con un cliente. ${COMMON}
+Con los datos del deal (asistentes, historia, lo que sabemos, señales), responde SOLO con un JSON: {"objetivo": "qué conseguir en esta reunión, una frase", "contexto": "2-4 frases con lo esencial del deal y la última interacción", "preguntas": ["preguntas concretas para resolver dudas abiertas, máximo 5"], "cuidado": ["riesgos u objeciones a tener en cuenta, máximo 3"]}`,
+  call_extraction: `Eres el asistente comercial del CRM. ${COMMON}
+De la transcripción o las notas de una reunión con un cliente, extrae solo lo que se dijo. Responde SOLO con un JSON:
+{"necesidades": ["qué necesita el cliente"], "decisores": [{"nombre": "", "cargo": "", "rol": "decisor | influye | usuario | compras"}], "presupuesto": "lo dicho sobre presupuesto o vacío", "plazo": "lo dicho sobre plazos o vacío", "objeciones": [""], "competidores": ["otras soluciones que valoran"], "proximos_pasos": [{"tarea": "en imperativo", "en_dias": número de días desde hoy}], "importe_estimado": número o null, "fecha_cierre": "AAAA-MM-DD o null"}`,
   proposal: `Eres el asistente comercial del CRM. ${COMMON}
 Redacta el texto de una propuesta comercial para el cliente con los datos del deal: saludo, qué necesita (según las notas), qué le proponemos (los productos, sin repetir precios: van en una tabla aparte), por qué encaja y los siguientes pasos. Sin datos internos ni del pipeline. Máximo 250 palabras, firmado por el responsable.
 Responde SOLO con un JSON: {"titulo": "título de la propuesta", "texto": "el texto, con saltos de línea"}`,

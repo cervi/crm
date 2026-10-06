@@ -45,6 +45,8 @@ const P = { inbound: "10000000-0000-0000-0000-000000000001", ampl: "10000000-000
 const ORG = "60000000-0000-0000-0000-000000000001", PERSON = "70000000-0000-0000-0000-000000000001";
 const DEAL_OPEN = "90000000-0000-0000-0000-000000000002", DEAL_WON = "90000000-0000-0000-0000-000000000001";
 const DEAL_LOST = "90000000-0000-0000-0000-000000000003", LEAD = "80000000-0000-0000-0000-000000000001";
+const UA_DESKTOP = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Microsoft Outlook 16.0.17126";
+const UA_IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
 
 const pages = {
   "/pipelines": null, [`/pipelines/${P.inbound}`]: ["Demo solicitada"], [`/pipelines/${P.ampl}`]: ["Paco — ampliación de servicio", "Parado"],
@@ -398,20 +400,22 @@ if (process.env.MOCK_URL) {
     const [out] = await sql`SELECT id, token, track, status, external_ref FROM emails WHERE external_ref = ${`msg:${mail.internetMessageId}`}`;
     check(out?.status === "sent" && out.track && out.token && mail.body?.contentType === "HTML" && mail.body.content.includes(`/t/o/${out.token}.gif`),
           "correo: el enviado queda en la conversación, en HTML y con píxel de apertura", JSON.stringify({ out, ct: mail.body?.contentType }));
-    const pix = await fetch(`${BASE}/t/o/${out.token}.gif`);
+    // Una apertura al instante del envío la hace un escáner: se deja pasar un minuto «de mentira».
+    await sql`UPDATE emails SET sent_at = now() - interval '1 minute' WHERE id = ${out.id}`;
+    const pix = await fetch(`${BASE}/t/o/${out.token}.gif`, { headers: { "user-agent": UA_DESKTOP } });
     const [o1] = await sql`SELECT open_count FROM emails WHERE id = ${out.id}`;
     const [ev] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'email.opened' AND payload->>'email_id' = ${out.id}`;
     check(pix.status === 200 && pix.headers.get("content-type") === "image/gif" && o1.open_count === 1 && ev.n === 1,
           "correo: la apertura se cuenta (sin iniciar sesión) y queda en la historia", JSON.stringify({ st: pix.status, o1, ev }));
-    await fetch(`${BASE}/t/o/${out.token}.gif`);
+    await fetch(`${BASE}/t/o/${out.token}.gif`, { headers: { "user-agent": UA_DESKTOP } });
     const [ev2] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'email.opened' AND payload->>'email_id' = ${out.id}`;
     check(ev2.n === 1, "correo: abrirlo otra vez suma pero no repite el aviso");
     // Clics: solo enlaces que estaban en el correo.
     const tok = "tok-de-prueba-0123456789abcd";
     const [ce] = await sql`INSERT INTO emails (direction, status, deal_id, subject, body, track, token, sent_at)
-                           VALUES ('out', 'sent', ${DEAL_OPEN}, 'Con enlace', 'Mira https://aikit.example/propuesta?x=1 y dime.', true, ${tok}, now()) RETURNING id`;
+                           VALUES ('out', 'sent', ${DEAL_OPEN}, 'Con enlace', 'Mira https://aikit.example/propuesta?x=1 y dime.', true, ${tok}, now() - interval '1 minute') RETURNING id`;
     const evil = await fetch(`${BASE}/t/c/${tok}?u=${encodeURIComponent("https://malo.example/")}`, { redirect: "manual" });
-    const good = await fetch(`${BASE}/t/c/${tok}?u=${encodeURIComponent("https://aikit.example/propuesta?x=1")}`, { redirect: "manual" });
+    const good = await fetch(`${BASE}/t/c/${tok}?u=${encodeURIComponent("https://aikit.example/propuesta?x=1")}`, { redirect: "manual", headers: { "user-agent": UA_DESKTOP } });
     const [c1] = await sql`SELECT click_count FROM emails WHERE id = ${ce.id}`;
     check(evil.status === 404 && good.status === 302 && good.headers.get("location") === "https://aikit.example/propuesta?x=1" && c1.click_count === 1,
           "correo: el clic se cuenta y redirige; no sirve para redirigir a otros sitios", JSON.stringify({ evil: evil.status, good: good.status, c1 }));
@@ -1055,7 +1059,7 @@ if (KEY) {
             VALUES (${DEAL_OPEN}, ${tok}, 'Propuesta e2e', 'Hola Ana, aquí va.',
                     ${sql.json([{ name: "Licencia", billing: "Anual", quantity: 2, unit_price: 1000, discount_pct: 10, subtotal: 1800 }])}, 1800,
                     (now() + interval '10 days')::date)`;
-  const pp = await fetch(`${BASE}/p/${tok}`);
+  const pp = await fetch(`${BASE}/p/${tok}`, { headers: { "user-agent": UA_IPHONE } });
   const ph = (await pp.text()).replace(/<!-- -->/g, "");
   const [pv] = await sql`SELECT view_count, status FROM proposals WHERE token = ${tok}`;
   const [pe] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'proposal.viewed' AND entity_id = ${DEAL_OPEN}`;
@@ -1065,6 +1069,122 @@ if (KEY) {
   check((await fetch(`${BASE}/p/no-existe-0123456789abcdef`)).status === 404, "propuesta: un enlace inventado → 404");
   const prod = await (await get("/settings/products")).text();
   check(prod.includes("Productos") && prod.includes("Nuevo producto"), "/settings/products");
+}
+
+// ------------------------------------------------------------- Fase 1: lectura de correos y salud de los deals
+{
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  await sql`UPDATE app_settings SET open_alerts = 'all'`;
+  const tok = "lectura-e2e-0123456789abcdefgh";
+  const [m] = await sql`INSERT INTO emails (direction, status, deal_id, person_id, user_id, to_email, to_name, subject, body, track, token, sent_at)
+                        VALUES ('out', 'sent', ${DEAL_OPEN}, NULL, ${ADMIN_ID}, 'marta@lectura.example', 'Marta Ruiz', 'Propuesta revisada e2e',
+                                'Hola Ana, aquí va: https://aikit.example/p', true, ${tok}, now() - interval '2 days') RETURNING id`;
+  const before = await sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${ADMIN_ID} AND kind = 'email.opened'`;
+  await fetch(`${BASE}/t/o/${tok}.gif`, { headers: { "user-agent": UA_IPHONE, "x-vercel-ip-city": "Madrid", "x-vercel-ip-country": "ES", "x-forwarded-for": "203.0.113.5" } });
+  const [o1] = await sql`SELECT device, client, place, automatic FROM email_opens WHERE email_id = ${m.id}`;
+  const [n1] = await sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${ADMIN_ID} AND kind = 'email.opened'`;
+  check(o1?.device === "mobile" && o1.client === "Apple Mail" && o1.place === "Madrid, ES" && !o1.automatic && n1.n === before[0].n + 1,
+        "lectura: cada apertura queda registrada (dispositivo, programa, lugar) y avisa a quien lo envió", JSON.stringify({ o1, n1 }));
+  await fetch(`${BASE}/t/o/${tok}.gif`, { headers: { "user-agent": "Mozilla/5.0" } });
+  await fetch(`${BASE}/t/o/${tok}.gif`, { headers: { "user-agent": "Barracuda Sentinel (EE)" } });
+  const [c2] = await sql`SELECT open_count, (SELECT count(*)::int FROM email_opens WHERE email_id = ${m.id} AND automatic) AS auto FROM emails WHERE id = ${m.id}`;
+  check(c2.open_count === 1 && c2.auto === 2, "lectura: la precarga de Apple Mail y los escáneres se guardan como automáticas y no cuentan", JSON.stringify(c2));
+  // Vuelve a abrirlo al día siguiente desde el ordenador.
+  await sql`UPDATE emails SET last_opened_at = now() - interval '1 day', open_alert_at = now() - interval '1 day' WHERE id = ${m.id}`;
+  await sql`UPDATE email_opens SET at = at - interval '1 day' WHERE email_id = ${m.id}`;
+  await fetch(`${BASE}/t/o/${tok}.gif`, { headers: { "user-agent": UA_DESKTOP, "x-forwarded-for": "198.51.100.7" } });
+  const [c3] = await sql`SELECT open_count FROM emails WHERE id = ${m.id}`;
+  const [re] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'email.reopened' AND payload->>'email_id' = ${m.id}`;
+  const [rn] = await sql`SELECT title FROM notifications WHERE user_id = ${ADMIN_ID} AND kind = 'email.reopened' ORDER BY created_at DESC LIMIT 1`;
+  check(c3.open_count === 2 && re.n === 1 && rn?.title.includes("ha vuelto a abrir") && rn.title.includes("2.ª vez"),
+        "lectura: volver a abrirlo otro día queda en la historia y avisa («2.ª vez»)", JSON.stringify({ c3, re, rn }));
+  // Clic con las imágenes bloqueadas: cuenta como apertura.
+  const tok2 = "lectura-e2e-sin-imagenes-01234";
+  const [m2] = await sql`INSERT INTO emails (direction, status, deal_id, person_id, user_id, to_email, subject, body, track, token, sent_at)
+                         VALUES ('out', 'sent', ${DEAL_OPEN}, ${PERSON}, ${ADMIN_ID}, 'ana@paco.example', 'Sin imágenes e2e', 'Mira https://aikit.example/x',
+                                 true, ${tok2}, now() - interval '1 hour') RETURNING id`;
+  const cl = await fetch(`${BASE}/t/c/${tok2}?u=${encodeURIComponent("https://aikit.example/x")}`, { redirect: "manual", headers: { "user-agent": UA_DESKTOP } });
+  const [c4] = await sql`SELECT open_count, click_count FROM emails WHERE id = ${m2.id}`;
+  check(cl.status === 302 && c4.open_count === 1 && c4.click_count === 1, "lectura: un clic sin apertura registrada cuenta también como apertura", JSON.stringify(c4));
+  // Bandeja de enviados y detalle.
+  const sent = await (await get("/emails?who=all&f=opened_no_reply")).text();
+  check(sent.includes("Correos enviados") && sent.includes("Propuesta revisada e2e") && sent.includes("Abiertos sin responder"),
+        "/emails: bandeja de enviados con filtro «abiertos sin responder»");
+  const unopened = await (await get("/emails?who=all&f=unopened")).text();
+  check(!unopened.includes("Propuesta revisada e2e"), "/emails: el filtro «sin abrir» deja fuera los abiertos");
+  const det = await (await get(`/emails/${m.id}`)).text();
+  check(det.includes("2 veces</strong>") && det.includes("en 2 días distintos") && det.includes("Madrid, ES") && det.includes("Móvil")
+        && det.includes("Automática") && det.includes("Apple Mail"), "/emails/[id]: cada apertura con fecha, dispositivo, programa y lugar", det.slice(0, 0));
+  const dealPage = await (await get(`/deals/${DEAL_OPEN}`)).text();
+  check(dealPage.includes("Aperturas") && dealPage.includes("Ver el detalle completo"), "ficha del deal: el correo muestra su lista de aperturas");
+  const bell = await (await get("/notifications")).text();
+  check(bell.includes("ha abierto «Propuesta revisada e2e»"), "avisos: «ha abierto tu correo» en la campana");
+  // Ajustes: solo cuando lo vuelven a abrir.
+  await sql`UPDATE app_settings SET open_alerts = 'reopen'`;
+  const tok3 = "lectura-e2e-solo-reaperturas-01";
+  await sql`INSERT INTO emails (direction, status, deal_id, user_id, to_email, subject, body, track, token, sent_at)
+            VALUES ('out', 'sent', ${DEAL_OPEN}, ${ADMIN_ID}, 'ana@paco.example', 'Solo reaperturas e2e', 'Hola', true, ${tok3}, now() - interval '1 hour')`;
+  await fetch(`${BASE}/t/o/${tok3}.gif`, { headers: { "user-agent": UA_DESKTOP } });
+  const [n3] = await sql`SELECT count(*)::int AS n FROM notifications WHERE title LIKE '%Solo reaperturas e2e%'`;
+  check(n3.n === 0, "ajustes: con «solo reaperturas», la primera apertura no avisa");
+  await sql`UPDATE app_settings SET open_alerts = 'all'`;
+  const sig = await (await get("/settings/signals")).text();
+  check(sig.includes("Señales y avisos") && sig.includes("Competidores"), "/settings/signals");
+
+  // Propuesta: el equipo con sesión no suma visitas; el cliente sí, con su registro.
+  const ptok = "propuesta-lectura-e2e-012345";
+  await sql`INSERT INTO proposals (deal_id, token, title, intro, lines, total, valid_until)
+            VALUES (${DEAL_OPEN}, ${ptok}, 'Propuesta lectura e2e', 'Hola', '[]', 100, (now() + interval '10 days')::date)`;
+  await get(`/p/${ptok}`);
+  await fetch(`${BASE}/p/${ptok}`, { headers: { "user-agent": UA_IPHONE, "cf-ipcity": "Valencia", "cf-ipcountry": "ES" } });
+  const [pv] = await sql`SELECT p.view_count, (SELECT count(*)::int FROM proposal_views v WHERE v.proposal_id = p.id) AS log,
+                                (SELECT place FROM proposal_views v WHERE v.proposal_id = p.id LIMIT 1) AS place FROM proposals p WHERE token = ${ptok}`;
+  check(pv.view_count === 1 && pv.log === 1 && pv.place === "Valencia, ES", "propuesta: las visitas del equipo no cuentan; las del cliente, con su registro", JSON.stringify(pv));
+  await sql`UPDATE proposals SET last_viewed_at = now() - interval '2 days' WHERE token = ${ptok}`;
+  await sql`UPDATE proposal_views SET at = at - interval '2 days' WHERE proposal_id = (SELECT id FROM proposals WHERE token = ${ptok})`;
+  await fetch(`${BASE}/p/${ptok}`, { headers: { "user-agent": UA_DESKTOP } });
+  const [rv] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'proposal.reviewed' AND payload->>'title' = 'Propuesta lectura e2e'`;
+  check(rv.n === 1, "propuesta: volver a abrirla otro día queda en la historia (y avisa al responsable)");
+
+  // Salud de los deals.
+  await sql`UPDATE app_settings SET competitors = ARRAY['Acme CRM']`;
+  await sql`INSERT INTO notes (deal_id, content) VALUES (${DEAL_OPEN}, 'Nos dicen que Acme CRM les sale más barato.')`;
+  const RED_DEAL = "90000000-0000-0000-0000-0000000000e1";
+  await sql`INSERT INTO deals (id, title, pipeline_id, stage_id, stage_entered_at, expected_close_date, value)
+            VALUES (${RED_DEAL}, 'Deal en apuros e2e', ${P.inbound}, '20000000-0000-0000-0000-000000000011', now() - interval '20 days',
+                    current_date - 5, 5000) ON CONFLICT (id) DO NOTHING`;
+  await run();
+  const [h] = await sql`SELECT score, signals FROM deal_health WHERE deal_id = ${DEAL_OPEN}`;
+  const keys = (h?.signals ?? []).map((x) => x.key);
+  check(h && h.score >= 0 && h.score <= 100 && keys.includes("competition") && (h.signals.find((x) => x.key === "competition")?.label ?? "").includes("acme crm"),
+        "salud: se calcula para cada deal abierto con sus señales (competidor en una nota)", JSON.stringify(h).slice(0, 300));
+  const [r1] = await sql`SELECT score, red_since FROM deal_health WHERE deal_id = ${RED_DEAL}`;
+  check(r1 && r1.score < 40, "salud: un deal parado, sin contactos y con el cierre pasado sale en rojo", JSON.stringify(r1));
+  // Al pasar de verde a rojo: historia y aviso (la primera vez que se calcula no avisa).
+  await sql`UPDATE deals SET owner_id = ${ADMIN_ID} WHERE id = ${RED_DEAL}`;
+  await sql`UPDATE deal_health SET score = 80, red_since = NULL WHERE deal_id = ${RED_DEAL}`;
+  await run();
+  const [hr] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'deal.health_red' AND entity_id = ${RED_DEAL}`;
+  const [hn] = await sql`SELECT count(*)::int AS n FROM notifications WHERE kind = 'health' AND link = ${`/deals/${RED_DEAL}`}`;
+  await run();
+  const [hn2] = await sql`SELECT count(*)::int AS n FROM notifications WHERE kind = 'health' AND link = ${`/deals/${RED_DEAL}`}`;
+  check(hr.n === 1 && hn.n === 1 && hn2.n === 1, "salud: al entrar en rojo se avisa al responsable una sola vez", JSON.stringify({ hr, hn, hn2 }));
+  const dp = await (await get(`/deals/${RED_DEAL}`)).text();
+  check(dp.includes("Señales") && dp.includes("Riesgos") && dp.includes("Sin ningún contacto") && dp.includes("En riesgo"),
+        "ficha: la salud y sus señales a la vista");
+  const board = await (await get(`/pipelines/${P.inbound}?sort=health`)).text();
+  check(board.includes("health health-bad") && board.includes("Deal en apuros e2e"), "tablero: cada tarjeta con su salud (y orden «peor primero»)");
+  const list = await (await get(`/pipelines/${P.inbound}?view=list&flag=at_risk`)).text();
+  check(list.includes("Deal en apuros e2e") && list.includes(">Salud</a>"), "lista: columna «Salud» y filtro «En riesgo»");
+  // Parte del día: cambios desde ayer y abiertos sin responder.
+  await sql`INSERT INTO deal_health_daily (deal_id, day, score) VALUES (${RED_DEAL}, current_date - 1, 90)
+            ON CONFLICT (deal_id, day) DO UPDATE SET score = 90`;
+  const today = await (await get("/")).text();
+  check(today.includes("Señales") && today.includes("Deal en apuros e2e") && today.includes("Abiertos sin responder"),
+        "hoy: deals que empeoran desde ayer y correos abiertos sin responder");
+  await sql`DELETE FROM deals WHERE id = ${RED_DEAL}`;
+  await sql`UPDATE app_settings SET competitors = '{}'`;
 }
 
 // ------------------------------------------------------------- Avisos, importar CSV, duplicados

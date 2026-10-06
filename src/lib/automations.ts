@@ -14,6 +14,7 @@ import { generate, parseJsonReply } from "./ai";
 import { refreshStaleBriefs } from "./briefs";
 import { zonedToUtc } from "./slots";
 import { sendDueDigests } from "./digest";
+import { applyExtraction, extractionFor } from "./deal-agent";
 
 // ===========================================================================
 // Motor de automatizaciones
@@ -129,6 +130,11 @@ export const RULE_ACTION: Record<string, ActionType> = {
   no_show_rebook: "draft_email",
   stale_deal_escalate: "notify",
   won_handoff: "create_task",
+  call_next_steps: "create_task",
+  call_deal_update: "update_deal",
+  multithread: "create_task",
+  close_date_past: "update_deal",
+  proposal_stage: "move_stage",
 };
 
 type ParamSpec = { key: string; label: string; kind: "days" | "number" | "text" | "textarea" | "email"; help?: string; optional?: boolean };
@@ -171,6 +177,14 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
   ],
   won_handoff: [
     { key: "due_days", label: "Plazo de la tarea (días)", kind: "days" },
+  ],
+  multithread: [
+    { key: "min_age_days", label: "Días desde que se creó el deal", kind: "days" },
+    { key: "cooldown_days", label: "No repetir antes de (días)", kind: "days" },
+  ],
+  close_date_past: [
+    { key: "push_days", label: "Nueva fecha: dentro de (días)", kind: "days" },
+    { key: "cooldown_days", label: "No repetir antes de (días)", kind: "days" },
   ],
 };
 
@@ -455,6 +469,55 @@ const SCANNERS: Record<string, Scanner> = {
       payload: { stage_id: d.stage_id, days_in_stage: d.days_in_stage },
     }));
   },
+  // Deal con un solo contacto: a quién más implicar de la empresa.
+  async multithread(rule) {
+    const minAge = num(rule.params.min_age_days, 7);
+    const rows = await sql<{ id: string; title: string; owner_id: string | null; organization_id: string | null; org: string | null;
+                             only_person: string | null; contacts: number }[]>`
+      SELECT ods.id, ods.title, ods.owner_id, ods.organization_id, o.name AS org,
+             (SELECT p.full_name FROM deal_participants dp JOIN persons p ON p.id = dp.person_id WHERE dp.deal_id = ods.id LIMIT 1) AS only_person,
+             (SELECT count(*)::int FROM deal_participants dp WHERE dp.deal_id = ods.id) AS contacts
+      FROM open_deals_status ods JOIN deals d ON d.id = ods.id LEFT JOIN organizations o ON o.id = ods.organization_id
+      WHERE d.created_at < now() - make_interval(days => ${minAge})
+        AND (SELECT count(*) FROM deal_participants dp WHERE dp.deal_id = ods.id) <= 1
+      LIMIT 300`;
+    const out: Candidate[] = [];
+    for (const d of rows) {
+      const [c] = d.organization_id ? await sql<{ id: string; full_name: string; job_title: string | null }[]>`
+        SELECT p.id, p.full_name, po.job_title FROM person_organizations po JOIN persons p ON p.id = po.person_id AND p.deleted_at IS NULL
+        WHERE po.organization_id = ${d.organization_id} AND po.status = 'current'
+          AND NOT EXISTS (SELECT 1 FROM deal_participants dp WHERE dp.deal_id = ${d.id} AND dp.person_id = p.id)
+        ORDER BY (po.job_title ~* '(ceo|cto|cfo|coo|director|directora|head|jefe|jefa|gerente|founder|fundador|vp|chief|socio|socia)') DESC, p.created_at
+        LIMIT 1` : [];
+      out.push(c ? {
+        dealId: d.id, title: `Implicar a ${c.full_name}${c.job_title ? ` (${c.job_title})` : ""} en «${d.title}»`,
+        reason: `Solo hay ${d.contacts === 0 ? "ningún contacto" : `un contacto (${d.only_person})`}: si esa persona se va o se enfría, el deal se para.`,
+        payload: { type: "task", subject: `Implicar a ${c.full_name} en «${d.title}»`, person_id: c.id, owner_id: d.owner_id, due_in_days: 2,
+                   note: `${c.full_name}${c.job_title ? `, ${c.job_title},` : ""} también está en ${d.org}. Preséntate, cuéntale el proyecto o pide a ${d.only_person ?? "tu contacto"} que os presente.` },
+      } : {
+        dealId: d.id, title: `Identificar al decisor de ${d.org ?? "la empresa"} para «${d.title}»`,
+        reason: `Solo hay ${d.contacts === 0 ? "ningún contacto" : `un contacto (${d.only_person})`} y no conocemos a nadie más en la empresa.`,
+        payload: { type: "task", subject: `Identificar al decisor y a quien firma en ${d.org ?? d.title}`, owner_id: d.owner_id, due_in_days: 3,
+                   note: "Pregunta quién más participa en la decisión (decisor, usuarios, compras) y añádelos al deal." },
+      });
+    }
+    return out;
+  },
+
+  // Fecha de cierre ya pasada con el deal abierto: proponer una realista.
+  async close_date_past(rule) {
+    const push = num(rule.params.push_days, 14);
+    const rows = await sql<{ id: string; title: string; expected_close_date: string }[]>`
+      SELECT ods.id, ods.title, d.expected_close_date::text FROM open_deals_status ods JOIN deals d ON d.id = ods.id
+      WHERE d.expected_close_date < current_date LIMIT 300`;
+    const target = new Date(Date.now() + push * 86400000).toISOString().slice(0, 10);
+    return rows.map((d) => ({
+      dealId: d.id,
+      title: `Mover el cierre de «${d.title}» al ${dateText(new Date(`${target}T12:00:00`))}`,
+      reason: `La fecha de cierre prevista (${dateText(new Date(`${d.expected_close_date}T12:00:00`))}) ya pasó y el deal sigue abierto: la previsión no es real. Cambia la fecha propuesta si sabes una mejor.`,
+      payload: { changes: { expected_close_date: target }, once_key: `close:${d.expected_close_date}` },
+    }));
+  },
 };
 
 /** A quién escribir tras una sesión: su contacto si tiene email; si no, el principal del deal. */
@@ -612,6 +675,90 @@ const EVENT_HANDLERS: Record<string, EventHandler> = {
       };
     },
     stillValid: () => sql`d.status = 'won'`,
+  },
+  // Tras una reunión: tareas con los próximos pasos acordados (con la IA).
+  call_next_steps: {
+    events: ["activity.completed"],
+    async handle(_rule, e) {
+      if (typeof e.payload.activity_id !== "string" || (e.payload.outcome && e.payload.outcome !== "held")) return null;
+      const [a] = await sql<{ deal_id: string | null; subject: string; owner_id: string | null; person_id: string | null }[]>`
+        SELECT a.deal_id, a.subject, coalesce(a.owner_id, d.owner_id) AS owner_id, a.person_id FROM activities a
+        JOIN deals d ON d.id = a.deal_id AND d.status = 'open' WHERE a.id = ${e.payload.activity_id}
+          AND a.type IN (SELECT key FROM activity_types WHERE is_session)`;
+      if (!a?.deal_id) return null;
+      const x = await extractionFor(e.payload.activity_id);
+      if (!x) return null;
+      await applyExtraction(a.deal_id, x, `reunion:${e.payload.activity_id}`);
+      if (x.proximos_pasos.length === 0) return null;
+      const first = x.proximos_pasos[0];
+      const many = x.proximos_pasos.length > 1;
+      return {
+        dealId: a.deal_id,
+        title: many ? `Próximos pasos tras «${a.subject}» (${x.proximos_pasos.length})` : first.tarea,
+        reason: `Acordado en «${a.subject}» según la transcripción o tus notas.`,
+        payload: {
+          activity_id: e.payload.activity_id, type: "task", owner_id: a.owner_id, person_id: a.person_id,
+          subject: many ? `Próximos pasos tras «${a.subject}»` : first.tarea,
+          note: x.proximos_pasos.map((p) => `- ${p.tarea} (en ${p.en_dias} día${p.en_dias === 1 ? "" : "s"})`).join("\n"),
+          due_in_days: Math.min(...x.proximos_pasos.map((p) => p.en_dias)),
+        },
+      };
+    },
+    stillValid: () => sql`d.status = 'open'`,
+  },
+
+  // Tras una reunión: importe y fecha de cierre según lo hablado (con la IA).
+  call_deal_update: {
+    events: ["activity.completed"],
+    async handle(_rule, e) {
+      if (typeof e.payload.activity_id !== "string" || (e.payload.outcome && e.payload.outcome !== "held")) return null;
+      const [d] = await sql<{ id: string; title: string; value: string | null; expected_close_date: string | null; subject: string; lines: number }[]>`
+        SELECT d.id, d.title, d.value::text, d.expected_close_date::text, a.subject,
+               (SELECT count(*)::int FROM deal_products dp WHERE dp.deal_id = d.id) AS lines
+        FROM activities a JOIN deals d ON d.id = a.deal_id AND d.status = 'open'
+        WHERE a.id = ${e.payload.activity_id} AND a.type IN (SELECT key FROM activity_types WHERE is_session)`;
+      if (!d) return null;
+      const x = await extractionFor(e.payload.activity_id);
+      if (!x) return null;
+      const changes: Record<string, unknown> = {};
+      const why: string[] = [];
+      // Con productos, el importe es la suma de las líneas: no se toca.
+      if (x.importe_estimado && d.lines === 0 && Math.abs(x.importe_estimado - Number(d.value ?? 0)) >= Math.max(500, Number(d.value ?? 0) * 0.1)) {
+        changes.value = x.importe_estimado;
+        why.push(`importe ${money(d.value)} → ${money(String(x.importe_estimado))}${x.presupuesto ? ` («${x.presupuesto}»)` : ""}`);
+      }
+      if (x.fecha_cierre && x.fecha_cierre !== d.expected_close_date && new Date(`${x.fecha_cierre}T12:00:00`) > new Date()) {
+        changes.expected_close_date = x.fecha_cierre;
+        why.push(`cierre ${d.expected_close_date ? dateText(new Date(`${d.expected_close_date}T12:00:00`)) : "sin fecha"} → ${dateText(new Date(`${x.fecha_cierre}T12:00:00`))}${x.plazo ? ` («${x.plazo}»)` : ""}`);
+      }
+      if (why.length === 0) return null;
+      return {
+        dealId: d.id, title: `Actualizar «${d.title}»: ${why.map((w) => w.split(" (")[0].split(" («")[0]).join(" y ")}`,
+        reason: `En «${d.subject}» se habló de ${why.join("; ")}.`,
+        payload: { activity_id: e.payload.activity_id, changes },
+      };
+    },
+    stillValid: () => sql`d.status = 'open'`,
+  },
+
+  // El cliente abrió la propuesta y el deal sigue en una fase anterior.
+  proposal_stage: {
+    events: ["proposal.viewed"],
+    async handle(_rule, e) {
+      const [x] = await sql<{ id: string; title: string; stage_name: string; to_id: string | null; to_name: string | null; from_id: string }[]>`
+        SELECT d.id, d.title, s.name AS stage_name, t.id AS to_id, t.name AS to_name, s.id AS from_id
+        FROM deals d JOIN stages s ON s.id = d.stage_id
+        LEFT JOIN LATERAL (SELECT id, name FROM stages WHERE pipeline_id = d.pipeline_id AND is_active AND position > s.position
+                             AND name ILIKE '%propuesta%' ORDER BY position LIMIT 1) t ON true
+        WHERE d.id = ${e.entity_id} AND d.status = 'open' AND s.name NOT ILIKE '%propuesta%'`;
+      if (!x?.to_id) return null;
+      return {
+        dealId: x.id, title: `Pasar «${x.title}» a «${x.to_name}»`,
+        reason: `El cliente ya ha abierto la propuesta y el deal sigue en «${x.stage_name}».`,
+        payload: { stage_id: x.to_id, stage_name: x.to_name, from_stage_id: x.from_id, once_key: `proposal:${String(e.payload.proposal_id ?? "")}` },
+      };
+    },
+    stillValid: () => sql`d.status = 'open' AND d.stage_id::text = x.payload->>'from_stage_id'`,
   },
 };
 

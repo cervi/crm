@@ -34,6 +34,12 @@ import { Icon } from "../Icon";
 import { ComposerTabs, EmailComposerFields, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
 import { listEmails, listTemplates, opensFor, templateVars } from "@/lib/emails";
 import { getHealth, recomputeHealth } from "@/lib/health";
+import { getInsights } from "@/lib/deal-agent";
+import { closePlanUrl, getClosePlan, SIDE_LABEL } from "@/lib/close-plan";
+import {
+  addPlanStepAction, decideDiscountAction, deletePlanStepAction, generatePlanAction, refreshPrepAction, saveInsightsAction,
+  sharePlanAction, togglePlanStepAction,
+} from "@/app/actions/deal-agent";
 import { HealthBadge } from "../HealthBadge";
 import { DEVICE_LABEL } from "@/lib/reader";
 import { renderTemplate } from "@/lib/automations";
@@ -82,6 +88,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     listEnrollments({ dealId }), listSequences(),
   ]);
   const [lines, catalog, proposals_] = await Promise.all([dealLines(dealId), listProducts(), listProposals(dealId)]);
+  const [insights, plan] = await Promise.all([getInsights(dealId), getClosePlan(dealId)]);
   const views = new Map(await Promise.all(proposals_.filter((p) => p.view_count > 0).map(async (p) => [p.id, await proposalViews(p.id)] as const)));
   const opens = await opensFor(emails.filter((e) => e.direction === "out" && e.open_count > 0).map((e) => e.id));
   // La salud se recalcula en cada revisión; si está vieja (o no existe), aquí mismo.
@@ -252,6 +259,31 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               <ActionForm action={addParticipantAction.bind(null, dealId)} submitLabel="Añadir" resetOnSuccess>
                 <EntityPicker name="person_id" type="persons" label="Contacto" required />
                 <label className="field"><span className="label">Rol</span><input name="role" placeholder="decisor, usuario…" /></label>
+              </ActionForm>
+            </details>
+          </section>
+
+          <section className="side-section insights" aria-label="Lo que sabemos">
+            <h3>Lo que sabemos</h3>
+            {!insights ? <p className="meta">Se rellena solo con cada reunión (con notas o transcripción) o a mano.</p> : (
+              <dl className="dl compact">
+                {insights.needs.length > 0 && <div className="dl-row"><dt>Necesita</dt><dd>{insights.needs.join(" · ")}</dd></div>}
+                {insights.decision_makers.length > 0 && <div className="dl-row"><dt>Decisores</dt><dd>{insights.decision_makers.map((d) => [d.nombre, d.cargo].filter(Boolean).join(", ")).join(" · ")}</dd></div>}
+                {insights.budget && <div className="dl-row"><dt>Presupuesto</dt><dd>{insights.budget}</dd></div>}
+                {insights.timeline && <div className="dl-row"><dt>Plazos</dt><dd>{insights.timeline}</dd></div>}
+                {insights.objections.length > 0 && <div className="dl-row"><dt>Objeciones</dt><dd>{insights.objections.join(" · ")}</dd></div>}
+                {insights.competitors.length > 0 && <div className="dl-row"><dt>Compite con</dt><dd>{insights.competitors.join(" · ")}</dd></div>}
+              </dl>
+            )}
+            <details>
+              <summary className="meta">{insights ? "Editar" : "+ Rellenar"}</summary>
+              <ActionForm action={saveInsightsAction.bind(null, dealId, back)} submitLabel="Guardar" secondary>
+                <label className="field"><span className="label">Necesidades (una por línea)</span><textarea name="needs" rows={3} defaultValue={insights?.needs.join("\n") ?? ""} /></label>
+                <label className="field"><span className="label">Decisores (Nombre — cargo — rol)</span><textarea name="decision_makers" rows={2} defaultValue={insights?.decision_makers.map((d) => [d.nombre, d.cargo, d.rol].filter(Boolean).join(" — ")).join("\n") ?? ""} /></label>
+                <label className="field"><span className="label">Presupuesto</span><input name="budget" defaultValue={insights?.budget ?? ""} /></label>
+                <label className="field"><span className="label">Plazos</span><input name="timeline" defaultValue={insights?.timeline ?? ""} /></label>
+                <label className="field"><span className="label">Objeciones (una por línea)</span><textarea name="objections" rows={2} defaultValue={insights?.objections.join("\n") ?? ""} /></label>
+                <label className="field"><span className="label">Competidores (uno por línea)</span><textarea name="competitors" rows={2} defaultValue={insights?.competitors.join("\n") ?? ""} /></label>
               </ActionForm>
             </details>
           </section>
@@ -447,7 +479,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
           />
 
           {(lines.length > 0 || catalog.length > 0) && (
-            <section className="deal-products" aria-label="Productos y propuestas">
+            <section className="deal-products" id="productos" aria-label="Productos y propuestas">
               <h2 className="section-title">Productos <span className="muted">{lines.length}</span></h2>
               {lines.length > 0 && (
                 <div className="table-wrap">
@@ -459,7 +491,20 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                           <td>{l.name}<div className="meta">{BILLING_LABELS[l.billing]}</div></td>
                           <td className="num">{Number(l.quantity).toLocaleString("es-ES")}</td>
                           <td className="num">{money(l.unit_price, deal.currency)}</td>
-                          <td className="num">{Number(l.discount_pct) ? `${Number(l.discount_pct)} %` : "—"}</td>
+                          <td className="num">{Number(l.discount_pct) ? `${Number(l.discount_pct)} %` : "—"}
+                            {l.discount_status === "pending" && (
+                              <div className="discount-pending">
+                                <span className="badge warn" title={`Pedido por ${l.requested_by_name ?? "—"}; el límite sin aprobación es del ${Number(l.discount_limit)} %`}>Pendiente de aprobación</span>
+                                {me.role === "admin" && (
+                                  <span className="discount-actions">
+                                    <ActionForm action={decideDiscountAction.bind(null, dealId, l.id, true, back)} submitLabel="Aprobar" pendingLabel="…" good className="form inline" />
+                                    <ActionForm action={decideDiscountAction.bind(null, dealId, l.id, false, back)} submitLabel={`Dejar en ${Number(l.discount_limit)} %`} pendingLabel="…" secondary className="form inline" />
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {l.discount_status === "approved" && <div className="meta">Aprobado</div>}
+                          </td>
                           <td className="num">{money(l.subtotal, deal.currency)}</td>
                           <td>{isOpen && <ActionForm action={removeLineAction.bind(null, dealId, l.id, back)} submitLabel="Quitar" pendingLabel="…" secondary className="form inline doc-remove" />}</td>
                         </tr>
@@ -528,6 +573,52 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                             pendingLabel="Preparando…" secondary className="form inline" />
               )}
               {isOpen && lines.length === 0 && <p className="meta">Añade productos para preparar una propuesta.</p>}
+            </section>
+          )}
+
+          {(isOpen || plan) && (
+            <section className="close-plan" aria-label="Plan de cierre">
+              <h2 className="section-title">Plan de cierre
+                {plan && plan.steps.length > 0 && <span className="muted">{plan.steps.filter((x) => x.done).length}/{plan.steps.length}</span>}
+                <span className="spacer" />
+                {plan && plan.steps.length > 0 && (plan.shared
+                  ? <form action={sharePlanAction.bind(null, dealId, false, back)}><button className="link-btn" type="submit">Dejar de compartir</button></form>
+                  : <form action={sharePlanAction.bind(null, dealId, true, back)}><button className="link-btn" type="submit">Compartir con el cliente</button></form>)}
+              </h2>
+              {plan?.shared && <p className="meta" style={{ marginTop: 0 }}>El cliente lo ve (sin poder cambiarlo) en <code>{closePlanUrl(plan.token)}</code></p>}
+              {(!plan || plan.steps.length === 0) && (
+                <div className="next-prompt">
+                  <p><strong>¿Qué falta para la firma?</strong> <span className="muted">Pasos con fecha y responsable, acordados con el cliente: así nada se para en compras o en legal.</span></p>
+                  {isOpen && <ActionForm action={generatePlanAction.bind(null, dealId, back)} submitLabel="Crear un plan de partida" pendingLabel="Creando…" secondary className="form inline" />}
+                </div>
+              )}
+              {plan && plan.steps.length > 0 && (
+                <ol className="plan-steps">
+                  {plan.steps.map((st) => (
+                    <li key={st.id} className={[st.done && "done", st.overdue && "overdue"].filter(Boolean).join(" ")}>
+                      <form action={togglePlanStepAction.bind(null, dealId, st.id, back)}>
+                        <button type="submit" className="plan-check" aria-label={st.done ? `Marcar «${st.title}» como pendiente` : `Marcar «${st.title}» como hecho`}>{st.done ? "✓" : ""}</button>
+                      </form>
+                      <span className="plan-title">{st.title}</span>
+                      <span className="meta">{SIDE_LABEL[st.side]}{st.owner_name ? ` · ${st.owner_name}` : ""}</span>
+                      <span className={st.overdue ? "meta tone-bad" : "meta"}>{st.due_date ? date(st.due_date) : "sin fecha"}</span>
+                      <form action={deletePlanStepAction.bind(null, dealId, st.id, back)}><button type="submit" className="link-btn meta" aria-label={`Quitar «${st.title}»`}>Quitar</button></form>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {isOpen && (
+                <details>
+                  <summary className="meta">+ Añadir paso</summary>
+                  <ActionForm action={addPlanStepAction.bind(null, dealId, back)} submitLabel="Añadir" resetOnSuccess secondary className="form inline">
+                    <label className="field" style={{ flex: 1 }}><span className="label">Paso</span><input name="title" required placeholder="Validación de seguridad" /></label>
+                    <label className="field"><span className="label">Quién</span>
+                      <select name="side" defaultValue="client"><option value="us">Nosotros</option><option value="client">Cliente</option><option value="both">Ambos</option></select></label>
+                    <label className="field"><span className="label">Persona</span><input name="owner_name" style={{ width: 140 }} /></label>
+                    <label className="field"><span className="label">Fecha</span><input name="due_date" type="date" /></label>
+                  </ActionForm>
+                </details>
+              )}
             </section>
           )}
 
@@ -614,7 +705,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             ) : <p className="muted">No hay nada pendiente.</p>)}
             <ul className="items">
               {pending.map((a) => (
-                <li key={a.id} className={a.is_overdue ? "item overdue" : "item"}>
+                <li key={a.id} id={`act-${a.id}`} className={a.is_overdue ? "item overdue" : "item"}>
                   <div className="item-head">
                     <span className="badge">{activityLabel(a.type)}</span>
                     <strong>{a.subject}</strong>
@@ -623,6 +714,13 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                     <span className="meta">{a.due_at ? dateTime(a.due_at) : "Sin fecha"}{a.owner_name && ` · ${a.owner_name}`}</span>
                   </div>
                   {a.note && <p className="note-body">{a.note}</p>}
+                  {isSessionType(a.type) && (
+                    <details className="prep" open={Boolean(a.prep) && a.due_at !== null && new Date(a.due_at).getTime() - Date.now() < 86400000}>
+                      <summary className="meta"><Icon name="spark" />{a.prep ? `Ficha de preparación · ${dateTime(a.prep_at)}` : "Preparar esta reunión"}</summary>
+                      {a.prep && <p className="note-body">{a.prep}</p>}
+                      <ActionForm action={refreshPrepAction.bind(null, a.id, back)} submitLabel={a.prep ? "Rehacer la ficha" : "Preparar ahora"} pendingLabel="Preparando…" secondary className="form inline" />
+                    </details>
+                  )}
                   <details>
                     <summary className="meta">Marcar como hecha</summary>
                     <ActionForm action={completeActivityAction.bind(null, a.id, back)} submitLabel="Guardar" className="form inline">

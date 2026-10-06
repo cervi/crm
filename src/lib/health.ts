@@ -25,6 +25,7 @@ export type HealthFacts = {
   unreplied_out: number; last_in_at: Date | null; last_out_at: Date | null; quick_reply: boolean;
   no_shows: number; overdue: number; upcoming_session_at: Date | null; next_activity_at: Date | null; booked: boolean;
   mention: string | null; proposal_views: number; opens_week: number; open_spots: number; last_touch_at: Date | null;
+  plan_steps: number; plan_overdue: number; plan_done: number;
 };
 
 const DECISION = "(ceo|cto|cfo|coo|cmo|cio|director|directora|head|jefe|jefa|gerente|founder|fundador|fundadora|owner|propietari|vp|chief|socio|socia)";
@@ -59,6 +60,7 @@ export function scoreHealth(f: HealthFacts, now = new Date()): Health {
   if (f.mention) risk("competition", `Se habla de «${f.mention}» en la conversación`, 10, "Prepara argumentos de valor y avisa al responsable.");
   if (f.overdue > 0) risk("overdue", f.overdue === 1 ? "Una tarea vencida" : `${f.overdue} tareas vencidas`, 5);
   if (!f.next_activity_at) risk("no_next_step", "Sin siguiente paso agendado", 5);
+  if (f.plan_overdue > 0) risk("plan_overdue", f.plan_overdue === 1 ? "Un paso del plan de cierre vencido" : `${f.plan_overdue} pasos del plan de cierre vencidos`, 10);
   const quiet = days(f.last_touch_at, now);
   if (quiet === null || quiet > 21) risk("quiet", quiet === null ? "Todavía sin ninguna interacción" : `Sin interacción desde hace ${quiet} días`, 10);
 
@@ -71,6 +73,7 @@ export function scoreHealth(f: HealthFacts, now = new Date()): Health {
   else if (f.proposal_views === 1) good("proposal_view", "Ha abierto la propuesta", 5);
   if (f.open_spots >= 2) good("shared", "Correos abiertos desde varios dispositivos o lugares", 5, "Puede que lo esté compartiendo con su equipo.");
   if (f.opens_week >= 3) good("opens", `Ha abierto tus correos ${f.opens_week} veces esta semana`, 5);
+  if (f.plan_steps > 0 && f.plan_overdue === 0) good("plan", `Plan de cierre al día (${f.plan_done} de ${f.plan_steps} pasos hechos)`, 5);
   if (f.new_senior) good("senior", `Nuevo interlocutor con capacidad de decisión: ${f.new_senior}`, 10, "Propón una reunión ejecutiva.");
 
   const score = Math.max(0, Math.min(100, 50 + s.reduce((n, x) => n + x.points, 0)));
@@ -129,6 +132,9 @@ export async function healthFacts(dealId?: string): Promise<HealthFacts[]> {
          FROM email_opens eo JOIN emails m ON m.id = eo.email_id
          WHERE m.deal_id = ods.id AND NOT eo.automatic AND eo.at > now() - interval '30 days'
            AND (eo.device IS DISTINCT FROM 'unknown' OR eo.place IS NOT NULL)) AS open_spots,
+      (SELECT count(*)::int FROM close_plan_steps cp WHERE cp.deal_id = ods.id) AS plan_steps,
+      (SELECT count(*)::int FROM close_plan_steps cp WHERE cp.deal_id = ods.id AND NOT cp.done AND cp.due_date < current_date) AS plan_overdue,
+      (SELECT count(*)::int FROM close_plan_steps cp WHERE cp.deal_id = ods.id AND cp.done) AS plan_done,
       greatest((SELECT max(done_at) FROM activities WHERE deal_id = ods.id AND done),
                (SELECT max(created_at) FROM notes WHERE deal_id = ods.id), io.last_in_at, io.last_out_at) AS last_touch_at
     FROM open_deals_status ods

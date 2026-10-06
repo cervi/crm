@@ -6,13 +6,18 @@ import { dateTime } from "@/lib/format";
 import { runNowAction, setPausedAction } from "@/app/actions/automations";
 import { ActionForm } from "@/components/ActionForm";
 import { LogRow, ProposalCard } from "@/components/ai/ProposalCard";
+import { requireUser } from "@/lib/auth";
+import { pendingDiscounts } from "@/lib/products";
+import { money } from "@/lib/format";
+import { decideDiscountAction } from "@/app/actions/deal-agent";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Bandeja de la IA" };
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const view = (await searchParams).view === "log" ? "log" : "pending";
-  const [items, pending, settings, canSend] = await Promise.all([listActions({ view }), countPending(), getSettings(), hasActiveMailbox()]);
+  const [items, pending, settings, canSend, me] = await Promise.all([listActions({ view }), countPending(), getSettings(), hasActiveMailbox(), requireUser()]);
+  const discounts = me.role === "admin" ? await pendingDiscounts() : [];
 
   return (
     <main className="page" style={{ maxWidth: 980 }}>
@@ -37,6 +42,25 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <button className="link" type="submit">Reanudar</button>
           </form>
         </div>
+      )}
+
+      {discounts.length > 0 && (
+        <section className="panel" aria-label="Descuentos por aprobar">
+          <h2>Descuentos por aprobar <span className="muted">{discounts.length}</span></h2>
+          <ul className="items">
+            {discounts.map((d) => (
+              <li key={d.id} className="item">
+                <div className="item-head">
+                  <strong><Link href={`/deals/${d.deal_id}#productos`}>{d.deal_title}</Link></strong>
+                  <span className="meta">{d.product}: {Number(d.discount_pct)} % (límite {Number(d.discount_limit)} %) · {money(d.subtotal, d.currency)}{d.requested_by_name ? ` · lo pide ${d.requested_by_name}` : ""}</span>
+                  <span className="spacer" />
+                  <ActionForm action={decideDiscountAction.bind(null, d.deal_id, d.id, true, "/inbox")} submitLabel="Aprobar" pendingLabel="…" good className="form inline" />
+                  <ActionForm action={decideDiscountAction.bind(null, d.deal_id, d.id, false, "/inbox")} submitLabel={`Dejar en ${Number(d.discount_limit)} %`} pendingLabel="…" secondary className="form inline" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <nav className="tabs">

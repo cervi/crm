@@ -187,6 +187,12 @@ createServer(async (req, res) => {
         daily_digest: "(IA) Hoy, primero responde a Ana y luego revisa la bandeja.",
         handoff: "(IA) Traspaso: cliente con buena relación; vigilar plazos.",
         proposal: JSON.stringify({ titulo: "(IA) Propuesta de licencias", texto: "Hola Ana,\n\n(IA) Os proponemos empezar con el plan anual.\n\nUn saludo" }),
+        meeting_prep: JSON.stringify({ objetivo: "(IA) Cerrar fecha de la demo técnica", contexto: "(IA) Ana está interesada; falta el decisor.",
+                                       preguntas: ["(IA) ¿Quién firma el contrato?", "(IA) ¿Qué plazo tenéis?"], cuidado: ["(IA) Comparan con otra opción"] }),
+        call_extraction: JSON.stringify({ necesidades: ["(IA) Automatizar la captación"], decisores: [{ nombre: "Luis Martín", cargo: "Director Financiero", rol: "decisor" }],
+                                          presupuesto: "(IA) Unos 30.000 € al año", plazo: "(IA) Arrancar en enero", objeciones: ["(IA) El precio por usuario"],
+                                          competidores: ["(IA) Acme CRM"], proximos_pasos: [{ tarea: "(IA) Enviar la propuesta revisada", en_dias: 2 }, { tarea: "(IA) Agendar la demo técnica", en_dias: 5 }],
+                                          importe_estimado: 30000, fecha_cierre: "2027-01-15" }),
         report_question: JSON.stringify({ titulo: "(IA) Importe ganado por origen", source: "deals", metric: "sum_value", group_by: "source",
                                           date_field: "won_at", period: "all", chart: "bar", filters: { status: "won" } }),
       };

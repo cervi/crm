@@ -6,6 +6,8 @@ import {
   BOARD_SORTS, DEAL_FLAGS, getBoard, isBoardSort, isDealFlag, isListSort, listPipelineDeals, listPipelines, listStages, type ListSort,
 } from "@/lib/pipelines";
 import { HealthBadge } from "@/components/HealthBadge";
+import { recomputeHealth } from "@/lib/health";
+import { sql } from "@/lib/db";
 import { DEAL_COLUMNS, DEFAULT_DEAL_COLUMNS, parseDealColumns, type DealColumn } from "@/lib/deal-columns";
 import { formatCustomValue, listFieldDefinitions } from "@/lib/custom-fields";
 import { listLostReasons } from "@/lib/deals";
@@ -49,6 +51,10 @@ export default async function PipelinePage({ params, searchParams }: { params: P
 
   const [pipelines, users, me] = await Promise.all([listPipelines(), listUsers(), requireUser()]);
   if (!pipelines.some((p) => p.id === id)) notFound();
+  // La salud la calcula la revisión periódica; si hay deals abiertos sin calcular (recién creados o importados), ahora.
+  const [missing] = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM open_deals_status o WHERE o.pipeline_id = ${id} AND NOT EXISTS (SELECT 1 FROM deal_health h WHERE h.deal_id = o.id)`;
+  if (missing.n > 0) await recomputeHealth().catch((err) => console.error("[salud]", err));
   const stages = view === "board" ? await getBoard(id, ownerId, sort) : [];
   const filters = {
     q: sp.q?.trim() || null, stageId: isId(sp.stage) ? sp.stage : null, flag: isDealFlag(sp.flag) ? sp.flag : null,
