@@ -49,6 +49,17 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <div className="page-head">
         <h1>Informes</h1>
         <span className="spacer" />
+        <form method="get" className="toolbar" style={{ margin: 0 }}>
+          <select name="pipeline" defaultValue={pipelineId ?? ""} aria-label="Pipeline">
+            <option value="">Todos los pipelines</option>
+            {active.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <select name="owner" defaultValue={ownerId ?? ""} aria-label="Responsable">
+            <option value="">Todo el equipo</option>
+            {humans.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <button className="btn secondary">Ver</button>
+        </form>
         <Link href="/dashboards" className="btn secondary">Dashboards</Link>
       </div>
 
@@ -81,17 +92,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         )}
       </section>
 
-      <form method="get" className="toolbar">
-        <select name="pipeline" defaultValue={pipelineId ?? ""} aria-label="Pipeline">
-          <option value="">Todos los pipelines</option>
-          {active.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <select name="owner" defaultValue={ownerId ?? ""} aria-label="Responsable">
-          <option value="">Todo el equipo</option>
-          {humans.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
-        <button className="btn secondary">Ver</button>
-      </form>
 
       <div className="kpis">
         <div className="kpi"><span className="meta">Ganado este mes</span><strong>{money(fc.wonThisMonth.value)}</strong><span className="meta">{fc.wonThisMonth.deals} deals</span></div>
@@ -183,7 +183,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
               <li key={s.id}>
                 <span className="funnel-name">{s.name}{s.probability !== null && <span className="meta"> · {s.probability} %</span>}</span>
                 <span className="funnel-bar"><span style={{ width: `${(s.reached / maxReached) * 100}%` }} /><b>{s.reached}</b></span>
-                <span className="meta">{s.conversion === null ? "" : `${pct(s.conversion)} pasa a la siguiente`}{s.avg_days !== null ? ` · ${Math.round(s.avg_days)} días de media` : ""}</span>
+                <span className="meta">{[s.conversion === null ? null : `${pct(s.conversion)} pasa a la siguiente`,
+                                         s.avg_days === null ? null : `${Math.round(s.avg_days)} días de media`].filter(Boolean).join(" · ")}</span>
               </li>
             ))}
           </ol>

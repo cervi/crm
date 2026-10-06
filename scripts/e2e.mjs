@@ -1043,7 +1043,7 @@ if (KEY) {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ config: { source: "deals", metric: "weighted_value", group_by: "pipeline", date_field: "created_at", period: "all", chart: "bar", filters: {} } }),
   })).json();
-  check(prev.kind === "series" && prev.points.length > 0, "dashboards: nueva métrica «importe ponderado»", JSON.stringify(prev).slice(0, 120));
+  check(prev.result?.kind === "series" && prev.result.points.length > 0, "dashboards: nueva métrica «importe ponderado»", JSON.stringify(prev).slice(0, 120));
 }
 
 // ------------------------------------------------------------- Reservas y semana
