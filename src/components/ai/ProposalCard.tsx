@@ -29,6 +29,7 @@ export function ProposalCard({ item, showDeal = true }: { item: InboxItem; showD
       <div className="proposal-head">
         <span className="badge ai"><Icon name="spark" />{actionLabel(item.action_type)}</span>
         <span className="meta">{proposer(item)} · {dateTime(item.created_at)}</span>
+        <ActionForm action={dismissActionAction.bind(null, item.id)} submitLabel="Descartar" pendingLabel="…" secondary className="form inline proposal-dismiss" />
       </div>
       <h3>{item.title}</h3>
       <p className="muted proposal-reason">
@@ -52,7 +53,6 @@ export function ProposalCard({ item, showDeal = true }: { item: InboxItem; showD
         )}
         {item.action_type === "add_note" && <p className="note-body">{s(p.content)}</p>}
       </ActionForm>
-      <ActionForm action={dismissActionAction.bind(null, item.id)} submitLabel="Descartar" pendingLabel="…" secondary className="form inline proposal-dismiss" />
     </article>
   );
 }

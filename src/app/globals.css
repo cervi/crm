@@ -607,7 +607,7 @@ dl.compact .dl-row { grid-template-columns: 104px 1fr; gap: 8px; }
 .proposal-reason { margin: 0; }
 .proposal .form { gap: 10px; }
 .proposal-note textarea { width: 100%; margin-top: 6px; font-size: 13px; }
-.proposal-dismiss { justify-content: flex-start; margin-top: -4px; }
+.proposal-dismiss { margin-left: auto; }
 .proposal-dismiss .btn { height: 28px; padding: 0 10px; font-size: 12.5px; }
 .email-draft { display: grid; gap: 10px; }
 .email-draft-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -625,6 +625,8 @@ dl.compact .dl-row { grid-template-columns: 104px 1fr; gap: 8px; }
 .autonomy button[aria-pressed="true"][data-level="auto"] { background: var(--accent); color: var(--accent-text); }
 .ai-status { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
 .ai-status h2 { margin: 0 0 4px; }
+.ai-status > div:first-child { flex: 1; min-width: 280px; }
+.panel + .rules-section { margin-top: 22px; }
 .perm-table td, .perm-table th { vertical-align: middle; }
 .rules { display: grid; gap: 12px; }
 .rule { display: grid; gap: 0; }

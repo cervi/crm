@@ -83,7 +83,7 @@ export default async function AutomationsSettingsPage() {
         </div>
       </section>
 
-      <section>
+      <section className="rules-section">
         <h2 className="section-title">Reglas</h2>
         <div className="rules">
           {rules.map((r) => {
@@ -114,10 +114,11 @@ export default async function AutomationsSettingsPage() {
                   )}
                   {st ? (
                     <span>
-                      Últimos 90 días: {st.decided > 0 && `${st.approved} de ${st.decided} propuestas aprobadas`}
+                      Últimos 90 días: {st.decided > 0 && `${st.approved} de ${st.decided} propuesta${st.decided === 1 ? "" : "s"} aprobada${st.decided === 1 ? "" : "s"}`}
                       {st.decided > 0 && st.auto_done > 0 && " · "}
-                      {st.auto_done > 0 && `${st.auto_done} hechas solas`}{st.undone > 0 && ` · ${st.undone} deshechas`}
-                      {st.pending > 0 && ` · ${st.pending} pendientes`}
+                      {st.auto_done > 0 && `${st.auto_done} hecha${st.auto_done === 1 ? "" : "s"} sola${st.auto_done === 1 ? "" : "s"}`}
+                      {st.undone > 0 && ` · ${st.undone} deshecha${st.undone === 1 ? "" : "s"}`}
+                      {st.pending > 0 && ` · ${st.pending} pendiente${st.pending === 1 ? "" : "s"}`}
                       {st.decided === 0 && st.auto_done === 0 && st.pending === 0 && "sin actividad"}
                     </span>
                   ) : <span>Últimos 90 días: sin actividad</span>}
