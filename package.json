@@ -17,7 +17,8 @@
     "db:test": "node scripts/db.mjs test",
     "db:reset": "node scripts/db.mjs reset",
     "check": "bash scripts/check.sh",
-    "test:e2e": "node scripts/e2e.mjs"
+    "test:e2e": "node scripts/e2e.mjs",
+    "demo": "node scripts/demo.mjs"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.2.0",
