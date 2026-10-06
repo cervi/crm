@@ -286,7 +286,11 @@ await step("cambiar a modo oscuro desde el menú de usuario y que se recuerde", 
 
 await step("buscador global: escribir, elegir con el teclado y abrir", async () => {
   await page.goto("/activities");
+  await page.waitForLoadState("networkidle");
   await page.keyboard.press("Control+k");
+  if (!(await page.evaluate(() => document.activeElement?.matches("input[type=search], [role=combobox]")))) {
+    await page.getByPlaceholder(/Buscar deals/).click(); // si el atajo llegó antes de que la página estuviera lista
+  }
   await page.keyboard.type("Paco S");
   await page.getByRole("option", { name: /Paco S\.L\./ }).first().waitFor();
   const opts = await page.getByRole("option").allTextContents();
