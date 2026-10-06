@@ -614,7 +614,7 @@ await step("Customer Success: dirección por defecto y responsable por empresa",
   await page.goto("/settings/automations");
   const rule = page.getByRole("article", { name: "Deal ganado: enviar el resumen a Customer Success" });
   await rule.getByText("Falta el email de Customer Success por defecto").waitFor();
-  await rule.getByText("Ajustes de la regla").click();
+  await rule.getByText("Ajustes de la regla", { exact: true }).click();
   await rule.getByLabel("Email de Customer Success por defecto").fill("cs@aikit.example");
   await rule.getByRole("button", { name: "Guardar" }).click();
   await rule.getByText("Falta el email de Customer Success por defecto").waitFor({ state: "detached" });
