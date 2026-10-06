@@ -483,7 +483,7 @@ if (MOCK) {
     await docs.getByRole("link", { name: "Presentación Paco.pptx" }).waitFor();
     const [d] = await sql`SELECT source, external_id, url FROM deal_documents WHERE deal_id = ${PACO_OPEN} AND title = 'Presentación Paco.pptx'`;
     expect(d?.source === "microsoft" && d.external_id === "mf1", JSON.stringify(d));
-    expect((await docs.locator("li", { hasText: "Presentación Paco.pptx" }).textContent()).includes("Presentación"), "falta el tipo");
+    expect((await docs.locator(".doc-list li", { hasText: "Presentación Paco.pptx" }).textContent()).includes("Presentación ·"), "falta el tipo");
   });
 
   await step("documentos: pegar un enlace, no duplicar y quitar", async () => {
@@ -498,7 +498,7 @@ if (MOCK) {
     await form.locator("input[name=url]").fill(`https://example.com/propuestas/propuesta-${stamp}.pdf`);
     await form.getByRole("button", { name: "Enlazar" }).click();
     await form.getByRole("alert").filter({ hasText: "ya está enlazado" }).waitFor();
-    await docs.locator("li", { hasText: `propuesta-${stamp}.pdf` }).getByRole("button", { name: "Quitar" }).click();
+    await docs.locator(".doc-list li", { hasText: `propuesta-${stamp}.pdf` }).getByRole("button", { name: "Quitar" }).click();
     await link.waitFor({ state: "detached" });
   });
 
