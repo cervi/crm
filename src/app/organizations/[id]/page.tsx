@@ -13,6 +13,7 @@ import { isId } from "@/lib/validation";
 import { ActivityPanel } from "@/components/ActivityPanel";
 import { NotePanel } from "@/components/NotePanel";
 import { CustomFieldValues } from "@/components/CustomFieldValues";
+import { Avatar } from "@/components/Avatar";
 import { Timeline } from "@/components/Timeline";
 
 export const dynamic = "force-dynamic";
@@ -46,8 +47,10 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
     <main className="page">
       <div className="crumbs"><Link href="/organizations">Empresas</Link></div>
       <div className="page-head">
-        <h1>{org.name}</h1>
-        {org.domain && <span className="muted">{org.domain}</span>}
+        <div className="title-with-avatar">
+          <Avatar name={org.name} kind="org" size="lg" />
+          <div><h1>{org.name}</h1>{org.domain && <div className="meta">{org.domain}</div>}</div>
+        </div>
         <span className="spacer" />
         <Link href={`/deals/new?organization=${id}`} className="btn secondary">Nuevo deal</Link>
         <Link href={`/organizations/${id}/edit`} className="btn secondary">Editar</Link>
@@ -77,8 +80,13 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
             <ul className="items">
               {current.map((c) => (
                 <li key={c.person_id} className="item">
-                  <Link href={`/persons/${c.person_id}`}><strong>{c.full_name}</strong></Link>
-                  <div className="meta">{[c.job_title, c.email].filter(Boolean).join(" · ") || "—"}</div>
+                  <div className="cell-main">
+                    <Avatar name={c.full_name} />
+                    <div>
+                      <Link href={`/persons/${c.person_id}`}><strong>{c.full_name}</strong></Link>
+                      <div className="meta">{[c.job_title, c.email].filter(Boolean).join(" · ") || "—"}</div>
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>

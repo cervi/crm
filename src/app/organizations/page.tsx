@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { listOrganizations } from "@/lib/organizations";
+import { Avatar } from "@/components/Avatar";
+import { Icon } from "@/components/Icon";
 import { money } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +15,7 @@ export default async function OrganizationsPage({ searchParams }: { searchParams
       <div className="page-head">
         <h1>Empresas</h1>
         <span className="spacer" />
-        <Link href="/organizations/new" className="btn">Nueva empresa</Link>
+        <Link href="/organizations/new" className="btn"><Icon name="plus" />Nueva empresa</Link>
       </div>
       <form className="toolbar">
         <input name="q" defaultValue={q} placeholder="Buscar por nombre o dominio" aria-label="Buscar" />
@@ -29,7 +31,7 @@ export default async function OrganizationsPage({ searchParams }: { searchParams
             {rows.length === 0 && <tr><td colSpan={7} className="empty-row">No hay empresas{q && " que coincidan"}.</td></tr>}
             {rows.map((o) => (
               <tr key={o.id}>
-                <td><Link href={`/organizations/${o.id}`}>{o.name}</Link></td>
+                <td><span className="cell-main"><Avatar name={o.name} kind="org" size="sm" /><Link href={`/organizations/${o.id}`}>{o.name}</Link></span></td>
                 <td>{o.domain ?? "—"}</td>
                 <td>{o.industry ?? "—"}</td>
                 <td className="num">{o.contacts}</td>

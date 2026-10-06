@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { moveDealAction } from "@/app/actions/deals";
 import type { BoardDeal, BoardStage } from "@/lib/pipelines";
+import { Avatar } from "./Avatar";
 
 const money = (v: string | number | null, currency = "EUR") =>
   v === null || v === "" ? "—"
@@ -60,8 +61,9 @@ export function Board({ stages }: { stages: BoardStage[] }) {
             onDrop={(e) => { e.preventDefault(); drop(stage.id); }}
           >
             <div className="stage-head">
-              <h2>{stage.name}</h2>
-              <span>{money(stage.total_value)} · {stage.deals.length} deal{stage.deals.length === 1 ? "" : "s"}</span>
+              <h2><span>{stage.name}</span><span className="count">{stage.deals.length}</span></h2>
+              <span>{money(stage.total_value)}{stage.win_probability !== null && ` · ${stage.win_probability} % de probabilidad`}</span>
+              <div className="stage-meter" aria-hidden="true"><i style={{ width: `${stage.win_probability ?? 0}%` }} /></div>
             </div>
             <ul>
               {stage.deals.map((deal) => (
@@ -72,14 +74,22 @@ export function Board({ stages }: { stages: BoardStage[] }) {
                   onDragEnd={() => { setDragging(null); setOver(null); }}
                   className={["deal-card", deal.is_rotten && "rotten", dragging?.id === deal.id && "dragging"].filter(Boolean).join(" ")}
                 >
-                  <Link href={`/deals/${deal.id}`} draggable={false}>{deal.title}</Link>
-                  <span className="muted">{[deal.organization_name, deal.person_name].filter(Boolean).join(" · ") || "Sin empresa"}</span>
-                  <span>{money(deal.value, deal.currency)}{deal.owner_name && <span className="meta"> · {deal.owner_name}</span>}</span>
-                  <span className="flags">
-                    <span className="meta">{deal.days_in_stage} d en la fase</span>
-                    {deal.is_rotten && <span className="badge warn">Parado</span>}
-                    {!deal.has_upcoming_session && <span className="badge">Sin sesión agendada</span>}
+                  <Link href={`/deals/${deal.id}`} draggable={false} className="deal-title">{deal.title}</Link>
+                  <span className="who">
+                    <Avatar name={deal.organization_name ?? deal.person_name} kind={deal.organization_name ? "org" : "person"} size="sm" />
+                    <span>{[deal.organization_name, deal.person_name].filter(Boolean).join(" · ") || "Sin empresa"}</span>
                   </span>
+                  <span className="foot">
+                    <span className="amount">{money(deal.value, deal.currency)}</span>
+                    <span className="age">{deal.days_in_stage === 0 ? "Hoy" : `${deal.days_in_stage} d`}</span>
+                  </span>
+                  {(deal.is_rotten || !deal.has_upcoming_session || deal.owner_name) && (
+                    <span className="flags">
+                      {deal.is_rotten && <span className="badge warn">Parado</span>}
+                      {!deal.has_upcoming_session && <span className="badge">Sin sesión agendada</span>}
+                      {deal.owner_name && <span className="badge" title="Responsable">{deal.owner_name}</span>}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

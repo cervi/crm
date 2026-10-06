@@ -5,6 +5,7 @@ import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
 import { money } from "@/lib/format";
 import { Board } from "@/components/Board";
+import { Icon } from "@/components/Icon";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Deals" };
@@ -42,13 +43,13 @@ export default async function PipelineBoard({ params, searchParams }: {
           </select>
           <button className="btn secondary">Filtrar</button>
         </form>
-        <Link href={`/deals/new?pipeline=${id}`} className="btn">Nuevo deal</Link>
+        <Link href={`/deals/new?pipeline=${id}`} className="btn"><Icon name="plus" />Nuevo deal</Link>
       </div>
-      <p className="meta" style={{ marginTop: -8 }}>
-        {count} deal{count === 1 ? " abierto" : "s abiertos"} · {money(total)}
-        {rotten > 0 && <> · <span className="badge warn">{rotten} parado{rotten === 1 ? "" : "s"}</span></>}
-        {" "}· Arrastra un deal para cambiarlo de fase.
-      </p>
+      <div className="board-summary">
+        <span><strong>{money(total)}</strong> en {count} deal{count === 1 ? " abierto" : "s abiertos"}</span>
+        {rotten > 0 && <span className="badge warn">{rotten} parado{rotten === 1 ? "" : "s"}</span>}
+        <span className="meta">Arrastra un deal para cambiarlo de fase.</span>
+      </div>
       <Board key={`${id}:${ownerId ?? ""}`} stages={stages} />
     </main>
   );

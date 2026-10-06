@@ -18,6 +18,7 @@ import { ActivityPanel } from "@/components/ActivityPanel";
 import { NotePanel } from "@/components/NotePanel";
 import { CustomFieldValues } from "@/components/CustomFieldValues";
 import { EntityPicker } from "@/components/EntityPicker";
+import { Avatar } from "@/components/Avatar";
 import { Timeline } from "@/components/Timeline";
 
 export const dynamic = "force-dynamic";
@@ -137,6 +138,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               {participants.map((p) => (
                 <li key={p.person_id} className="item">
                   <div className="item-head">
+                    <Avatar name={p.full_name} size="sm" />
                     <Link href={`/persons/${p.person_id}`}><strong>{p.full_name}</strong></Link>
                     {p.is_primary && <span className="badge open">Principal</span>}
                     {p.role && <span className="badge">{p.role}</span>}

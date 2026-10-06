@@ -63,6 +63,7 @@ export type BoardStage = {
   name: string;
   position: number;
   rotten_after_days: number | null;
+  win_probability: number | null;
   total_value: string;
   deals: BoardDeal[];
 };
@@ -70,7 +71,7 @@ export type BoardStage = {
 /** Tablero de un pipeline: fases en orden, cada una con sus deals abiertos. */
 export async function getBoard(pipelineId: string, ownerId?: string | null): Promise<BoardStage[]> {
   return sql<BoardStage[]>`
-    SELECT s.id, s.name, s.position, s.rotten_after_days,
+    SELECT s.id, s.name, s.position, s.rotten_after_days, s.win_probability,
            coalesce(sum(o.value), 0)::text AS total_value,
            coalesce(
              json_agg(json_build_object(

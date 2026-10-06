@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { leadSources, listLeads } from "@/lib/leads";
+import { Avatar } from "@/components/Avatar";
+import { Icon } from "@/components/Icon";
 import { date, FUNNEL_STAGES, STATUS_LABELS } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +25,8 @@ export default async function LeadsPage({ searchParams }: {
           {rows.length} · {FUNNEL_STAGES.map((f) => `${f.label} ${byFunnel(f.value)}`).join(" · ")}
         </span>
         <span className="spacer" />
-        <Link href="/settings/api" className="btn secondary">Conectar formularios</Link>
-        <Link href="/leads/new" className="btn">Nuevo lead</Link>
+        <Link href="/settings/api" className="btn secondary"><Icon name="plug" />Conectar formularios</Link>
+        <Link href="/leads/new" className="btn"><Icon name="plus" />Nuevo lead</Link>
       </div>
       <form className="toolbar">
         <input name="q" defaultValue={sp.q ?? ""} placeholder="Nombre, email o empresa" aria-label="Buscar" />
@@ -51,7 +53,7 @@ export default async function LeadsPage({ searchParams }: {
             {rows.length === 0 && <tr><td colSpan={7} className="empty-row">No hay leads con estos filtros.</td></tr>}
             {rows.map((l) => (
               <tr key={l.id}>
-                <td><Link href={`/leads/${l.id}`}>{l.person_name ?? l.title}</Link><div className="meta">{l.email}</div></td>
+                <td><span className="cell-main"><Avatar name={l.person_name ?? l.title} size="sm" /><span><Link href={`/leads/${l.id}`}>{l.person_name ?? l.title}</Link><div className="meta">{l.email}</div></span></span></td>
                 <td>{l.organization_id ? <Link href={`/organizations/${l.organization_id}`}>{l.organization_name}</Link> : "—"}</td>
                 <td>{l.source ?? "—"}{l.source_detail && <div className="meta">{l.source_detail}</div>}</td>
                 <td>{l.funnel_stage ? <span className={`badge ${l.funnel_stage}`}>{l.funnel_stage.toUpperCase()}</span> : "—"}</td>

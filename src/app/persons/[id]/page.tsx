@@ -17,6 +17,7 @@ import { ActivityPanel } from "@/components/ActivityPanel";
 import { NotePanel } from "@/components/NotePanel";
 import { CustomFieldValues } from "@/components/CustomFieldValues";
 import { EntityPicker } from "@/components/EntityPicker";
+import { Avatar } from "@/components/Avatar";
 import { Timeline } from "@/components/Timeline";
 
 export const dynamic = "force-dynamic";
@@ -48,13 +49,18 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     <main className="page">
       <div className="crumbs"><Link href="/persons">Contactos</Link></div>
       <div className="page-head">
+        <div className="title-with-avatar">
+        <Avatar name={person.full_name} size="lg" />
+        <div>
         <h1>{person.full_name}</h1>
         {current[0] && (
-          <span className="muted">
+          <div className="meta">
             {current[0].job_title ? `${current[0].job_title} · ` : ""}
             <Link href={`/organizations/${current[0].organization_id}`}>{current[0].organization_name}</Link>
-          </span>
+          </div>
         )}
+        </div>
+        </div>
         <span className="spacer" />
         <Link href={`/deals/new?person=${id}${current[0] ? `&organization=${current[0].organization_id}` : ""}`} className="btn secondary">Nuevo deal</Link>
         <Link href={`/persons/${id}/edit`} className="btn secondary">Editar</Link>
