@@ -88,14 +88,14 @@ export default async function CampaignPage({ params, searchParams }: { params: P
       <div className="split">
         <section className="panel" aria-label="Añadir contactos">
           <h2>Añadir contactos</h2>
-          <details open={stats.contacts === 0}>
-            <summary className="meta">Desde un CSV (de un proveedor de datos o de una IA)</summary>
+          <div>
+            <p className="meta" style={{ marginTop: 0 }}>Desde un CSV (de un proveedor de datos o de una IA):</p>
             <ActionForm action={addCsvContactsAction.bind(null, id)} submitLabel="Añadir" pendingLabel="Añadiendo…" secondary>
               <label className="field"><span className="label">Archivo CSV</span><input type="file" name="file" accept=".csv,text/csv,text/plain" /></label>
               <label className="field"><span className="label">…o pégalo aquí</span>
                 <textarea name="csv" rows={4} placeholder={"email;nombre;empresa;cargo\nana@empresa.es;Ana Gil;Empresa S.L.;Directora comercial"} /></label>
             </ActionForm>
-          </details>
+          </div>
           <details>
             <summary className="meta">Desde el CRM (contactos sin deals abiertos ni ganados)</summary>
             <ActionForm action={addCrmContactsAction.bind(null, id)} submitLabel="Añadir los que encajen" pendingLabel="Buscando…" secondary>

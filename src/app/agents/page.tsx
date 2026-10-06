@@ -119,7 +119,7 @@ export default async function AgentsPage() {
                         <div className="meta">{j.last_run_at ? `Última vez ${dateTime(j.last_run_at)}${j.last_result ? ` · ${/^\d+$/.test(j.last_result) ? `${j.last_result} hechos` : j.last_result}` : ""}` : "Todavía no ha trabajado"}</div>
                       </div>
                       {admin
-                        ? <form action={setJobEnabledAction.bind(null, j.key, !j.enabled)}><button type="submit" className={j.enabled ? "btn small good" : "btn small secondary"} aria-pressed={j.enabled}>{j.enabled ? "Activo" : "Apagado"}</button></form>
+                        ? <form action={setJobEnabledAction.bind(null, j.key, !j.enabled)}><button type="submit" className={j.enabled ? "btn small good job-toggle" : "btn small secondary job-toggle"} aria-pressed={j.enabled}>{j.enabled ? "Activo" : "Apagado"}</button></form>
                         : <span className="badge">{j.enabled ? "Activo" : "Apagado"}</span>}
                     </li>
                   ))}

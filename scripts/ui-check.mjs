@@ -1112,6 +1112,31 @@ await step("renovación ganada: el contrato renueva un año más", async () => {
   await shot("renovacion-ganada");
 });
 
+await step("agentes: el panel muestra los seis y se puede apagar un trabajo", async () => {
+  await page.goto("/agents");
+  await page.getByRole("heading", { name: "Jefe de agentes" }).waitFor();
+  const card = page.getByRole("article", { name: "Agente Ejecutivo de deal" });
+  await card.locator("button.job-toggle").first().click();
+  await card.locator('button.job-toggle[aria-pressed="false"]').first().waitFor();
+  const [j] = await sql`SELECT enabled FROM agent_jobs WHERE key = 'meeting_prep'`;
+  expect(j.enabled === false, "el trabajo sigue activo");
+  await card.locator('button.job-toggle[aria-pressed="false"]').first().click();
+  await card.locator('button.job-toggle[aria-pressed="true"]').nth(0).waitFor();
+  await shot("agentes");
+});
+
+await step("campañas: crear una campaña y añadir contactos pegando un CSV", async () => {
+  await page.goto("/campaigns");
+  await page.getByLabel("Nombre *").fill(`Campaña UI ${stamp}`);
+  await page.getByRole("button", { name: "Crear campaña" }).click();
+  await page.waitForURL(/\/campaigns\/[0-9a-f-]{36}/);
+  await page.locator("textarea[name=csv]").fill(`email;nombre;empresa;cargo\nmaria.ui${stamp}@empresa-ui.example;María UI;Empresa UI;CEO`);
+  await page.getByRole("button", { name: "Añadir", exact: true }).click();
+  await page.getByText(/1 añadidos/).waitFor();
+  await page.locator("table td", { hasText: "María UI" }).first().waitFor();
+  await shot("campana");
+});
+
 await step("sin errores de JavaScript en el navegador", async () => {
   expect(errors.length === 0, errors.slice(0, 3).join(" | "));
 });
