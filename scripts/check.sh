@@ -34,7 +34,9 @@ echo "▸ Compilación"
 npx next build > "$DATA_DIR.build.log" 2>&1 || { cat "$DATA_DIR.build.log"; exit 1; }
 
 echo "▸ Pruebas de extremo a extremo"
-PORT="$APP_PORT" npx next start > "$DATA_DIR.app.log" 2>&1 &
+# Igual que en producción: servidor "standalone" con sus ficheros estáticos.
+cp -R .next/static .next/standalone/.next/ && cp -R public .next/standalone/
+PORT="$APP_PORT" HOSTNAME=127.0.0.1 node .next/standalone/server.js > "$DATA_DIR.app.log" 2>&1 &
 pids+=($!)
 for _ in $(seq 1 100); do curl -s -o /dev/null "http://127.0.0.1:${APP_PORT}/settings/api" && break; sleep 0.2; done
 BASE_URL="http://127.0.0.1:${APP_PORT}" node scripts/e2e.mjs || { echo "--- registro de la app:"; tail -40 "$DATA_DIR.app.log"; exit 1; }

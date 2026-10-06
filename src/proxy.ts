@@ -22,7 +22,10 @@ export function proxy(req: NextRequest) {
   const header = req.headers.get("authorization") ?? "";
   if (header.startsWith("Basic ")) {
     let decoded = "";
-    try { decoded = atob(header.slice(6)); } catch { /* cabecera mal formada */ }
+    try {
+      // atob devuelve bytes; se interpretan como UTF-8 para admitir tildes y eñes.
+      decoded = new TextDecoder().decode(Uint8Array.from(atob(header.slice(6)), (c) => c.charCodeAt(0)));
+    } catch { /* cabecera mal formada */ }
     const i = decoded.indexOf(":");
     if (i > 0 && safeEqual(decoded.slice(0, i), user) && safeEqual(decoded.slice(i + 1), pass)) {
       return NextResponse.next();
