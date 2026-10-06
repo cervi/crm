@@ -5,15 +5,19 @@
 //
 //   BASE_URL=http://localhost:3000 DATABASE_URL=... INBOUND_API_KEYS=... node scripts/e2e.mjs
 //
-// Si la app tiene BASIC_AUTH_USER/BASIC_AUTH_PASSWORD, pásalos también.
+// Las pantallas se piden con la sesión del administrador de los datos de ejemplo.
 import postgres from "postgres";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import { createSessionToken, hashPassword } from "./password.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const KEY = (process.env.INBOUND_API_KEYS ?? "").split(",")[0]?.trim();
-const user = process.env.BASIC_AUTH_USER, pass = process.env.BASIC_AUTH_PASSWORD;
-const auth = user && pass ? { authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}` } : {};
 const sql = postgres(process.env.DATABASE_URL ?? "postgres://crm:crm@localhost:5432/crm", { max: 1 });
+const ADMIN_ID = "00000000-0000-0000-0000-000000000001", MEMBER_ID = "00000000-0000-0000-0000-000000000002";
+const ADMIN_PASSWORD = "contraseña-de-pruebas-1";
+await sql`UPDATE users SET password_hash = ${hashPassword(ADMIN_PASSWORD)}, must_change_password = false, failed_logins = 0, locked_until = NULL WHERE id = ${ADMIN_ID}`;
+const SESSION = `crm_session=${await createSessionToken(sql, ADMIN_ID)}`;
+const auth = { cookie: SESSION };
 
 let passed = 0, failed = 0;
 const ok = (name) => { passed++; console.log(`OK   · ${name}`); };
@@ -22,7 +26,10 @@ const check = (cond, name, detail) => (cond ? ok(name) : fail(name, detail));
 
 // React separa trozos de texto con marcadores <!-- --> en el HTML: se quitan para comparar texto.
 const get = async (path, opts = {}) => {
-  const res = await fetch(`${BASE}${path}`, { redirect: "manual", ...opts, headers: { ...auth, ...(opts.headers ?? {}) } });
+  // La cookie de sesión va siempre; si la petición trae otra (p. ej. la de OAuth), van las dos.
+  const headers = { ...(opts.headers ?? {}) };
+  headers.cookie = [auth.cookie, headers.cookie].filter(Boolean).join("; ");
+  const res = await fetch(`${BASE}${path}`, { redirect: "manual", ...opts, headers });
   const text = res.text.bind(res);
   res.text = async () => (await text()).replace(/<!-- -->/g, "");
   return res;
@@ -131,9 +138,17 @@ check(Array.isArray(lookup) && lookup.some((o) => o.label === "Paco S.L."), "bú
 const lookupP = await (await get("/api/lookup?type=persons&q=ana@")).json();
 check(Array.isArray(lookupP) && lookupP.some((p) => p.label === "Ana García"), "búsqueda de contactos por email");
 
-if (user && pass) {
-  const noAuth = await fetch(`${BASE}/organizations`, { redirect: "manual" });
-  check(noAuth.status === 401, "sin contraseña se pide autenticación", `HTTP ${noAuth.status}`);
+{
+  const noAuth = await fetch(`${BASE}/organizations?q=x`, { redirect: "manual" });
+  check(noAuth.status === 307 && (noAuth.headers.get("location") ?? "").includes("/login?next=%2Forganizations%3Fq%3Dx"),
+        "sin sesión se va a la pantalla de entrada (y luego se vuelve)", `HTTP ${noAuth.status} ${noAuth.headers.get("location")}`);
+  const fake = await fetch(`${BASE}/organizations`, { redirect: "manual", headers: { cookie: `crm_session=${"x".repeat(43)}` } });
+  check(fake.status === 307, "una sesión inventada no sirve", `HTTP ${fake.status}`);
+  check((await fetch(`${BASE}/api/search?q=paco`)).status === 401, "las rutas internas de API sin sesión → 401");
+  const login = await fetch(`${BASE}/login`, { redirect: "manual" });
+  const loginHtml = await login.text();
+  check(login.status === 200 && loginHtml.includes("Entrar") && !loginHtml.includes('aria-label="Principal"'), "pantalla de entrada (sin menú)", `HTTP ${login.status}`);
+  check((await fetch(`${BASE}/setup`, { redirect: "manual" })).status === 307, "con usuarios ya creados, la puesta en marcha no está disponible");
 }
 
 // ------------------------------------------------------------- API de entrada
@@ -811,6 +826,38 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   check(pageHtml.includes("Conectado a Aikit (simulado)") && pageHtml.includes("No cuadra") && pageHtml.includes("Recorrido por fases"),
         "/settings/import muestra la conexión, el resultado y la comprobación");
   await sql`UPDATE automation_settings SET paused = false`;
+}
+
+// ------------------------------------------------------------- Usuarios y permisos
+{
+  const as = async (userId, path) => {
+    const token = await createSessionToken(sql, userId);
+    const res = await fetch(`${BASE}${path}`, { redirect: "manual", headers: { cookie: `crm_session=${token}` } });
+    return { res, html: (await res.text()).replace(/<!-- -->/g, "") };
+  };
+  await sql`UPDATE users SET password_hash = ${hashPassword("otra-contraseña-123")}, role = 'member', is_active = true, must_change_password = false WHERE id = ${MEMBER_ID}`;
+  const usersPage = await (await get("/settings/users")).text();
+  check(usersPage.includes("Usuarios y permisos") && usersPage.includes("Generación de leads") && usersPage.includes("Dar acceso a alguien"),
+        "/settings/users lista el equipo");
+  const settingsMember = await as(MEMBER_ID, "/settings");
+  check(settingsMember.html.includes("Correo, calendario y documentos") && !settingsMember.html.includes("Importar desde Pipedrive"),
+        "un comercial solo ve sus ajustes");
+  const denied = await as(MEMBER_ID, "/settings/ai");
+  check(denied.res.status === 307 || denied.html.includes("denied=1"), "un comercial no entra en los ajustes de la IA", `HTTP ${denied.res.status}`);
+  const deal = await as(MEMBER_ID, `/deals/${DEAL_OPEN}`);
+  check(deal.res.status === 200 && deal.html.includes("Generación de leads"), "un comercial trabaja con los deals (y se ve su nombre)");
+  const mailboxMember = await as(MEMBER_ID, "/settings/mailbox");
+  check(mailboxMember.html.includes("Tu cuenta") && !mailboxMember.html.includes("Cuenta de Customer Success"), "en el correo, cada comercial ve solo su cuenta");
+  const tempUser = await as(MEMBER_ID, "/");
+  check(tempUser.res.status === 200, "la portada abre para un comercial", `HTTP ${tempUser.res.status}`);
+  await sql`UPDATE users SET must_change_password = true WHERE id = ${MEMBER_ID}`;
+  const forced = await as(MEMBER_ID, "/pipelines");
+  check(forced.res.status === 307 && (forced.res.headers.get("location") ?? "").includes("/account?change=1") || forced.html.includes("/account?change=1"),
+        "con contraseña temporal, primero hay que cambiarla", `HTTP ${forced.res.status}`);
+  await sql`UPDATE users SET is_active = false WHERE id = ${MEMBER_ID}`;
+  const inactive = await as(MEMBER_ID, "/pipelines");
+  check(inactive.res.status === 307 && (inactive.res.headers.get("location") ?? "").includes("/login"), "un usuario desactivado ya no entra");
+  await sql`UPDATE users SET is_active = true, must_change_password = false, password_hash = NULL, role = 'member' WHERE id = ${MEMBER_ID}`;
 }
 
 await sql.end();

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ENTITY_LABELS, FIELD_TYPES, listFieldDefinitions, type CustomEntity } from "@/lib/custom-fields";
 import { createFieldAction, updateFieldAction } from "@/app/actions/settings";
 import { ActionForm } from "@/components/ActionForm";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Campos personalizados" };
@@ -9,6 +10,7 @@ export const metadata = { title: "Campos personalizados" };
 const ENTITIES = Object.keys(ENTITY_LABELS) as CustomEntity[];
 
 export default async function FieldsPage({ searchParams }: { searchParams: Promise<{ entity?: string }> }) {
+  await requireAdminPage();
   const { entity: e } = await searchParams;
   const entity: CustomEntity = ENTITIES.includes(e as CustomEntity) ? (e as CustomEntity) : "deal";
   const defs = await listFieldDefinitions(entity, true);

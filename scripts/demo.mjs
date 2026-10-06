@@ -60,6 +60,7 @@ const APP_PORT = await freePort(Number(process.env.PORT ?? 3000));
 // «--reset»: se empieza de cero de verdad (también arregla una carpeta de datos que quedó a medias al cortar la demo).
 if (reset && existsSync(DATA)) rmSync(DATA, { recursive: true, force: true });
 const fresh = !existsSync(DATA);
+const DEMO_LOGIN = { email: "ventas@example.com", password: "demo-crm-2026" };
 const MOCK = `http://127.0.0.1:${MOCK_PORT}`;
 
 const env = {
@@ -125,6 +126,8 @@ try {
   } else {
     await run(["scripts/db.mjs", "migrate"]);
   }
+  // Acceso a la demo: el administrador de los datos de ejemplo (siempre con la misma contraseña).
+  await run(["scripts/db.mjs", "user", DEMO_LOGIN.email, DEMO_LOGIN.password, "admin"]);
   if (simulatedAi) {
     // Mismo cifrado que src/lib/crypto.ts.
     const key = createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
@@ -146,8 +149,11 @@ try {
   console.log(`
   ✓ CRM de prueba en http://localhost:${APP_PORT}
 
+  Entra con ${DEMO_LOGIN.email} / ${DEMO_LOGIN.password}
+
   Qué probar:
    · «Hoy» (la portada): el parte del día.
+   · Ajustes → Usuarios y permisos: da acceso a leads@example.com o cs@example.com con otro rol.
    · Ajustes → Correo, calendario y documentos → «Conectar Microsoft 365» o «Conectar Google Workspace»
      (simulados: no se envía nada de verdad).
    · Un deal → «Correo» → «Insertar mis huecos», y «Documentos» → buscar «paco».

@@ -56,7 +56,7 @@ npm run dev             # http://localhost:3000
 ## Producción
 
 ```bash
-BASIC_AUTH_USER=equipo BASIC_AUTH_PASSWORD='…' INBOUND_API_KEYS='…' docker compose up --build -d
+SETUP_CODE='…' INBOUND_API_KEYS='…' docker compose up --build -d
 ```
 
 Variables (ver `.env.example`):
@@ -64,7 +64,7 @@ Variables (ver `.env.example`):
 | Variable | Para qué |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL 13 o superior. |
-| `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD` | Acceso a la aplicación. **Obligatorias en producción**: sin ellas la app no se sirve. Es una protección provisional hasta tener inicio de sesión por usuario. |
+| `SETUP_CODE` | Código para crear el primer administrador en `/setup` (solo se pide en producción y solo mientras nadie tenga contraseña). Después, el resto del equipo se da de alta en Ajustes → Usuarios y permisos. También se puede crear un usuario desde la terminal: `node scripts/db.mjs user EMAIL CONTRASEÑA admin`. |
 | `INBOUND_API_KEYS` | Claves de la API de entrada, separadas por comas (mínimo 16 caracteres). |
 | `TZ` | Zona horaria de las fechas (por defecto `Europe/Madrid`). |
 | `AUTOMATIONS_INTERVAL_MINUTES` | Cada cuántos minutos revisa la IA los deals (15 por defecto; `0` lo desactiva). |

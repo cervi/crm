@@ -16,11 +16,13 @@ import { CustomRuleForm } from "@/components/ai/CustomRuleForm";
 import { activityTypes } from "@/lib/activity-types";
 import { sql } from "@/lib/db";
 import { createCustomRuleAction, deleteCustomRuleAction, updateCustomRuleAction } from "@/app/actions/automations";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Automatizaciones e IA" };
 
 export default async function AutomationsSettingsPage() {
+  await requireAdminPage();
   const [rules, permissions, settings, stats, mailbox, digest] = await Promise.all([listRules(), listPermissions(), getSettings(), ruleStats(), hasActiveMailbox(), getDigestSettings()]);
   // Sin buzón conectado, un correo no puede salir solo.
   const allowedFor = (action: string, allowed: typeof permissions[number]["allowed_autonomy"]) =>

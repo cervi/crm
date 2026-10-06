@@ -5,11 +5,13 @@ import {
 } from "@/app/actions/activity-types";
 import { ActionForm } from "@/components/ActionForm";
 import { Icon } from "@/components/Icon";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tipos de actividad" };
 
 export default async function ActivityTypesPage() {
+  await requireAdminPage();
   const types = await activityTypes(true);
   return (
     <main className="page" style={{ maxWidth: 900 }}>

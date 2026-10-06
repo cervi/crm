@@ -1,50 +1,38 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, sessionUser } from "@/lib/session";
 
 /**
- * Protección de acceso provisional (hasta tener inicio de sesión por usuario):
- * usuario y contraseña comunes con HTTP Basic, definidos en BASIC_AUTH_USER y
- * BASIC_AUTH_PASSWORD. En producción, si no están definidos, no se sirve la
- * aplicación, para que nunca quede abierta por descuido.
+ * Control de acceso: toda la aplicación pide sesión iniciada, salvo la
+ * pantalla de entrada, la de puesta en marcha y las páginas públicas (enlace
+ * de reservas, formularios y seguimiento). La API de entrada (/api/v1/*) no
+ * pasa por aquí: usa sus propias claves.
  *
- * La API de entrada (/api/v1/*) no pasa por aquí: usa sus propias claves.
+ * Además deja la ruta pedida en la cabecera x-pathname, para que las páginas
+ * sepan a dónde volver tras iniciar sesión.
  */
-export function proxy(req: NextRequest) {
-  const user = process.env.BASIC_AUTH_USER ?? "";
-  const pass = process.env.BASIC_AUTH_PASSWORD ?? "";
+const PUBLIC = [/^\/login(\/|$)/, /^\/setup(\/|$)/, /^\/book\//, /^\/f\//, /^\/t\//, /^\/api\/public\//];
 
-  if (!user || !pass) {
-    if (process.env.NODE_ENV === "production") {
-      return new NextResponse("Acceso no configurado: define BASIC_AUTH_USER y BASIC_AUTH_PASSWORD.", { status: 503 });
-    }
-    return NextResponse.next(); // desarrollo local sin contraseña
+export async function proxy(req: NextRequest) {
+  const { pathname, search } = req.nextUrl;
+  const forward = new Headers(req.headers);
+  forward.set("x-pathname", pathname + search);
+  const pass = () => NextResponse.next({ request: { headers: forward } });
+
+  if (PUBLIC.some((re) => re.test(pathname))) return pass();
+
+  const user = await sessionUser(req.cookies.get(SESSION_COOKIE)?.value).catch(() => null);
+  if (user) return pass();
+
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Inicia sesión para continuar." }, { status: 401 });
   }
-
-  const header = req.headers.get("authorization") ?? "";
-  if (header.startsWith("Basic ")) {
-    let decoded = "";
-    try {
-      // atob devuelve bytes; se interpretan como UTF-8 para admitir tildes y eñes.
-      decoded = new TextDecoder().decode(Uint8Array.from(atob(header.slice(6)), (c) => c.charCodeAt(0)));
-    } catch { /* cabecera mal formada */ }
-    const i = decoded.indexOf(":");
-    if (i > 0 && safeEqual(decoded.slice(0, i), user) && safeEqual(decoded.slice(i + 1), pass)) {
-      return NextResponse.next();
-    }
-  }
-  return new NextResponse("Autenticación requerida", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="CRM", charset="UTF-8"' },
-  });
-}
-
-/** Comparación en tiempo constante. */
-function safeEqual(a: string, b: string): boolean {
-  const len = Math.max(a.length, b.length);
-  let diff = a.length ^ b.length;
-  for (let i = 0; i < len; i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
-  return diff === 0;
+  const login = new URL("/login", req.url);
+  if (pathname !== "/") login.searchParams.set("next", pathname + search);
+  const res = NextResponse.redirect(login);
+  if (req.cookies.has(SESSION_COOKIE)) res.cookies.delete(SESSION_COOKIE); // sesión caducada o revocada
+  return res;
 }
 
 export const config = {
-  matcher: ["/((?!api/v1/|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api/v1/|_next/static|_next/image|favicon.ico|icon.svg).*)"],
 };

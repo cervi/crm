@@ -2,11 +2,13 @@ import Link from "next/link";
 import { listLostReasons } from "@/lib/deals";
 import { createLostReasonAction, updateLostReasonAction } from "@/app/actions/settings";
 import { ActionForm } from "@/components/ActionForm";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Motivos de pérdida" };
 
 export default async function LostReasonsPage() {
+  await requireAdminPage();
   const reasons = await listLostReasons(true);
   return (
     <main className="page" style={{ maxWidth: 860 }}>

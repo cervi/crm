@@ -4,11 +4,13 @@ import { encryptionConfigured } from "@/lib/crypto";
 import { dateTime } from "@/lib/format";
 import { saveAiSettingsAction, testAiAction } from "@/app/actions/ai";
 import { ActionForm } from "@/components/ActionForm";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Modelo de IA" };
 
 export default async function AiSettingsPage() {
+  await requireAdminPage();
   const s = await getAiSettings();
   const ready = aiReady(s);
   return (

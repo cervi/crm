@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { currentUser } from "@/lib/auth";
 import { encryptionConfigured } from "@/lib/crypto";
 import { isProviderKey, pkce, PROVIDERS, redirectUri } from "@/lib/integrations";
 import { isId } from "@/lib/validation";
@@ -22,6 +23,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
     ? await sql<{ id: string; email: string | null }[]>`SELECT id, email FROM users WHERE id = ${userId} AND kind = 'human' AND is_active`
     : [];
   if (!user) return NextResponse.redirect(back(origin, { error: "Usuario no válido." }));
+  // Cada uno conecta su cuenta; un administrador puede hacerlo por cualquiera.
+  const me = await currentUser();
+  if (!me || (me.id !== user.id && me.role !== "admin")) {
+    return NextResponse.redirect(back(origin, { error: "Solo puedes conectar tu propia cuenta." }));
+  }
 
   const { verifier, challenge } = pkce();
   const state = randomBytes(16).toString("base64url");

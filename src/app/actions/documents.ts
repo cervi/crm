@@ -1,18 +1,24 @@
 "use server";
 
+import { guard } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { attempt, type ActionState } from "@/lib/errors";
-import { UI_ACTOR } from "@/lib/events";
 import { addDocument, removeDocument } from "@/lib/documents";
 
 export async function addDocumentAction(dealId: string, back: string, _: ActionState, form: FormData): Promise<ActionState> {
-  const res = await attempt(() => addDocument(UI_ACTOR, dealId, Object.fromEntries(form)));
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const me = g.actor;
+  const res = await attempt(() => addDocument(me, dealId, Object.fromEntries(form)));
   revalidatePath(back);
   return res;
 }
 
 export async function removeDocumentAction(documentId: string, back: string, _: ActionState): Promise<ActionState> {
-  const res = await attempt(() => removeDocument(UI_ACTOR, documentId));
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const me = g.actor;
+  const res = await attempt(() => removeDocument(me, documentId));
   revalidatePath(back);
   return res;
 }

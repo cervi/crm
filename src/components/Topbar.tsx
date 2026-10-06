@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { GlobalSearch } from "./GlobalSearch";
 import { Icon } from "./Icon";
 import { NAV_ITEMS } from "./Nav";
+import { logoutAction } from "@/app/actions/auth";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -37,7 +38,10 @@ function useMenu() {
   return { open, setOpen, ref };
 }
 
-export function Topbar({ theme: initialTheme }: { theme: Theme }) {
+export type TopbarUser = { name: string; email: string; role: "admin" | "member" | "viewer" };
+const ROLE: Record<TopbarUser["role"], string> = { admin: "Administrador", member: "Comercial", viewer: "Solo lectura" };
+
+export function Topbar({ theme: initialTheme, user: me }: { theme: Theme; user: TopbarUser }) {
   const path = usePathname();
   const section = NAV_ITEMS.find((i) => i.match.some((m) => path === m || path.startsWith(`${m}/`)))?.label
     ?? (path.startsWith("/search") ? "Búsqueda" : "");
@@ -73,11 +77,17 @@ export function Topbar({ theme: initialTheme }: { theme: Theme }) {
           )}
         </div>
         <div className="menu-wrap" ref={user.ref}>
-          <button type="button" className="icon-btn user-btn" aria-label="Tu cuenta" aria-expanded={user.open} onClick={() => user.setOpen((o) => !o)}>
-            <Icon name="user" />
+          <button type="button" className="icon-btn user-btn" aria-label={`Tu cuenta (${me.name})`} aria-expanded={user.open} onClick={() => user.setOpen((o) => !o)}>
+            <span className="user-initials" aria-hidden="true">{initials(me.name)}</span>
           </button>
           {user.open && (
             <div className="dropdown" role="menu">
+              <div className="dropdown-user">
+                <strong>{me.name}</strong>
+                <span>{me.email}</span>
+                <span className="muted">{ROLE[me.role]}</span>
+              </div>
+              <div className="dropdown-sep" />
               <div className="dropdown-label">Apariencia</div>
               {THEMES.map((t) => (
                 <button key={t.value} type="button" role="menuitemradio" aria-checked={theme === t.value} onClick={() => chooseTheme(t.value)}>
@@ -85,7 +95,11 @@ export function Topbar({ theme: initialTheme }: { theme: Theme }) {
                 </button>
               ))}
               <div className="dropdown-sep" />
+              <Link href="/account" role="menuitem" onClick={() => user.setOpen(false)}>Mi cuenta</Link>
               <Link href="/settings" role="menuitem" onClick={() => user.setOpen(false)}>Ajustes</Link>
+              <form action={logoutAction}>
+                <button type="submit" role="menuitem">Cerrar sesión</button>
+              </form>
             </div>
           )}
         </div>
@@ -93,3 +107,6 @@ export function Topbar({ theme: initialTheme }: { theme: Theme }) {
     </header>
   );
 }
+
+const initials = (name: string) =>
+  name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";

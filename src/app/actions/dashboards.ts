@@ -1,5 +1,6 @@
 "use server";
 
+import { guard, writer } from "@/lib/auth";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -9,6 +10,8 @@ import { normalizeConfig } from "@/lib/analytics";
 import { parse, text } from "@/lib/validation";
 
 export async function createDashboardAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
   let id = "";
   const res = await attempt(async () => {
     const { name } = parse(z.object({ name: text("El nombre", 100) }), Object.fromEntries(form));
@@ -23,6 +26,8 @@ export async function createDashboardAction(_: ActionState, form: FormData): Pro
 }
 
 export async function renameDashboardAction(id: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
   const res = await attempt(async () => {
     const { name } = parse(z.object({ name: text("El nombre", 100) }), Object.fromEntries(form));
     await sql`UPDATE dashboards SET name = ${name} WHERE id = ${id}`;
@@ -32,6 +37,8 @@ export async function renameDashboardAction(id: string, _: ActionState, form: Fo
 }
 
 export async function deleteDashboardAction(id: string, _: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
   const res = await attempt(() => sql`DELETE FROM dashboards WHERE id = ${id}`);
   if (res?.error) return res;
   revalidatePath("/dashboards", "layout");
@@ -40,6 +47,8 @@ export async function deleteDashboardAction(id: string, _: ActionState): Promise
 
 /** Crea o actualiza un widget. La configuración llega como JSON del editor y se valida aquí. */
 export async function saveWidgetAction(dashboardId: string, widgetId: string | null, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
   const res = await attempt(async () => {
     const v = parse(z.object({
       title: text("El título", 120),
@@ -64,12 +73,14 @@ export async function saveWidgetAction(dashboardId: string, widgetId: string | n
 }
 
 export async function deleteWidgetAction(dashboardId: string, widgetId: string): Promise<void> {
+  await writer();
   await sql`DELETE FROM dashboard_widgets WHERE id = ${widgetId} AND dashboard_id = ${dashboardId}`;
   revalidatePath(`/dashboards/${dashboardId}`);
 }
 
 /** Mueve un widget una posición antes o después. */
 export async function moveWidgetAction(dashboardId: string, widgetId: string, direction: "up" | "down"): Promise<void> {
+  await writer();
   await transaction(async (tx) => {
     const rows = await tx<{ id: string }[]>`
       SELECT id FROM dashboard_widgets WHERE dashboard_id = ${dashboardId} ORDER BY position, created_at`;

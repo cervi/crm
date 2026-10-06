@@ -7,6 +7,7 @@ import {
   addStageAction, deleteStageAction, moveStageAction, updatePipelineAction, updateStageAction,
 } from "@/app/actions/settings";
 import { ActionForm } from "@/components/ActionForm";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Pipeline" };
@@ -31,6 +32,7 @@ async function StageFields({ s }: { s?: { name: string; win_probability: number 
 }
 
 export default async function PipelineSettingsPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdminPage();
   const { id } = await params;
   if (!isId(id)) notFound();
   const [pipeline, stages] = await Promise.all([getPipeline(id), listStages(id)]);

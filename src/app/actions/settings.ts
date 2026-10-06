@@ -1,5 +1,6 @@
 "use server";
 
+import { adminOnly, guard } from "@/lib/auth";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -14,6 +15,8 @@ const fields = (form: FormData) => Object.fromEntries(form);
 // ---------------------------------------------------------------- Pipelines
 
 export async function createPipelineAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   let id = "";
   const res = await attempt(async () => { id = await createPipeline({ ...fields(form), is_active: "on" }); });
   if (res?.error) return res;
@@ -22,29 +25,38 @@ export async function createPipelineAction(_: ActionState, form: FormData): Prom
 }
 
 export async function updatePipelineAction(id: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   const res = await attempt(() => updatePipeline(id, fields(form)));
   revalidatePath("/", "layout");
   return res;
 }
 
 export async function addStageAction(pipelineId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   const res = await attempt(() => addStage(pipelineId, fields(form)));
   revalidatePath("/", "layout");
   return res;
 }
 
 export async function updateStageAction(stageId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   const res = await attempt(() => updateStage(stageId, fields(form)));
   revalidatePath("/", "layout");
   return res;
 }
 
 export async function moveStageAction(stageId: string, direction: "up" | "down"): Promise<void> {
+  await adminOnly();
   await moveStage(stageId, direction);
   revalidatePath("/", "layout");
 }
 
 export async function deleteStageAction(stageId: string, _: ActionState): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   const res = await attempt(() => deleteStage(stageId));
   revalidatePath("/", "layout");
   return res;
@@ -55,6 +67,8 @@ export async function deleteStageAction(stageId: string, _: ActionState): Promis
 const fieldTypes = FIELD_TYPES.map((t) => t.value) as [FieldType, ...FieldType[]];
 
 export async function createFieldAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   const res = await attempt(async () => {
     const v = parse(z.object({
       entity_type: z.enum(["organization", "person", "lead", "deal"]),
@@ -78,6 +92,8 @@ export async function createFieldAction(_: ActionState, form: FormData): Promise
 }
 
 export async function updateFieldAction(fieldId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   const res = await attempt(async () => {
     const v = parse(z.object({
       label: text("El nombre", 100),
@@ -125,6 +141,8 @@ const reasonSchema = z.object({
 });
 
 export async function createLostReasonAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   const res = await attempt(async () => {
     const v = parse(reasonSchema, { ...fields(form), is_active: "on" });
     await sql`INSERT INTO lost_reasons (label, followup_days) VALUES (${v.label}, ${v.followup_days ?? null})`;
@@ -134,6 +152,8 @@ export async function createLostReasonAction(_: ActionState, form: FormData): Pr
 }
 
 export async function updateLostReasonAction(id: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
   const res = await attempt(async () => {
     const v = parse(reasonSchema, fields(form));
     await sql`UPDATE lost_reasons SET label = ${v.label}, followup_days = ${v.followup_days ?? null},

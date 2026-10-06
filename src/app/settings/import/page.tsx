@@ -9,6 +9,7 @@ import {
 import { setPausedAction } from "@/app/actions/automations";
 import { ActionForm } from "@/components/ActionForm";
 import { ImportProgress } from "@/components/ImportProgress";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Importar desde Pipedrive" };
@@ -16,6 +17,7 @@ export const metadata = { title: "Importar desde Pipedrive" };
 const STATUS: Record<string, string> = { running: "En marcha", done: "Terminada", failed: "Falló", cancelled: "Cancelada" };
 
 export default async function ImportPage() {
+  await requireAdminPage();
   const [pd, jobs, running, ai] = await Promise.all([getPipedriveSettings(), listImportJobs(5), runningJob(), getSettings()]);
   const last = jobs.find((j) => j.status !== "running");
   return (

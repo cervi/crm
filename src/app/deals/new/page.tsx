@@ -6,6 +6,7 @@ import { listAllStages, listPipelines } from "@/lib/pipelines";
 import { getOrganization } from "@/lib/organizations";
 import { getPerson } from "@/lib/persons";
 import { listUsers } from "@/lib/users";
+import { requireUser } from "@/lib/auth";
 import { isId } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export const metadata = { title: "Nuevo deal" };
 export default async function NewDealPage({ searchParams }: {
   searchParams: Promise<{ pipeline?: string; organization?: string; person?: string }>;
 }) {
-  const sp = await searchParams;
+  const [sp, me] = await Promise.all([searchParams, requireUser()]);
   const [defs, users, pipelines, stages, org, person] = await Promise.all([
     listFieldDefinitions("deal"), listUsers(), listPipelines(), listAllStages(),
     isId(sp.organization) ? getOrganization(sp.organization) : null,
@@ -31,6 +32,7 @@ export default async function NewDealPage({ searchParams }: {
                     pipelineId: isId(sp.pipeline) ? sp.pipeline : null,
                     organization: org ? { id: org.id, label: org.name } : null,
                     person: person ? { id: person.id, label: person.full_name } : null,
+                    ownerId: me.id,
                   }} />
       </section>
     </main>

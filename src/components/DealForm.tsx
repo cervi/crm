@@ -18,7 +18,7 @@ export function DealForm({ action, deal, defs, users, pipelines, stages, submitL
   pipelines: { id: string; name: string }[];
   stages: { id: string; pipeline_id: string; name: string }[];
   submitLabel: string;
-  defaults?: { pipelineId?: string | null; organization?: Option; person?: Option };
+  defaults?: { pipelineId?: string | null; organization?: Option; person?: Option; ownerId?: string | null };
 }) {
   return (
     <ActionForm action={action} submitLabel={submitLabel}>
@@ -36,7 +36,7 @@ export function DealForm({ action, deal, defs, users, pipelines, stages, submitL
           <input name="currency" maxLength={3} defaultValue={deal?.currency ?? "EUR"} /></label>
         <label className="field"><span className="label">Cierre previsto</span>
           <input type="date" name="expected_close_date" defaultValue={deal?.expected_close_date ?? ""} /></label>
-        <OwnerSelect users={users} value={deal?.owner_id} />
+        <OwnerSelect users={users} value={deal ? deal.owner_id : defaults?.ownerId} />
         <label className="field"><span className="label">Origen</span>
           <input name="source" defaultValue={deal?.source ?? ""} placeholder="webinar, formulario demo, referido…" /></label>
       </div>

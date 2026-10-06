@@ -12,6 +12,7 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   deals_stage_id_pipeline_id_fkey: "La fase no pertenece al pipeline elegido.",
   person_organizations_current_uq: "El contacto ya trabaja en esa empresa.",
   deal_documents_url_uq: "Ese documento ya está enlazado a este deal.",
+  users_email_uq: "Ya hay un usuario con ese email.",
 };
 
 /** Traduce un error (de validación o de PostgreSQL) a un mensaje para la interfaz. */

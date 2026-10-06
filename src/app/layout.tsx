@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { Topbar, type Theme } from "@/components/Topbar";
 import { countPending } from "@/lib/automations";
 import { activityTypes } from "@/lib/activity-types";
+import { currentUser } from "@/lib/auth";
 import "@fontsource-variable/instrument-sans";
 import "./globals.css";
 
@@ -23,17 +25,30 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // El tema elegido viaja en una cookie: el servidor lo aplica antes de pintar.
   const saved = (await cookies()).get("theme")?.value;
   const theme: Theme = saved === "light" || saved === "dark" ? saved : "system";
+  const dataTheme = theme === "system" ? undefined : theme;
+  // Entrada y puesta en marcha: sin menú ni barra superior.
+  const path = (await headers()).get("x-pathname") ?? "";
+  const user = await currentUser().catch(() => null);
+  if (!user || /^\/(login|setup|book|f|t)(\/|$|\?)/.test(path)) {
+    return (
+      <html lang="es" data-theme={dataTheme}>
+        <body><div className="bare">{children}</div></body>
+      </html>
+    );
+  }
+  // Con contraseña temporal, lo primero es cambiarla.
+  if (user.must_change_password && !path.startsWith("/account")) redirect("/account?change=1");
   // Propuestas de la IA esperando decisión (el aviso del menú lateral).
   const inboxCount = await countPending().catch(() => 0);
   // Etiquetas de los tipos de actividad (configurables) disponibles en todo el servidor.
   await activityTypes().catch(() => null);
   return (
-    <html lang="es" data-theme={theme === "system" ? undefined : theme}>
+    <html lang="es" data-theme={dataTheme}>
       <body>
         <div className="shell">
           <Nav inboxCount={inboxCount} />
           <div className="main">
-            <Topbar theme={theme} />
+            <Topbar theme={theme} user={{ name: user.name, email: user.email, role: user.role }} />
             <div className="content">{children}</div>
           </div>
         </div>

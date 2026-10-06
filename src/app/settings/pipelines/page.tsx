@@ -2,11 +2,13 @@ import Link from "next/link";
 import { sql } from "@/lib/db";
 import { createPipelineAction } from "@/app/actions/settings";
 import { ActionForm } from "@/components/ActionForm";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Pipelines" };
 
 export default async function PipelinesSettingsPage() {
+  await requireAdminPage();
   const rows = await sql<{ id: string; name: string; is_active: boolean; stages: number; open_deals: number }[]>`
     SELECT p.id, p.name, p.is_active,
            (SELECT count(*)::int FROM stages s WHERE s.pipeline_id = p.id AND s.is_active) AS stages,

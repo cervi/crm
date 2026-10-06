@@ -3,11 +3,13 @@ import { DATASETS, getCsvSeparator } from "@/lib/export";
 import { saveCsvSeparatorAction } from "@/app/actions/export";
 import { ActionForm } from "@/components/ActionForm";
 import { ExportLink } from "@/components/ExportLink";
+import { requireAdminPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Exportar datos" };
 
 export default async function ExportSettingsPage() {
+  await requireAdminPage();
   const sep = await getCsvSeparator();
   const full = Object.entries(DATASETS).filter(([, d]) => d.full);
   return (

@@ -5,6 +5,7 @@ import { PROVIDER_LIST, PROVIDERS, redirectUri, type Provider } from "@/lib/inte
 import { encryptionConfigured } from "@/lib/crypto";
 import { formatSlots } from "@/lib/slots";
 import { listUsers } from "@/lib/users";
+import { requireUser } from "@/lib/auth";
 import { dateTime } from "@/lib/format";
 import { disconnectMailboxAction, syncMailboxAction, updateMailboxSettingsAction } from "@/app/actions/mailbox";
 import { ActionForm } from "@/components/ActionForm";
@@ -51,9 +52,10 @@ function SetupSteps({ provider, redirect }: { provider: Provider; redirect: stri
 }
 
 export default async function MailboxSettingsPage({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
-  const sp = await searchParams;
+  const [sp, me] = await Promise.all([searchParams, requireUser()]);
   const [users, connections] = await Promise.all([listUsers(), listConnections()]);
-  const humans = users.filter((u) => u.kind === "human");
+  // Cada uno ve su cuenta; un administrador, las de todo el equipo.
+  const humans = users.filter((u) => u.kind === "human" && (me.role === "admin" || u.id === me.id));
   const encryption = encryptionConfigured();
   const available = PROVIDER_LIST.filter((p) => p.configured() && encryption);
   const h = await headers();
@@ -99,7 +101,7 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
         </ul>
       </section>
 
-      <h2 className="section-title" style={{ marginTop: 22 }}>Cuentas del equipo</h2>
+      <h2 className="section-title" style={{ marginTop: 22 }}>{me.role === "admin" ? "Cuentas del equipo" : "Tu cuenta"}</h2>
       <div className="rules">
         {humans.map((u) => {
           const conn = connections.find((c) => c.user_id === u.id);

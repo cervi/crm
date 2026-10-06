@@ -2,13 +2,14 @@
 // Pruebas de interfaz con navegador (Playwright) contra la app en marcha con
 // los datos de ejemplo: los flujos que una persona hace a mano.
 //
-//   BASE_URL=... BASIC_AUTH_USER=... BASIC_AUTH_PASSWORD=... DATABASE_URL=... node scripts/ui-check.mjs
+//   BASE_URL=... DATABASE_URL=... node scripts/ui-check.mjs
 //
 // Requiere Playwright con Chromium (no es dependencia del proyecto):
 //   npm i -D playwright && npx playwright install chromium
 // Opcional: SCREENSHOTS=carpeta guarda capturas de las pantallas principales.
 import { createRequire } from "node:module";
 import postgres from "postgres";
+import { hashPassword } from "./password.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? "playwright");
@@ -30,8 +31,6 @@ const context = await browser.newContext({
   baseURL: BASE,
   locale: "es-ES",
   viewport: { width: 1360, height: 900 },
-  httpCredentials: process.env.BASIC_AUTH_USER
-    ? { username: process.env.BASIC_AUTH_USER, password: process.env.BASIC_AUTH_PASSWORD ?? "" } : undefined,
 });
 context.setDefaultTimeout(Number(process.env.UI_TIMEOUT ?? 8000));
 const page = await context.newPage();
@@ -40,6 +39,24 @@ page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
 const shot = async (name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true }); };
 const submit = (label) => page.getByRole("button", { name: label, exact: true }).click();
+
+// Acceso: el administrador de los datos de ejemplo entra con su contraseña.
+const ADMIN = { email: "ventas@example.com", password: "contraseña-de-pruebas-ui" };
+await sql`UPDATE users SET password_hash = ${hashPassword(ADMIN.password)}, must_change_password = false, failed_logins = 0, locked_until = NULL
+          WHERE lower(email) = ${ADMIN.email}`;
+
+await step("sin sesión se pide entrar; con la contraseña mal no entra; bien, vuelve a donde iba", async () => {
+  await page.goto("/pipelines?view=list");
+  await page.waitForURL(/\/login\?next=/);
+  await page.getByLabel("Email").fill(ADMIN.email);
+  await page.getByLabel("Contraseña").fill("no-es-esta-contraseña");
+  await submit("Entrar");
+  await page.getByRole("alert").filter({ hasText: "Email o contraseña incorrectos" }).waitFor();
+  await page.getByLabel("Contraseña").fill(ADMIN.password);
+  await submit("Entrar");
+  await page.waitForURL(/\/pipelines\/[0-9a-f-]{36}\?view=list|\/pipelines\?view=list/);
+  await page.getByRole("button", { name: /Tu cuenta \(Gestor de cuentas\)/ }).waitFor();
+});
 
 const orgName = `Prueba UI ${stamp}`;
 let orgId = "", dealId = "";
@@ -739,6 +756,43 @@ await step("capturas de las pantallas principales", async () => {
     await page.goto(path);
     await shot(name);
   }
+});
+
+await step("dar acceso a un comercial, que entra, cambia su contraseña temporal y no ve los ajustes de admin", async () => {
+  await page.goto("/settings/users");
+  const card = page.getByRole("article", { name: "Usuario Customer Success" });
+  await card.locator("summary").click();
+  await card.getByLabel("Contraseña inicial").fill("temporal-cs-12345");
+  await card.getByRole("button", { name: "Dar acceso" }).click();
+  await card.locator("p.meta", { hasText: "contraseña temporal" }).waitFor();
+  // Sale el administrador y entra el comercial.
+  await page.getByRole("button", { name: /Tu cuenta/ }).click();
+  await page.getByRole("menuitem", { name: "Cerrar sesión" }).click();
+  await page.waitForURL(/\/login/);
+  await page.getByLabel("Email").fill("cs@example.com");
+  await page.getByLabel("Contraseña").fill("temporal-cs-12345");
+  await submit("Entrar");
+  await page.waitForURL(/\/account\?change=1/);
+  await page.getByLabel("Contraseña actual").fill("temporal-cs-12345");
+  await page.getByLabel("Nueva contraseña").fill("la-mia-de-verdad-2026");
+  await page.getByLabel("Repítela").fill("la-mia-de-verdad-2026");
+  await submit("Cambiar contraseña");
+  await page.waitForURL((u) => new URL(u).pathname === "/");
+  await page.goto("/settings");
+  await page.getByText("Los demás ajustes los gestiona un administrador").waitFor();
+  expect(await page.getByRole("link", { name: /Importar desde Pipedrive/ }).count() === 0, "un comercial ve la importación");
+  await page.goto("/settings/automations");
+  await page.waitForURL(/denied=1/);
+  await shot("ajustes-comercial");
+  // Vuelve el administrador para el resto de pruebas.
+  await page.getByRole("button", { name: /Tu cuenta/ }).click();
+  await page.getByRole("menuitem", { name: "Cerrar sesión" }).click();
+  await page.waitForURL(/\/login/);
+  await page.getByLabel("Email").fill(ADMIN.email);
+  await page.getByLabel("Contraseña").fill(ADMIN.password);
+  await submit("Entrar");
+  await page.waitForURL((u) => new URL(u).pathname === "/");
+  await sql`UPDATE users SET password_hash = NULL, must_change_password = false WHERE lower(email) = 'cs@example.com'`;
 });
 
 await step("sin errores de JavaScript en el navegador", async () => {

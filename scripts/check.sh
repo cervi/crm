@@ -12,7 +12,6 @@ APP_PORT="${CHECK_APP_PORT:-3999}"
 DATA_DIR="$(mktemp -d)"
 export DATABASE_URL="postgres://crm:crm@127.0.0.1:${DB_PORT}/crm"
 export INBOUND_API_KEYS="clave-de-pruebas-0123456789"
-export BASIC_AUTH_USER="pruebas" BASIC_AUTH_PASSWORD="contraseña-de-pruebas"
 export TZ="${TZ:-Europe/Madrid}" NEXT_TELEMETRY_DISABLED=1
 # Las pruebas lanzan el motor de automatizaciones a mano, no con el temporizador.
 export AUTOMATIONS_INTERVAL_MINUTES=0 CRON_SECRET="secreto-de-pruebas-0123456789"
@@ -53,7 +52,7 @@ export APP_URL="http://127.0.0.1:${APP_PORT}"
 cp -R .next/static .next/standalone/.next/ && cp -R public .next/standalone/
 PORT="$APP_PORT" HOSTNAME=127.0.0.1 node .next/standalone/server.js > "$DATA_DIR.app.log" 2>&1 &
 pids+=($!)
-for _ in $(seq 1 100); do curl -s -o /dev/null "http://127.0.0.1:${APP_PORT}/settings/api" && break; sleep 0.2; done
+for _ in $(seq 1 100); do curl -s -o /dev/null "http://127.0.0.1:${APP_PORT}/login" && break; sleep 0.2; done
 BASE_URL="http://127.0.0.1:${APP_PORT}" node scripts/e2e.mjs || { echo "--- registro de la app:"; tail -40 "$DATA_DIR.app.log"; exit 1; }
 if grep -qiE "error|unhandled" "$DATA_DIR.app.log"; then
   echo "--- avisos en el registro de la app:"; grep -iE "error|unhandled" "$DATA_DIR.app.log" | head -20

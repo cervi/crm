@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { headers } from "next/headers";
+import { requireAdminPage } from "@/lib/auth";
 
 export const metadata = { title: "Conectar formularios" };
 
 export default async function ApiDocsPage() {
+  await requireAdminPage();
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host") ?? "localhost:3000"}`;
   const configured = (process.env.INBOUND_API_KEYS ?? "").split(",").some((k) => k.trim().length >= 16);

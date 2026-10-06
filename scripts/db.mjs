@@ -5,12 +5,15 @@
 //   node scripts/db.mjs seed      Carga los datos de ejemplo (solo desarrollo)
 //   node scripts/db.mjs test      Ejecuta las comprobaciones del modelo (db/tests)
 //   node scripts/db.mjs reset     Borra todo, migra, carga ejemplos y comprueba (solo desarrollo)
+//   node scripts/db.mjs user EMAIL CONTRASEÑA [admin|member|viewer] [NOMBRE]
+//                                 Crea un usuario con acceso o le cambia la contraseña
 //
 // Usa DATABASE_URL (por defecto, la base de datos local de desarrollo).
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import postgres from "postgres";
+import { hashPassword } from "./password.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const url = process.env.DATABASE_URL ?? "postgres://crm:crm@localhost:5432/crm";
@@ -69,10 +72,27 @@ async function reset() {
   await test();
 }
 
-const commands = { migrate, seed, test, reset };
+async function user() {
+  const [email, password, role = "admin", name] = process.argv.slice(3);
+  if (!email || !password) throw new Error("uso: node scripts/db.mjs user EMAIL CONTRASEÑA [admin|member|viewer] [NOMBRE]");
+  if (password.length < 10) throw new Error("la contraseña debe tener al menos 10 caracteres");
+  if (!["admin", "member", "viewer"].includes(role)) throw new Error("rol no válido (admin, member o viewer)");
+  const hash = hashPassword(password);
+  const [row] = await sql`
+    UPDATE users SET password_hash = ${hash}, role = ${role}, is_active = true, failed_logins = 0, locked_until = NULL,
+           name = coalesce(${name ?? null}, name), updated_at = now()
+    WHERE lower(email) = ${email.toLowerCase()} AND kind = 'human' RETURNING id`;
+  if (!row) {
+    await sql`INSERT INTO users (name, email, kind, role, password_hash)
+              VALUES (${name ?? email.split("@")[0]}, ${email.toLowerCase()}, 'human', ${role}, ${hash})`;
+  }
+  console.log(`✓ ${email} puede entrar (${role})`);
+}
+
+const commands = { migrate, seed, test, reset, user };
 const cmd = commands[process.argv[2]];
 if (!cmd) {
-  console.error("uso: node scripts/db.mjs {migrate|seed|test|reset}");
+  console.error("uso: node scripts/db.mjs {migrate|seed|test|reset|user}");
   process.exit(2);
 }
 try {
