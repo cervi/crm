@@ -1545,6 +1545,81 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   await sql`DELETE FROM organizations WHERE id = ${NEWORG}`;
 }
 
+// ------------------------------------------------------------- Fase 5: expansión y orquestación
+{
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const MOCK = process.env.MOCK_URL;
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  // Cliente con las licencias llenas → oportunidad de upsell (con la regla en «Sola», se crea el deal en Expansión).
+  const XORG = "60000000-0000-0000-0000-0000000000d1";
+  await sql`INSERT INTO organizations (id, name, domain) VALUES (${XORG}, 'Expande E2E', 'expande-e2e.example') ON CONFLICT DO NOTHING`;
+  const [xc] = await sql`INSERT INTO contracts (organization_id, name, start_date, renewal_date, annual_value, seats)
+                         VALUES (${XORG}, 'Expande — anual', current_date - 200, current_date + 165, 10000, 10) RETURNING id`;
+  await sql`INSERT INTO contract_items (contract_id, product_id, quantity, unit_price) VALUES (${xc.id}, '40000000-0000-0000-0000-000000000001', 10, 1000)`;
+  await sql`INSERT INTO account_usage (organization_id, metric, value) VALUES (${XORG}, 'licencias_en_uso', 10)`;
+  await sql`UPDATE automation_rules SET autonomy = 'auto' WHERE key = 'expansion_opportunity'`;
+  await run();
+  const [xd] = await sql`SELECT d.title, d.deal_type, d.origin, d.value::float8 AS value, p.kind, d.contract_id FROM deals d JOIN pipelines p ON p.id = d.pipeline_id
+                         WHERE d.organization_id = ${XORG} AND d.deal_type = 'upsell'`;
+  check(xd?.kind === "expansion" && xd.origin === "cs" && xd.value === 3000 && xd.contract_id === xc.id && xd.title.includes("licencias"),
+        "expansión: licencias llenas → oportunidad de upsell en el pipeline de expansión, con importe estimado", JSON.stringify(xd));
+  const [xa] = await sql`SELECT x.reason FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id WHERE r.key = 'expansion_opportunity' AND x.subject_id = ${XORG}`;
+  check(xa?.reason.includes("usa 10 de 10 licencias"), "expansión: la propuesta explica su porqué", xa?.reason);
+  await sql`UPDATE automation_rules SET autonomy = 'ask' WHERE key = 'expansion_opportunity'`;
+  const matrix = await (await get("/accounts/matrix")).text();
+  check(matrix.includes("Matriz de productos") && matrix.includes("Expande E2E") && matrix.includes("Segunda plataforma") && matrix.includes("matrix-gap"),
+        "matriz de productos: qué tiene cada cliente y qué le falta");
+  const rep = await (await get("/reports")).text();
+  check(rep.includes("Nuevo negocio, expansión y renovaciones") && rep.includes("Upsell"), "informes: nuevo negocio frente a expansión");
+
+  // Panel de agentes y consumo de IA.
+  const ag = await (await get("/agents")).text();
+  check(ag.includes("Jefe de agentes") && ag.includes("Captación") && ag.includes("Prospección (outbound)") && ag.includes("Ejecutivo de deal")
+        && ag.includes("Riesgo y forecast") && ag.includes("Onboarding (CS)") && ag.includes("Cuenta y expansión (CS)") && ag.includes("Detectar upselling y cross-selling")
+        && ag.includes("Límites"), "/agents: los seis agentes con sus reglas, trabajos y límites");
+  const [use] = await sql`SELECT count(*)::int AS n, count(DISTINCT agent)::int AS agents, sum(cost)::float8 AS cost FROM ai_usage`;
+  check(use.n > 0 && use.agents >= 2 && use.cost > 0, "consumo de IA: cada llamada queda registrada con su agente y su coste estimado", JSON.stringify(use));
+  if (MOCK && process.env.TOKEN_ENCRYPTION_KEY) {
+    const enc = (plain) => {
+      const key = createHash("sha256").update(process.env.TOKEN_ENCRYPTION_KEY ?? "").digest();
+      const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", key, iv);
+      const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
+      return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+    };
+    await sql`UPDATE ai_settings SET api_key = ${enc("clave-llm-de-pruebas")}, last_error = NULL, budget_alerts = '{}'`;
+    // Presupuesto casi gastado: una llamada urgente lo cruza → aviso; lo no urgente deja de usar la IA.
+    const [{ spent }] = await sql`SELECT coalesce(sum(cost), 0)::float8 AS spent FROM ai_usage WHERE at >= date_trunc('month', now())`;
+    await sql`UPDATE ai_settings SET monthly_budget = ${Math.round((spent + 0.000001) * 1e6) / 1e6 + 0.000001}`;
+    await get(`/reports?q=${encodeURIComponent("¿Cuánto ganamos por origen?")}`);
+    const [al] = await sql`SELECT count(*)::int AS n FROM notifications WHERE kind = 'ai_budget' AND title = 'Presupuesto de IA del mes agotado'`;
+    check(al.n >= 1, "presupuesto de IA: al agotarse, aviso a los administradores");
+    await sql`DELETE FROM deal_briefs`;
+    await run();
+    const [st] = await sql`SELECT last_error FROM ai_settings`;
+    const [{ ai }] = await sql`SELECT count(*)::int AS ai FROM deal_briefs`;
+    check(st.last_error?.includes("Presupuesto de IA del mes agotado") && ai === 0, "presupuesto de IA: agotado, lo no urgente sigue con reglas", JSON.stringify({ st, ai }));
+    await sql`UPDATE ai_settings SET monthly_budget = NULL, api_key = ${enc("clave-mala")}`;
+  }
+  // Un agente externo consulta las cuentas y propone una expansión (queda para aprobar).
+  const key = "crm_clave-agente-cuentas-e2e-0123456789";
+  await sql`INSERT INTO agent_keys (name, key_hash, prefix, can_write) VALUES ('Agente de cuentas', ${createHash("sha256").update(key).digest("hex")}, 'crm_clave', true)
+            ON CONFLICT (key_hash) DO NOTHING`;
+  const mcp = async (name, args) => {
+    const r = await fetch(`${BASE}/api/v1/mcp`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) });
+    const j = await r.json();
+    try { return JSON.parse(j.result.content[0].text); } catch { return j; }
+  };
+  const cuentas = await mcp("cuentas", {});
+  check(Array.isArray(cuentas) && cuentas.some((c) => c.cliente === "Expande E2E" && typeof c.salud === "number"), "MCP: cuentas con su salud", JSON.stringify(cuentas).slice(0, 200));
+  const pe = await mcp("proponer_expansion", { organization_id: XORG, tipo: "cross_sell", titulo: "Segunda plataforma", importe: 9000, motivo: "Lo pidieron en la QBR" });
+  check(pe.estado === "pendiente", "MCP: un agente propone una expansión y queda para aprobar", JSON.stringify(pe));
+  const reg = await mcp("registrar_uso", { dominio: "expande-e2e.example", metrica: "usuarios_activos", valor: 8 });
+  check(reg.organization_id === XORG, "MCP: registrar datos de uso", JSON.stringify(reg));
+  await sql`DELETE FROM deals WHERE organization_id = ${XORG}`;
+  await sql`DELETE FROM organizations WHERE id = ${XORG}`;
+}
+
 // ------------------------------------------------------------- Avisos, importar CSV, duplicados
 {
   // Abrir una propuesta avisa al responsable del deal.
