@@ -1,65 +1,55 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getBoard, listPipelines } from "@/lib/pipelines";
+import { listUsers } from "@/lib/users";
+import { isId } from "@/lib/validation";
+import { money } from "@/lib/format";
+import { Board } from "@/components/Board";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Deals" };
 
-const money = (value: string | null, currency = "EUR") =>
-  value === null
-    ? "—"
-    : new Intl.NumberFormat("es-ES", { style: "currency", currency, maximumFractionDigits: 0 })
-        .format(Number(value));
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// Tablero tipo Pipedrive: una columna por fase con sus deals abiertos.
-export default async function PipelineBoard({ params }: { params: Promise<{ id: string }> }) {
+export default async function PipelineBoard({ params, searchParams }: {
+  params: Promise<{ id: string }>; searchParams: Promise<{ owner?: string }>;
+}) {
   const { id } = await params;
-  if (!UUID.test(id)) notFound();
+  const { owner } = await searchParams;
+  if (!isId(id)) notFound();
 
-  const [pipelines, stages] = await Promise.all([listPipelines(), getBoard(id)]);
+  const ownerId = isId(owner) ? owner : null;
+  const [pipelines, stages, users] = await Promise.all([listPipelines(), getBoard(id, ownerId), listUsers()]);
   const current = pipelines.find((p) => p.id === id);
   if (!current) notFound();
 
+  const total = stages.reduce((sum, s) => sum + Number(s.total_value), 0);
+  const count = stages.reduce((n, s) => n + s.deals.length, 0);
+  const rotten = stages.reduce((n, s) => n + s.deals.filter((d) => d.is_rotten).length, 0);
+
   return (
-    <main>
-      <header className="topbar">
+    <main className="page-wide">
+      <div className="page-head">
         <h1>Deals</h1>
         <nav className="pipeline-tabs" aria-label="Pipelines">
           {pipelines.map((p) => (
-            <Link key={p.id} href={`/pipelines/${p.id}`} aria-current={p.id === id ? "page" : undefined}>
-              {p.name}
-            </Link>
+            <Link key={p.id} href={`/pipelines/${p.id}`} aria-current={p.id === id ? "page" : undefined}>{p.name}</Link>
           ))}
         </nav>
-      </header>
-
-      <section className="board">
-        {stages.map((stage) => (
-          <div key={stage.id} className="stage">
-            <div className="stage-head">
-              <h2>{stage.name}</h2>
-              <span>
-                {money(stage.total_value)} · {stage.deals.length} deal{stage.deals.length === 1 ? "" : "s"}
-              </span>
-            </div>
-            <ul>
-              {stage.deals.map((deal) => (
-                <li key={deal.id} className={deal.is_rotten ? "deal rotten" : "deal"}>
-                  <strong>{deal.title}</strong>
-                  <span className="muted">{deal.organization_name ?? "Sin empresa"}</span>
-                  <span>{money(deal.value, deal.currency)}</span>
-                  <span className="meta">
-                    {deal.days_in_stage} d en la fase
-                    {deal.is_rotten && " · parado"}
-                    {!deal.has_upcoming_session && " · sin sesión agendada"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </section>
+        <span className="spacer" />
+        <form className="toolbar" style={{ margin: 0 }}>
+          <select name="owner" defaultValue={ownerId ?? ""} aria-label="Responsable">
+            <option value="">Todos los responsables</option>
+            {users.filter((u) => u.kind === "human").map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <button className="btn secondary">Filtrar</button>
+        </form>
+        <Link href={`/deals/new?pipeline=${id}`} className="btn">Nuevo deal</Link>
+      </div>
+      <p className="meta" style={{ marginTop: -8 }}>
+        {count} deal{count === 1 ? "" : "s"} abiertos · {money(total)}
+        {rotten > 0 && <> · <span className="badge warn">{rotten} parado{rotten === 1 ? "" : "s"}</span></>}
+        {" "}· Arrastra un deal para cambiarlo de fase.
+      </p>
+      <Board key={`${id}:${ownerId ?? ""}`} stages={stages} />
     </main>
   );
 }

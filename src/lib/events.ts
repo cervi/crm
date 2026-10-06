@@ -58,6 +58,7 @@ const LABELS: Record<string, string> = {
   "lead.form_submitted": "Formulario recibido",
   "lead.converted": "Lead convertido en deal",
   "lead.archived": "Lead archivado",
+  "lead.updated": "Lead actualizado",
   "deal.created": "Deal creado",
   "deal.updated": "Deal actualizado",
   "deal.stage_changed": "Cambio de fase",

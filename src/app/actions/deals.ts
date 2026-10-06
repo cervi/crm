@@ -51,6 +51,11 @@ export async function moveDealAction(dealId: string, stageId: string): Promise<{
   return {};
 }
 
+/** Versión para formularios (barra de fases de la ficha). */
+export async function moveDealFormAction(dealId: string, stageId: string): Promise<void> {
+  await moveDealAction(dealId, stageId);
+}
+
 export async function winDealAction(dealId: string, _: ActionState): Promise<ActionState> {
   const res = await attempt(() => winDeal(UI_ACTOR, dealId));
   revalidatePath("/pipelines", "layout");
