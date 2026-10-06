@@ -901,6 +901,44 @@ await step("formulario web: crearlo en Ajustes y que un visitante lo envíe", as
   expect(l?.source === "formulario web" && l.score !== null, `lead: ${JSON.stringify(l)}`);
 });
 
+await step("productos en un deal (el importe se recalcula) y propuesta que el cliente abre y acepta", async () => {
+  await page.goto("/settings/products");
+  await page.getByLabel("Nombre").fill(`Licencia ${stamp}`);
+  await page.getByLabel("Precio (€)").fill("1200");
+  await page.getByLabel("Cobro").selectOption("yearly");
+  await submit("Añadir producto");
+  await page.getByRole("article", { name: `Producto Licencia ${stamp}` }).waitFor();
+  const [open] = await sql`SELECT d.id FROM deals d WHERE d.status = 'open' AND d.deleted_at IS NULL
+                           AND EXISTS (SELECT 1 FROM deal_participants dp WHERE dp.deal_id = d.id) ORDER BY d.created_at DESC LIMIT 1`;
+  await page.goto(`/deals/${open.id}`);
+  const box = page.getByRole("region", { name: "Productos y propuestas" });
+  await box.getByText("+ Añadir producto").click();
+  const [pr] = await sql`SELECT id FROM products WHERE name = ${`Licencia ${stamp}`}`;
+  await box.getByLabel("Producto").selectOption(pr.id);
+  await box.getByLabel("Cantidad").fill("3");
+  await box.getByLabel("Dto. %").fill("10");
+  await box.getByRole("button", { name: "Añadir", exact: true }).click();
+  await box.getByText("Total (es el importe del deal)").waitFor();
+  const [d] = await sql`SELECT value::float8 AS v FROM deals WHERE id = ${open.id}`;
+  expect(d.v === 3240, `importe del deal: ${d.v}`);
+  await box.getByRole("button", { name: /Crear propuesta/ }).click();
+  const link = box.locator(".proposal-item a").first();
+  await link.waitFor();
+  const href = await link.getAttribute("href");
+  const visitor = await browser.newContext({ locale: "es-ES" });
+  const v = await visitor.newPage();
+  v.on("pageerror", (e) => errors.push(e.message));
+  await v.goto(href);
+  await v.getByText("Total (impuestos no incluidos)").waitFor();
+  if (SHOTS) await v.screenshot({ path: `${SHOTS}/propuesta.png`, fullPage: true });
+  await v.getByLabel("Tu nombre").fill("Cliente UI");
+  await v.getByRole("button", { name: "Aceptar la propuesta" }).click();
+  await v.getByText("¡Propuesta aceptada!").waitFor();
+  await visitor.close();
+  await page.reload();
+  await page.getByRole("region", { name: "Productos y propuestas" }).getByText("Aceptada por Cliente UI").waitFor();
+});
+
 await step("dar acceso a un comercial, que entra, cambia su contraseña temporal y no ve los ajustes de admin", async () => {
   await page.goto("/settings/users");
   const card = page.getByRole("article", { name: "Usuario Customer Success" });

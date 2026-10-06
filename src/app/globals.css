@@ -948,3 +948,20 @@ a.btn.small svg { width: 14px; height: 14px; }
 .funnel-bar span { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); border-right: 2px solid var(--accent); }
 .funnel-bar b { position: relative; padding-left: 8px; font-size: 12.5px; line-height: 22px; }
 @media (max-width: 760px) { .funnel li { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Propuesta pública */
+.proposal { width: min(820px, 100%); background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-pop); padding: 32px 28px; display: grid; gap: 18px; }
+.proposal h1 { margin: 2px 0; font-size: 26px; }
+.proposal header p { margin: 0; }
+.proposal-text { white-space: pre-wrap; line-height: 1.6; }
+.proposal-lines { width: 100%; }
+.proposal-lines tfoot td { border-top: 2px solid var(--border-strong); padding-top: 10px; }
+.proposal-decision { display: grid; gap: 10px; padding: 16px; background: var(--panel-2); border-radius: var(--r); }
+.proposal-decision .form-actions { display: flex; gap: 8px; }
+
+/* Productos y propuestas en el deal */
+.deal-products table { width: 100%; font-size: 13px; }
+.deal-products td form { margin: 0; }
+.deal-products .total-row td { font-weight: 700; border-top: 1px solid var(--border-strong); }
+.proposal-item { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid var(--border); }
+.proposal-item:first-child { border-top: 0; }

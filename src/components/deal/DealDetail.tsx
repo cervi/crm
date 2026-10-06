@@ -39,6 +39,9 @@ import { requireUser } from "@/lib/auth";
 import { cancelScheduledEmailAction } from "@/app/actions/mailbox";
 import { listEnrollments, listSequences } from "@/lib/sequences";
 import { enrollAction, stopEnrollmentAction } from "@/app/actions/sequences";
+import { BILLING_LABELS, dealLines, listProducts } from "@/lib/products";
+import { listProposals, proposalUrl } from "@/lib/proposals";
+import { addLineAction, createProposalAction, markSentAction, removeLineAction, updateProposalAction } from "@/app/actions/products";
 
 type PanelNav = { closeHref: string; fullHref: string; prevHref: string | null; nextHref: string | null };
 
@@ -74,6 +77,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     sql<{ email_tracking: boolean }[]>`SELECT email_tracking FROM app_settings LIMIT 1`,
     listEnrollments({ dealId }), listSequences(),
   ]);
+  const [lines, catalog, proposals_] = await Promise.all([dealLines(dealId), listProducts(), listProposals(dealId)]);
+  const linesTotal = lines.reduce((n, l) => n + l.subtotal, 0);
   const sequences = allSequences.filter((q) => q.is_active && q.steps > 0);
   const composerTemplates = templates.map((t) => ({
     id: t.id, name: t.name, subject: renderTemplate(t.subject, vars), body: renderTemplate(t.body, vars),
@@ -399,6 +404,81 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               )
             }
           />
+
+          {(lines.length > 0 || catalog.length > 0) && (
+            <section className="deal-products" aria-label="Productos y propuestas">
+              <h2 className="section-title">Productos <span className="muted">{lines.length}</span></h2>
+              {lines.length > 0 && (
+                <div className="table-wrap">
+                  <table>
+                    <thead><tr><th>Producto</th><th className="num">Cant.</th><th className="num">Precio</th><th className="num">Dto.</th><th className="num">Importe</th><th /></tr></thead>
+                    <tbody>
+                      {lines.map((l) => (
+                        <tr key={l.id}>
+                          <td>{l.name}<div className="meta">{BILLING_LABELS[l.billing]}</div></td>
+                          <td className="num">{Number(l.quantity).toLocaleString("es-ES")}</td>
+                          <td className="num">{money(l.unit_price, deal.currency)}</td>
+                          <td className="num">{Number(l.discount_pct) ? `${Number(l.discount_pct)} %` : "—"}</td>
+                          <td className="num">{money(l.subtotal, deal.currency)}</td>
+                          <td>{isOpen && <ActionForm action={removeLineAction.bind(null, dealId, l.id, back)} submitLabel="Quitar" pendingLabel="…" secondary className="form inline doc-remove" />}</td>
+                        </tr>
+                      ))}
+                      <tr className="total-row"><td colSpan={4}>Total (es el importe del deal)</td><td className="num">{money(linesTotal, deal.currency)}</td><td /></tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {isOpen && catalog.length > 0 && (
+                <details>
+                  <summary className="meta">+ Añadir producto</summary>
+                  <ActionForm action={addLineAction.bind(null, dealId, back)} submitLabel="Añadir" resetOnSuccess secondary className="form inline">
+                    <label className="field"><span className="label">Producto</span>
+                      <select name="product_id" required defaultValue="">
+                        <option value="" disabled>Elige…</option>
+                        {catalog.map((p) => <option key={p.id} value={p.id}>{p.name} · {money(p.unit_price)}</option>)}
+                      </select></label>
+                    <label className="field"><span className="label">Cantidad</span><input name="quantity" type="number" min={0.01} step="any" defaultValue={1} required style={{ width: 90 }} /></label>
+                    <label className="field"><span className="label">Precio (vacío: el del catálogo)</span><input name="unit_price" type="number" min={0} step="0.01" style={{ width: 130 }} /></label>
+                    <label className="field"><span className="label">Dto. %</span><input name="discount_pct" type="number" min={0} max={100} step="any" style={{ width: 80 }} /></label>
+                  </ActionForm>
+                </details>
+              )}
+
+              <h2 className="section-title" style={{ marginTop: 14 }}>Propuestas <span className="muted">{proposals_.length}</span></h2>
+              {proposals_.map((p) => (
+                <div key={p.id} className="proposal-item">
+                  <div className="feed-title">
+                    <strong><a href={proposalUrl(p)} target="_blank" rel="noreferrer">{p.title}</a></strong>
+                    <span className="meta">{money(p.total, p.currency)} · {dateTime(p.created_at)}{p.ai ? " · redactada por la IA" : ""}</span>
+                  </div>
+                  <div className="email-badges" style={{ marginLeft: 0, justifyContent: "flex-start" }}>
+                    <span className={`badge ${p.status === "accepted" ? "won" : p.status === "declined" ? "lost" : ""}`}>
+                      {{ draft: "Borrador", sent: "Enviada", accepted: `Aceptada por ${p.decided_name}`, declined: "Rechazada" }[p.status]}
+                    </span>
+                    {p.view_count > 0 ? <span className="badge won" title={`Primera vez: ${dateTime(p.first_viewed_at)} · última: ${dateTime(p.last_viewed_at)}`}>Abierta{p.view_count > 1 ? ` ×${p.view_count}` : ""}</span>
+                      : <span className="badge">Sin abrir</span>}
+                  </div>
+                  <p className="meta" style={{ margin: 0 }}>Enlace para el cliente: <code>{proposalUrl(p)}</code></p>
+                  {(p.status === "draft" || p.status === "sent") && (
+                    <details>
+                      <summary className="meta">Revisar el texto</summary>
+                      <ActionForm action={updateProposalAction.bind(null, p.id, back)} submitLabel="Guardar" secondary>
+                        <label className="field"><span className="label">Título</span><input name="title" required defaultValue={p.title} /></label>
+                        <label className="field"><span className="label">Texto</span><textarea name="intro" rows={8} defaultValue={p.intro} /></label>
+                        <label className="field"><span className="label">Válida hasta</span><input name="valid_until" type="date" defaultValue={p.valid_until ?? ""} /></label>
+                      </ActionForm>
+                      {p.status === "draft" && <ActionForm action={markSentAction.bind(null, p.id, back)} submitLabel="Marcar como enviada" secondary className="form inline" />}
+                    </details>
+                  )}
+                </div>
+              ))}
+              {isOpen && lines.length > 0 && (
+                <ActionForm action={createProposalAction.bind(null, dealId, back)} submitLabel={ai && aiReady(ai) ? "Crear propuesta con IA" : "Crear propuesta"}
+                            pendingLabel="Preparando…" secondary className="form inline" />
+              )}
+              {isOpen && lines.length === 0 && <p className="meta">Añade productos para preparar una propuesta.</p>}
+            </section>
+          )}
 
           {emails.length > 0 && (
             <section className="deal-emails" aria-label="Correos">

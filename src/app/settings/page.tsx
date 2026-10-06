@@ -13,6 +13,7 @@ const SECTIONS: { href: string; title: string; text: string; icon: IconName; eve
   { href: "/settings/ai", icon: "spark", title: "Modelo de IA", text: "Proveedor, modelo, clave y prompts de los resúmenes (Claude, OpenAI, Grok u otro)." },
   { href: "/settings/automations", icon: "spark", title: "Automatizaciones e IA", text: "Qué puede hacer la IA sola, qué te pregunta antes y qué reglas sigue." },
   { href: "/settings/pipelines", icon: "deals", title: "Pipelines y fases", text: "Crea pipelines, ordena sus fases y define cuándo un deal se considera parado y qué sesión toca en cada fase." },
+  { href: "/settings/products", icon: "deals", title: "Productos", text: "Catálogo de productos para los deals y las propuestas." },
   { href: "/settings/activity-types", icon: "activities", title: "Tipos de actividad", text: "Llamadas, demos, tareas… y los vuestros. Cuáles son sesiones con el cliente." },
   { href: "/settings/fields", icon: "settings", title: "Campos personalizados", text: "Añade tus propios campos a empresas, contactos, leads y deals." },
   { href: "/settings/lost-reasons", icon: "x", title: "Motivos de pérdida", text: "Motivos al perder un deal y en cuántos días volver a contactar." },

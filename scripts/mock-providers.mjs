@@ -186,6 +186,7 @@ createServer(async (req, res) => {
         meeting_recap: "Aquí tienes:\n" + JSON.stringify({ resumen: "(IA) Repasamos la propuesta y los plazos.", proximos_pasos: ["(IA) Enviar la propuesta revisada", "(IA) Reunión con dirección"] }),
         daily_digest: "(IA) Hoy, primero responde a Ana y luego revisa la bandeja.",
         handoff: "(IA) Traspaso: cliente con buena relación; vigilar plazos.",
+        proposal: JSON.stringify({ titulo: "(IA) Propuesta de licencias", texto: "Hola Ana,\n\n(IA) Os proponemos empezar con el plan anual.\n\nUn saludo" }),
         report_question: JSON.stringify({ titulo: "(IA) Importe ganado por origen", source: "deals", metric: "sum_value", group_by: "source",
                                           date_field: "won_at", period: "all", chart: "bar", filters: { status: "won" } }),
       };

@@ -41,6 +41,8 @@ const TRIGGERS: { group: string; options: Option[] }[] = [
     { value: "email_opened", label: "Abre un correo" },
     { value: "email_received", label: "Responde un correo" },
     { value: "booked", label: "Reserva una reunión con tu enlace" },
+    { value: "proposal_viewed", label: "Abre una propuesta" },
+    { value: "proposal_accepted", label: "Acepta una propuesta" },
   ] },
 ];
 

@@ -20,13 +20,14 @@ export const AI_PROVIDERS: { value: AiProvider; label: string; baseUrl: string; 
   { value: "compatible", label: "Otro compatible con la API de OpenAI", baseUrl: "", kind: "openai", modelHint: "nombre del modelo" },
 ];
 
-export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff" | "lead_chat" | "report_question";
+export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff" | "lead_chat" | "report_question" | "proposal";
 
 export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "deal_brief", label: "Resumen del deal", help: "Arriba de cada ficha: cómo va, riesgos y siguiente paso." },
   { value: "meeting_recap", label: "Resumen tras una reunión", help: "El correo de seguimiento al contacto después de una demo o llamada." },
   { value: "daily_digest", label: "Parte del día", help: "El enfoque del día que encabeza tu parte diario." },
   { value: "handoff", label: "Traspaso a Customer Success", help: "El resumen de un deal ganado para el equipo de CS." },
+  { value: "proposal", label: "Propuestas", help: "El texto de las propuestas que se envían al cliente con los productos del deal." },
   { value: "report_question", label: "Preguntas sobre los datos", help: "Convierte una pregunta («¿cuánto ganamos por origen este trimestre?») en un informe." },
   { value: "lead_chat", label: "Chat de la web", help: "El asistente de los formularios web: responde, cualifica al visitante y recoge sus datos." },
 ];
@@ -42,6 +43,9 @@ Con las notas o la transcripción de la reunión, responde SOLO con un JSON: {"r
 Con el parte del día, escribe un párrafo breve (máximo 5 frases) con las 3 prioridades del día y por qué, empezando por lo más urgente. Sin saludos ni despedidas.`,
   handoff: `Eres el asistente comercial del CRM. ${COMMON}
 Redacta el resumen de traspaso a Customer Success de un deal ganado: cliente y contexto, qué compra, personas clave, cómo fue la venta, compromisos y riesgos a vigilar, y primeros pasos recomendados. Texto plano con apartados cortos.`,
+  proposal: `Eres el asistente comercial del CRM. ${COMMON}
+Redacta el texto de una propuesta comercial para el cliente con los datos del deal: saludo, qué necesita (según las notas), qué le proponemos (los productos, sin repetir precios: van en una tabla aparte), por qué encaja y los siguientes pasos. Sin datos internos ni del pipeline. Máximo 250 palabras, firmado por el responsable.
+Responde SOLO con un JSON: {"titulo": "título de la propuesta", "texto": "el texto, con saltos de línea"}`,
   report_question: `Traduces preguntas sobre los datos del CRM a un informe del catálogo que se te da. No inventes métricas, agrupaciones ni filtros: usa solo las claves del catálogo.
 Responde SOLO con un JSON: {"titulo": "título corto", "source": "deals | leads | activities", "metric": "clave", "group_by": "clave o none", "date_field": "clave", "period": "clave", "chart": "number | bar | line | table", "filters": {"pipeline_id"?: "", "owner_id"?: "", "status"?: "", "source"?: ""}}`,
   lead_chat: `Eres el asistente de la web de la empresa y hablas con un visitante. ${COMMON}

@@ -1046,6 +1046,25 @@ if (KEY) {
   check(prev.result?.kind === "series" && prev.result.points.length > 0, "dashboards: nueva métrica «importe ponderado»", JSON.stringify(prev).slice(0, 120));
 }
 
+// ------------------------------------------------------------- Propuestas (página pública)
+{
+  const tok = "propuesta-e2e-0123456789abc";
+  await sql`INSERT INTO proposals (deal_id, token, title, intro, lines, total, valid_until)
+            VALUES (${DEAL_OPEN}, ${tok}, 'Propuesta e2e', 'Hola Ana, aquí va.',
+                    ${sql.json([{ name: "Licencia", billing: "Anual", quantity: 2, unit_price: 1000, discount_pct: 10, subtotal: 1800 }])}, 1800,
+                    (now() + interval '10 days')::date)`;
+  const pp = await fetch(`${BASE}/p/${tok}`);
+  const ph = (await pp.text()).replace(/<!-- -->/g, "");
+  const [pv] = await sql`SELECT view_count, status FROM proposals WHERE token = ${tok}`;
+  const [pe] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'proposal.viewed' AND entity_id = ${DEAL_OPEN}`;
+  check(pp.status === 200 && ph.includes("Propuesta e2e") && ph.includes("Aceptar la propuesta") && ph.includes("1.800")
+        && pv.view_count === 1 && pv.status === "sent" && pe.n >= 1,
+        "propuesta: el cliente la abre sin sesión, se cuenta y avisa en el deal", JSON.stringify({ st: pp.status, pv, pe }));
+  check((await fetch(`${BASE}/p/no-existe-0123456789abcdef`)).status === 404, "propuesta: un enlace inventado → 404");
+  const prod = await (await get("/settings/products")).text();
+  check(prod.includes("Productos") && prod.includes("Nuevo producto"), "/settings/products");
+}
+
 // ------------------------------------------------------------- Reservas y semana
 {
   check((await fetch(`${BASE}/book/no-existe`)).status === 404, "reservas: una página que no existe → 404 (sin pedir sesión)");

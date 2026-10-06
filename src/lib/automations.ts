@@ -96,6 +96,8 @@ export type CustomTrigger = (
   | { kind: "email_opened" }
   | { kind: "email_received" }
   | { kind: "booked" }
+  | { kind: "proposal_viewed" }
+  | { kind: "proposal_accepted" }
 ) & { filter?: RuleFilter };
 export type CustomAction =
   | { kind: "create_activity"; activity_type: string; subject: string; due_in_days: number; note: string | null }
@@ -774,6 +776,7 @@ const OUTCOME_TEXT: Record<string, string> = { held: "realizada", no_show: "no s
 const CUSTOM_EVENTS: Partial<Record<CustomTrigger["kind"], string>> = {
   activity_done: "activity.completed", deal_won: "deal.won", deal_lost: "deal.lost",
   email_opened: "email.opened", email_received: "email.received", booked: "deal.booked",
+  proposal_viewed: "proposal.viewed", proposal_accepted: "proposal.accepted",
 };
 
 function customEventHandler(kind: CustomTrigger["kind"]): EventHandler | undefined {
@@ -800,6 +803,8 @@ function customEventHandler(kind: CustomTrigger["kind"]): EventHandler | undefin
         deal_won: "El deal se ha ganado.", deal_lost: `El deal se ha perdido${e.payload.reason ? ` («${e.payload.reason}»)` : ""}.`,
         email_opened: "El contacto ha abierto tu correo.", email_received: `El contacto ha respondido${e.payload.subject ? `: «${e.payload.subject}»` : ""}.`,
         booked: "El contacto ha reservado una reunión desde tu enlace.",
+        proposal_viewed: "El cliente ha abierto la propuesta.",
+        proposal_accepted: `El cliente ha aceptado la propuesta${e.payload.name ? ` (${e.payload.name})` : ""}.`,
       };
       return customCandidate(rule, ctx, { dealId: e.entity_id, personId: (e.payload.person_id as string | null) ?? null, onceKey: `ev:${e.id}` },
         why[t.kind] ?? "Ha ocurrido algo en el deal.");
@@ -1354,6 +1359,8 @@ export async function describeCustomRule(trigger: CustomTrigger, action: CustomA
     case "email_opened": when = "Cuando el contacto abre un correo"; break;
     case "email_received": when = "Cuando el contacto responde un correo"; break;
     case "booked": when = "Cuando el contacto reserva una reunión desde tu enlace"; break;
+    case "proposal_viewed": when = "Cuando el cliente abre una propuesta"; break;
+    case "proposal_accepted": when = "Cuando el cliente acepta una propuesta"; break;
   }
   const f = trigger.filter ?? {};
   const conds: string[] = [];
@@ -1456,6 +1463,7 @@ async function parseCustomRule(data: Record<string, unknown>) {
       break;
     }
     case "deal_won": case "deal_lost": case "email_opened": case "email_received": case "booked":
+    case "proposal_viewed": case "proposal_accepted":
       trigger = withFilter({ kind: s("trigger_kind") as "deal_won" });
       break;
     default: throw new UserError("Elige cuándo se dispara la regla.");
