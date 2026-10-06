@@ -59,7 +59,7 @@ function StatTile({ r, higherIsBetter }: { r: Extract<Result, { kind: "single" }
               {change.dir > 0 ? "▲" : change.dir < 0 ? "▼" : "="} {change.dir === 0 ? "sin cambios" : change.text}
             </span>
           )}
-          <span className="meta">{change ? " " : ""}frente a {r.previousLabel}: {formatValue(r.previous, r.format)}</span>
+          <span className="meta">{change ? " " : ""}{r.previousLabel}: {formatValue(r.previous, r.format)}</span>
         </div>
       )}
     </div>

@@ -193,8 +193,8 @@ function previousRange(period: string, r: Range, now = new Date()): Range | null
 }
 
 const PREVIOUS_LABEL: Record<string, string> = {
-  "7d": "los 7 días anteriores", "30d": "los 30 días anteriores", "90d": "los 90 días anteriores", "12m": "los 12 meses anteriores",
-  this_month: "el mismo punto del mes pasado", last_month: "el mes anterior", this_quarter: "el mismo punto del trimestre anterior", this_year: "el mismo punto del año pasado",
+  "7d": "frente a los 7 días anteriores", "30d": "frente a los 30 días anteriores", "90d": "frente a los 90 días anteriores", "12m": "frente a los 12 meses anteriores",
+  this_month: "frente al mismo punto del mes pasado", last_month: "frente al mes anterior", this_quarter: "frente al mismo punto del trimestre anterior", this_year: "frente al mismo punto del año pasado",
 };
 
 type Q = postgres.PendingQuery<postgres.Row[]>;
