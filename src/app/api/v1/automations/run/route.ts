@@ -1,6 +1,6 @@
 import { timingSafeEqual, createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { runAutomations } from "@/lib/automations";
+import { runCycle } from "@/lib/cycle";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ async function handle(req: Request) {
   if (!sent || !timingSafeEqual(digest(sent), digest(secret))) {
     return NextResponse.json({ error: "No autorizado." }, { status: 401 });
   }
-  return NextResponse.json(await runAutomations());
+  return NextResponse.json(await runCycle());
 }
 
 export const GET = handle;

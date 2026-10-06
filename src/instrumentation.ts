@@ -9,9 +9,9 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const minutes = Number(process.env.AUTOMATIONS_INTERVAL_MINUTES ?? 15);
   if (!(minutes > 0)) return;
-  const { runAutomations } = await import("./lib/automations");
+  const { runCycle } = await import("./lib/cycle");
   const tick = () => {
-    runAutomations().catch((err) => console.error("[automatizaciones]", err));
+    runCycle().catch((err) => console.error("[automatizaciones]", err));
   };
   setTimeout(tick, 30_000).unref();
   setInterval(tick, minutes * 60_000).unref();

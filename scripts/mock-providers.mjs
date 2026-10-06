@@ -10,6 +10,7 @@
 // POST /__revoke (se revoca la sesión: hay que reconectar), POST /__reset.
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
+import { pipedriveData, PD_TOKEN } from "./mock-pipedrive-data.mjs";
 
 const PORT = Number(process.env.MOCK_PORT ?? 3998);
 const ME = { mail: "jesus@aikit.example", userPrincipalName: "jesus@aikit.example", displayName: "Jesús (simulado)" };
@@ -40,7 +41,7 @@ function reset() {
         from: { emailAddress: { address: "news@otro.example" } }, toRecipients: [{ emailAddress: { address: ME.mail } }],
         receivedDateTime: new Date(Date.now() - 2 * D).toISOString(), sentDateTime: new Date(Date.now() - 2 * D).toISOString() },
     ],
-    gsent: [], gevents: [], llm: [],
+    gsent: [], gevents: [], llm: [], pd: pipedriveData(), pdCalls: 0,
     gmessages: [
       gmsg("g1", 10, { From: "Ana García <ana@paco.example>", To: GME.email, Subject: "Re: propuesta" }, "Lo vemos con dirección."),
       gmsg("g2", 11, { From: `Jesús <${GME.email}>`, To: "\"Ana García\" <ana@paco.example>", Subject: "Propuesta" }, "Te adjunto la propuesta.", ["SENT"]),
@@ -115,6 +116,54 @@ createServer(async (req, res) => {
   try {
     // --- Utilidades de prueba
     if (p === "/__state") return send(res, 200, { sent: state.sent, events: state.events, gsent: state.gsent, gevents: state.gevents, llm: state.llm });
+
+    // --- Pipedrive (API v1 y v2)
+    if (p === "/__pd_touch") {
+      const d = state.pd.deals.find((x) => x.id === 401);
+      d.title = "Acme — licencias (ampliado)"; d.value = 18000; d.update_time = new Date().toISOString();
+      return send(res, 200, { ok: true });
+    }
+    if ((p.startsWith("/v1/") && p !== "/v1/userinfo") || p.startsWith("/api/v2/")) {
+      if (url.searchParams.get("api_token") !== PD_TOKEN) return send(res, 401, { success: false, error: "unauthorized access" });
+      state.pdCalls++;
+      const D = state.pd;
+      const since = url.searchParams.get("updated_since");
+      const fresh = (list) => (since ? list.filter((x) => !x.update_time || x.update_time >= since) : list);
+      // v2: páginas de 2 con cursor (para probar la paginación)
+      const v2 = (list) => {
+        const start = Number(url.searchParams.get("cursor") ?? 0);
+        const data = list.slice(start, start + 2);
+        return send(res, 200, { success: true, data, additional_data: { next_cursor: start + 2 < list.length ? String(start + 2) : null } });
+      };
+      // v1: páginas de 2 con start / next_start
+      const v1 = (list) => {
+        const start = Number(url.searchParams.get("start") ?? 0);
+        const data = list.slice(start, start + 2);
+        return send(res, 200, { success: true, data, additional_data: { pagination: { start, limit: 2, more_items_in_collection: start + 2 < list.length, next_start: start + 2 } } });
+      };
+      if (p === "/v1/users/me") return send(res, 200, { success: true, data: D.me });
+      if (p === "/v1/users") return send(res, 200, { success: true, data: D.users });
+      if (p === "/v1/activityTypes") return send(res, 200, { success: true, data: D.activityTypes });
+      if (p === "/api/v2/pipelines") return v2(D.pipelines);
+      if (p === "/api/v2/stages") return v2(D.stages);
+      if (p === "/api/v2/dealFields") return v2(D.dealFields);
+      if (p === "/api/v2/personFields") return v2(D.personFields);
+      if (p === "/api/v2/organizationFields") return v2(D.organizationFields);
+      if (p === "/api/v2/organizations") return v2(fresh(D.organizations));
+      if (p === "/api/v2/persons") return v2(fresh(D.persons));
+      if (p === "/api/v2/deals") return v2(fresh(D.deals));
+      if (p === "/api/v2/activities") return v2(fresh(D.activities));
+      if (p === "/v1/leads") return v1(D.leads);
+      if (p === "/v1/notes") return v1(D.notes);
+      if (p === "/v1/files") return v1(D.files);
+      if (p === "/v1/deals/summary") {
+        const st = url.searchParams.get("status");
+        return send(res, 200, { success: true, data: { total_count: D.deals.filter((d) => d.status === st && !d.is_deleted).length } });
+      }
+      const fl = /^\/v1\/deals\/(\d+)\/flow$/.exec(p);
+      if (fl) return v1(D.flow[fl[1]] ?? []);
+      return send(res, 404, { success: false, error: `No existe ${p}` });
+    }
 
     // --- Modelos de IA (Anthropic y compatible con OpenAI)
     if (p === "/llm/anthropic/v1/messages" || p === "/llm/openai/chat/completions") {

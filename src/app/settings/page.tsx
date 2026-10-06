@@ -11,6 +11,7 @@ const SECTIONS: { href: string; title: string; text: string; icon: IconName }[] 
   { href: "/settings/activity-types", icon: "activities", title: "Tipos de actividad", text: "Llamadas, demos, tareas… y los vuestros. Cuáles son sesiones con el cliente." },
   { href: "/settings/fields", icon: "settings", title: "Campos personalizados", text: "Añade tus propios campos a empresas, contactos, leads y deals." },
   { href: "/settings/lost-reasons", icon: "x", title: "Motivos de pérdida", text: "Motivos al perder un deal y en cuántos días volver a contactar." },
+  { href: "/settings/import", icon: "download", title: "Importar desde Pipedrive", text: "Trae todo el histórico de Pipedrive; repetible y con sincronización horaria mientras convivís." },
   { href: "/settings/export", icon: "download", title: "Exportar datos", text: "Descarga en CSV deals, leads, empresas, contactos, actividades y el registro de la IA." },
   { href: "/settings/api", icon: "plug", title: "Conectar formularios", text: "Cómo enviar leads desde la web, webinars, Zapier o Make." },
 ];

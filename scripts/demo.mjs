@@ -75,6 +75,7 @@ const env = {
   MS_CLIENT_ID: "demo", MS_CLIENT_SECRET: "secreto-ms-demo", MS_TENANT_ID: "demo",
   MS_LOGIN_URL: MOCK, MS_GRAPH_URL: `${MOCK}/v1.0`,
   GOOGLE_CLIENT_ID: "demo", GOOGLE_CLIENT_SECRET: "secreto-google-demo",
+  PIPEDRIVE_API_URL: MOCK, // Pipedrive simulado: token «token-pipedrive-de-pruebas-0123456789»
   GOOGLE_AUTH_URL: `${MOCK}/o/oauth2/v2/auth`, GOOGLE_TOKEN_URL: `${MOCK}/token`, GOOGLE_API_BASE: MOCK,
   NEXT_TELEMETRY_DISABLED: "1",
 };
@@ -152,6 +153,7 @@ try {
    · Un deal → «Correo» → «Insertar mis huecos», y «Documentos» → buscar «paco».
    · Bandeja de la IA → «Revisar ahora».
    · Ajustes → Modelo de IA: pon tu clave real para ver resúmenes de verdad.
+   · Ajustes → Importar desde Pipedrive (simulado): token «token-pipedrive-de-pruebas-0123456789».
 
   Para parar: Ctrl+C. Los datos se guardan en .demo-data (npm run demo -- --reset para empezar de cero).
 `);

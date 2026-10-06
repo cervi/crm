@@ -709,6 +709,110 @@ if (process.env.MOCK_URL) {
   check(conf.includes("Tus reglas") && conf.includes("Tras el kick-off") && conf.includes("Nueva regla"), "/settings/automations muestra las reglas personalizadas");
 }
 
+// ------------------------------------------------------------- Importación desde Pipedrive (simulado)
+if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
+  const MOCK = process.env.MOCK_URL;
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  const enc = (plain) => {
+    const key = createHash("sha256").update(process.env.TOKEN_ENCRYPTION_KEY ?? "").digest();
+    const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", key, iv);
+    const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
+    return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+  };
+  const finish = async (id) => {
+    for (let i = 0; i < 10; i++) {
+      const [j] = await sql`SELECT status FROM import_jobs WHERE id = ${id}`;
+      if (j.status !== "running") return j.status;
+      await run();
+    }
+    return "timeout";
+  };
+  await sql`UPDATE app_settings SET pipedrive_token = ${enc("token-pipedrive-de-pruebas-0123456789")}, pipedrive_company = 'Aikit (simulado)'`;
+  await sql`UPDATE automation_settings SET paused = false`;
+  const [job] = await sql`INSERT INTO import_jobs (step, options) VALUES ('users', ${sql.json({ flow: true, files: true, since: null })}) RETURNING id`;
+  const st = await finish(job.id);
+  const [done] = await sql`SELECT * FROM import_jobs WHERE id = ${job.id}`;
+  check(st === "done", "importación de Pipedrive: termina", `${st} ${done.error ?? ""} ${done.step}`);
+
+  const [pl] = await sql`SELECT id FROM pipelines WHERE name = 'Ventas PD'`;
+  const stages = pl ? await sql`SELECT name, position, rotten_after_days, win_probability FROM stages WHERE pipeline_id = ${pl.id} ORDER BY position` : [];
+  check(stages.map((x) => x.name).join(",") === "Cualificado,Demo hecha,Propuesta" && stages[0].rotten_after_days === 7 && stages[1].rotten_after_days === null && stages[2].win_probability === 70,
+        "Pipedrive: pipeline y fases en orden, con días para «parado» y probabilidad", JSON.stringify(stages));
+  const [{ n: pdUsers }] = await sql`SELECT count(*)::int AS n FROM users WHERE pipedrive_id IS NOT NULL`;
+  check(pdUsers === 2, "Pipedrive: usuarios", String(pdUsers));
+  const defs = await sql`SELECT entity_type, label, field_type, options FROM custom_field_definitions WHERE pipedrive_key IS NOT NULL ORDER BY label`;
+  check(defs.some((d) => d.label === "Tamaño" && d.field_type === "single_option" && d.options.length === 2)
+        && defs.some((d) => d.label === "Presupuesto aprobado" && d.field_type === "money")
+        && defs.some((d) => d.label === "Intereses" && d.entity_type === "organization" && d.field_type === "multi_option")
+        && !defs.some((d) => d.label === "Personas") && done.warnings.some((w) => w.includes("Personas")),
+        "Pipedrive: campos personalizados (los no compatibles, con aviso)", JSON.stringify(defs.map((d) => d.label)));
+
+  const [acme] = await sql`SELECT id, city, custom FROM organizations WHERE pipedrive_id = 201`;
+  const intereses = Object.values(acme?.custom ?? {}).find(Array.isArray);
+  check(acme?.city === "Madrid" && intereses?.join() === "pd_7,pd_8", "Pipedrive: empresas con dirección y campos", JSON.stringify(acme));
+  const [pedro] = await sql`SELECT p.id, p.full_name, (SELECT email FROM person_emails WHERE person_id = p.id) AS email,
+                                   (SELECT phone FROM person_phones WHERE person_id = p.id) AS phone,
+                                   (SELECT o.name FROM person_organizations po JOIN organizations o ON o.id = po.organization_id WHERE po.person_id = p.id AND po.status = 'current') AS org
+                            FROM persons p WHERE p.pipedrive_id = 301`;
+  check(pedro?.full_name === "Pedro Pérez" && pedro.email === "pedro@acme-pd.example" && pedro.phone === "+34 600 000 001" && pedro.org === "Acme PD",
+        "Pipedrive: contactos con email, teléfono y empresa", JSON.stringify(pedro));
+  const [ana2] = await sql`SELECT (SELECT count(*)::int FROM person_emails WHERE person_id = p.id) AS emails FROM persons p WHERE p.pipedrive_id = 303`;
+  check(ana2?.emails === 0 && done.warnings.some((w) => w.includes("ana@paco.example")), "Pipedrive: un email que ya existe no se duplica (con aviso)");
+
+  const deals = await sql`SELECT d.pipedrive_id::int AS pd, d.title, d.status, d.value::float AS value, s.name AS stage, d.won_at, lr.label AS reason, d.custom,
+                                 (SELECT p.full_name FROM deal_participants dp JOIN persons p ON p.id = dp.person_id WHERE dp.deal_id = d.id AND dp.is_primary) AS contact
+                          FROM deals d JOIN stages s ON s.id = d.stage_id LEFT JOIN lost_reasons lr ON lr.id = d.lost_reason_id
+                          WHERE d.pipedrive_id IS NOT NULL ORDER BY d.pipedrive_id`;
+  const d401 = deals.find((d) => d.pd === 401), d402 = deals.find((d) => d.pd === 402), d403 = deals.find((d) => d.pd === 403);
+  check(deals.length === 3 && d401?.stage === "Propuesta" && d401.value === 12000 && d401.contact === "Pedro Pérez"
+        && Object.values(d401.custom).includes("pd_2") && Object.values(d401.custom).includes(15000)
+        && d402?.status === "won" && new Date(d402.won_at).toISOString().startsWith("2026-05-01") && d403?.reason === "Precio demasiado alto",
+        "Pipedrive: deals con fase, importe, contacto, estado, motivo de pérdida y campos", JSON.stringify(deals.map((d) => [d.pd, d.stage, d.status])));
+  const hist = await sql`SELECT s.name FROM deal_stage_history h JOIN stages s ON s.id = h.to_stage_id JOIN deals d ON d.id = h.deal_id
+                         WHERE d.pipedrive_id = 401 ORDER BY h.changed_at`;
+  check(hist.map((h) => h.name).join(" → ") === "Cualificado → Demo hecha → Propuesta", "Pipedrive: recorrido del deal por las fases", hist.map((h) => h.name).join(" → "));
+
+  const acts = await sql`SELECT pipedrive_id::int AS pd, type, done, note, due_at, lead_id FROM activities WHERE pipedrive_id IS NOT NULL ORDER BY pipedrive_id`;
+  const a501 = acts.find((a) => a.pd === 501), a502 = acts.find((a) => a.pd === 502), a503 = acts.find((a) => a.pd === 503), a505 = acts.find((a) => a.pd === 505);
+  check(acts.length === 4 && a501?.done && a501.note === "Interesados en 40 licencias" && new Date(a501.due_at).toISOString() === "2026-06-02T09:30:00.000Z"
+        && a502?.type === "kickoff_call" && a503?.type === "meeting" && a505?.lead_id,
+        "Pipedrive: actividades (tipos propios, sin hora, de leads; las sueltas se omiten)", JSON.stringify(acts.map((a) => [a.pd, a.type])));
+  const notesPd = await sql`SELECT pipedrive_id::int AS pd, content FROM notes WHERE pipedrive_id IS NOT NULL ORDER BY pipedrive_id`;
+  check(notesPd.length === 2 && notesPd[0].content === "Primera reunión: buena sintonía.\nPiden descuento & plazos", "Pipedrive: notas pasadas a texto", JSON.stringify(notesPd));
+  const [doc] = await sql`SELECT title, url FROM deal_documents WHERE external_id = 'pd:701'`;
+  check(doc?.title === "Propuesta Acme.pdf", "Pipedrive: archivos como documentos del deal");
+  const [{ n: pdLeads }] = await sql`SELECT count(*)::int AS n FROM leads WHERE pipedrive_id IS NOT NULL`;
+  check(pdLeads === 1, "Pipedrive: leads (los que no tienen contacto ni empresa se omiten)", String(pdLeads));
+  const lost = done.verify.find((v) => v.label === "Deals perdidos");
+  check(lost?.pipedrive === 2 && lost.crm === 1 && done.verify.find((v) => v.label === "Deals abiertos")?.crm === 1,
+        "Pipedrive: la comprobación final detecta lo que no cuadra", JSON.stringify(done.verify));
+
+  // Repetir: sin duplicados.
+  const [job2] = await sql`INSERT INTO import_jobs (step, options) VALUES ('users', ${sql.json({ flow: true, files: true, since: null })}) RETURNING id`;
+  await finish(job2.id);
+  const [{ n: d2 }] = await sql`SELECT count(*)::int AS n FROM deals WHERE pipedrive_id IS NOT NULL`;
+  const [{ n: p2 }] = await sql`SELECT count(*)::int AS n FROM persons WHERE pipedrive_id IS NOT NULL`;
+  const [{ n: a2 }] = await sql`SELECT count(*)::int AS n FROM activities WHERE pipedrive_id IS NOT NULL`;
+  const [{ n: h2 }] = await sql`SELECT count(*)::int AS n FROM deal_stage_history h JOIN deals d ON d.id = h.deal_id WHERE d.pipedrive_id = 401`;
+  check(d2 === 3 && p2 === 4 && a2 === 4 && h2 === 3, "Pipedrive: volver a importar no duplica nada", JSON.stringify({ d2, p2, a2, h2 }));
+
+  // Incremental: solo lo cambiado desde la vez anterior.
+  const before = new Date(Date.now() - 1000).toISOString();
+  await fetch(`${MOCK}/__pd_touch`);
+  const [job3] = await sql`INSERT INTO import_jobs (step, options) VALUES ('users', ${sql.json({ flow: false, files: false, since: before })}) RETURNING id`;
+  await finish(job3.id);
+  const [j3] = await sql`SELECT counts FROM import_jobs WHERE id = ${job3.id}`;
+  const [acmeDeal] = await sql`SELECT title, value::float AS value FROM deals WHERE pipedrive_id = 401`;
+  check(acmeDeal.title === "Acme — licencias (ampliado)" && acmeDeal.value === 18000 && j3.counts.deals?.updated === 1 && !j3.counts.persons,
+        "Pipedrive: la sincronización trae solo lo cambiado", JSON.stringify({ acmeDeal, counts: j3.counts }));
+
+  const pageHtml = await (await get("/settings/import")).text();
+  check(pageHtml.includes("Conectado a Aikit (simulado)") && pageHtml.includes("No cuadra") && pageHtml.includes("Recorrido por fases"),
+        "/settings/import muestra la conexión, el resultado y la comprobación");
+  await sql`UPDATE automation_settings SET paused = false`;
+}
+
 await sql.end();
 console.log(`\n${failed === 0 ? "✓" : "✗"} ${passed} correctas, ${failed} fallidas`);
 process.exit(failed === 0 ? 0 : 1);

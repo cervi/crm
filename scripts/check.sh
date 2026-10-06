@@ -21,6 +21,7 @@ MOCK_PORT="${CHECK_MOCK_PORT:-3998}"
 export MS_CLIENT_ID="cliente-de-pruebas" MS_CLIENT_SECRET="secreto-cliente-de-pruebas" MS_TENANT_ID="inquilino-de-pruebas"
 export MS_LOGIN_URL="http://127.0.0.1:${MOCK_PORT}" MS_GRAPH_URL="http://127.0.0.1:${MOCK_PORT}/v1.0" MOCK_URL="http://127.0.0.1:${MOCK_PORT}"
 export GOOGLE_CLIENT_ID="cliente-google-de-pruebas" GOOGLE_CLIENT_SECRET="secreto-google-de-pruebas"
+export PIPEDRIVE_API_URL="http://127.0.0.1:${MOCK_PORT}"
 export GOOGLE_AUTH_URL="http://127.0.0.1:${MOCK_PORT}/o/oauth2/v2/auth" GOOGLE_TOKEN_URL="http://127.0.0.1:${MOCK_PORT}/token" GOOGLE_API_BASE="http://127.0.0.1:${MOCK_PORT}"
 export TOKEN_ENCRYPTION_KEY="clave-de-cifrado-de-pruebas-0123456789abcdef"
 

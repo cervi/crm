@@ -711,6 +711,27 @@ await step("exportar contactos a CSV desde el listado y cambiar el separador", a
   await sql`UPDATE app_settings SET csv_separator = ';'`;
 });
 
+if (MOCK) {
+  await step("importar desde Pipedrive desde la pantalla, con progreso y comprobación", async () => {
+    await page.goto("/settings/import");
+    await page.locator("input[name=token]").fill("token-pipedrive-de-pruebas-0123456789");
+    await submit("Conectar");
+    await page.getByRole("heading", { name: "Conectado a Aikit (simulado)" }).waitFor();
+    await submit("Importar todo");
+    await page.getByRole("region", { name: "Resultado de la importación" }).waitFor({ timeout: 60_000 });
+    await page.getByText("No cuadra").waitFor();
+    const [{ paused }] = await sql`SELECT paused FROM automation_settings`;
+    expect(paused, "la IA debería quedar en pausa tras la importación");
+    await page.getByRole("button", { name: "Reanudarla" }).click();
+    await page.getByRole("button", { name: "Reanudarla" }).waitFor({ state: "detached" });
+    await shot("importacion");
+    await page.goto("/pipelines");
+    const [pl] = await sql`SELECT id FROM pipelines WHERE name = 'Ventas PD'`;
+    await page.goto(`/pipelines/${pl.id}`);
+    await page.locator(".deal-card", { hasText: "Acme — licencias" }).waitFor();
+  });
+}
+
 await step("capturas de las pantallas principales", async () => {
   for (const [name, path] of [["tablero", "/pipelines/10000000-0000-0000-0000-000000000001"], ["empresa", "/organizations/60000000-0000-0000-0000-000000000001"],
                               ["leads", "/leads?status=all"], ["actividades", "/activities"], ["contacto", "/persons/70000000-0000-0000-0000-000000000001"],
