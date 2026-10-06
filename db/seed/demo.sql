@@ -9,8 +9,8 @@ BEGIN;
 INSERT INTO users (id, name, email, kind, role) VALUES
   ('00000000-0000-0000-0000-000000000001', 'Gestor de cuentas', 'ventas@example.com', 'human', 'admin'),
   ('00000000-0000-0000-0000-000000000002', 'Generación de leads', 'leads@example.com', 'human', 'member'),
-  ('00000000-0000-0000-0000-000000000003', 'Customer Success', 'cs@example.com', 'human', 'member'),
-  ('00000000-0000-0000-0000-0000000000a1', 'Agente de seguimiento', NULL, 'ai_agent', 'member');
+  ('00000000-0000-0000-0000-000000000003', 'Customer Success', 'cs@example.com', 'human', 'member');
+-- El usuario de la IA (…0a1) lo crea la migración 0004.
 
 -- Pipelines y fases (inspirados en Pipedrive) -------------------------
 INSERT INTO pipelines (id, name, position) VALUES
