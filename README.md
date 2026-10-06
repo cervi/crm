@@ -8,7 +8,9 @@ Tecnología: **Next.js 16 + TypeScript + PostgreSQL**, empaquetado con Docker pa
 
 | Módulo | Funciones |
 | --- | --- |
-| **Deals** | Varios pipelines con su tablero; arrastrar entre fases; aviso de deals parados y sin sesión agendada; ficha con barra de fases, contactos del deal, actividades, notas, recorrido por fases e historial; ganar, perder (con motivo y tarea de seguimiento automática) y reabrir. |
+| **Navegación** | Menú lateral colapsado; buscador global de deals, contactos, empresas y leads (⌘K / Ctrl+K); botón «+» para crear; apariencia clara, oscura o según el sistema en el menú de usuario. |
+| **Dashboards** | Dashboards personalizables con widgets: qué medir (deals, leads, actividades), métrica, agrupación (fase, origen, responsable, motivo, campos personalizados, semana, mes…), periodo y filtros; cifra con comparación, barras, línea o tabla. Editor con vista previa en directo. |
+| **Deals** | Varios pipelines con su tablero o en lista; selector de pipeline y edición de sus fases; ordenar tarjetas; arrastrar entre fases; panel lateral del deal sin salir del tablero (anterior/siguiente, Esc, J/K); aviso de deals parados y sin sesión agendada; ficha con barra de fases, contactos del deal, actividades, notas, recorrido por fases e historial; ganar, perder (con motivo y tarea de seguimiento automática) y reabrir. |
 | **Leads** | Listado con filtros por estado, origen y etapa (TOFU/MOFU/BOFU); alta manual; conversión a deal conservando el historial. |
 | **Empresas y contactos** | Listados con búsqueda, fichas y formularios; contactos actuales y antiguos; cambio de empresa conservando el historial; consentimiento RGPD. |
 | **Actividades** | Llamadas, demos, videollamadas, tareas…; resultado («no se presentó», etc.); bandeja de vencidas, hoy y próximas. |
@@ -58,8 +60,8 @@ Arranca una base de datos temporal y ejecuta, en orden:
 
 1. Las migraciones, los datos de ejemplo y las 13 comprobaciones del modelo.
 2. La comprobación de tipos y la compilación.
-3. 56 pruebas de extremo a extremo contra la app arrancada: todas las pantallas, los 404, la protección de acceso, y la API de entrada con deduplicación y envíos simultáneos.
-4. Si Playwright está instalado, 17 pruebas con navegador: formularios y sus errores, buscadores, arrastrar en el tablero, ganar/perder, campos personalizados, ajustes, leads y cambio de empresa.
+3. 76 pruebas de extremo a extremo contra la app arrancada: todas las pantallas, los 404, la protección de acceso, y la API de entrada con deduplicación y envíos simultáneos.
+4. Si Playwright está instalado, 23 pruebas con navegador: formularios y sus errores, buscadores, arrastrar en el tablero, ganar/perder, campos personalizados, ajustes, leads y cambio de empresa.
 
 ## Base de datos
 

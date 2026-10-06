@@ -100,7 +100,10 @@ export default async function PipelinePage({ params, searchParams }: { params: P
                     <td>{r.stage_name}</td>
                     <td className="num">{money(r.value, r.currency)}</td>
                     <td className="num">{r.status === "open" ? <>{r.days_in_stage}{r.is_rotten && <span className="badge warn" style={{ marginLeft: 6 }}>Parado</span>}</> : "—"}</td>
-                    <td>{r.next_activity_at ? dateTime(r.next_activity_at) : r.status === "open" ? <span className="badge">Sin actividad</span> : "—"}</td>
+                    <td>{r.status !== "open" ? "—"
+                      : r.next_activity_at
+                        ? <span className={new Date(r.next_activity_at) < new Date() ? "tone-bad" : undefined}>{dateTime(r.next_activity_at)}</span>
+                        : <span className="badge">Sin actividad</span>}</td>
                     <td>{date(r.expected_close_date)}</td>
                     <td>{r.owner_name ?? "—"}</td>
                     <td><span className={`badge ${r.status}`}>{STATUS_LABELS[r.status]}</span></td>
