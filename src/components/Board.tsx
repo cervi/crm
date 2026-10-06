@@ -5,10 +5,10 @@ import { useOptimistic, useState, useTransition } from "react";
 import { moveDealAction } from "@/app/actions/deals";
 import type { BoardDeal, BoardStage } from "@/lib/pipelines";
 import { Avatar } from "./Avatar";
+import { formatValue } from "@/lib/chart-format";
 
-const money = (v: string | number | null, currency = "EUR") =>
-  v === null || v === "" ? "—"
-    : new Intl.NumberFormat("es-ES", { style: "currency", currency, maximumFractionDigits: 0, useGrouping: "always" }).format(Number(v));
+const money = (v: string | number | null, _currency = "EUR") =>
+  v === null || v === "" ? "—" : formatValue(Number(v), "money");
 
 type Move = { dealId: string; to: string };
 
@@ -81,13 +81,13 @@ export function Board({ stages }: { stages: BoardStage[] }) {
                   </span>
                   <span className="foot">
                     <span className="amount">{money(deal.value, deal.currency)}</span>
-                    <span className="age">{deal.days_in_stage === 0 ? "Hoy" : `${deal.days_in_stage} d`}</span>
+                    <span className="age" title="Días en esta fase">{deal.days_in_stage === 0 ? "Hoy" : `${deal.days_in_stage} d`}</span>
+                    {deal.owner_name && <span title={`Responsable: ${deal.owner_name}`}><Avatar name={deal.owner_name} size="sm" /></span>}
                   </span>
-                  {(deal.is_rotten || !deal.has_upcoming_session || deal.owner_name) && (
+                  {(deal.is_rotten || !deal.has_upcoming_session) && (
                     <span className="flags">
                       {deal.is_rotten && <span className="badge warn">Parado</span>}
                       {!deal.has_upcoming_session && <span className="badge">Sin sesión agendada</span>}
-                      {deal.owner_name && <span className="badge" title="Responsable">{deal.owner_name}</span>}
                     </span>
                   )}
                 </li>
