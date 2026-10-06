@@ -1187,6 +1187,122 @@ if (KEY) {
   await sql`UPDATE app_settings SET competitors = '{}'`;
 }
 
+// ------------------------------------------------------------- Fase 2: agente ejecutivo de deal
+{
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const MOCK = process.env.MOCK_URL;
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  const enc = (plain) => {
+    const key = createHash("sha256").update(process.env.TOKEN_ENCRYPTION_KEY ?? "").digest();
+    const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", key, iv);
+    const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
+    return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+  };
+  const pending = async (key, dealId) => (await sql`SELECT x.* FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                                                     WHERE r.key = ${key} AND x.deal_id = ${dealId} ORDER BY x.created_at DESC LIMIT 1`)[0];
+  // Un deal nuevo para estas pruebas, con su contacto.
+  const D2 = "90000000-0000-0000-0000-0000000000f2";
+  await sql`INSERT INTO deals (id, title, pipeline_id, stage_id, owner_id, organization_id, value, created_at)
+            VALUES (${D2}, 'Agente ejecutivo e2e', ${P.inbound}, '20000000-0000-0000-0000-000000000011', ${ADMIN_ID}, ${ORG}, 12000, now() - interval '20 days')
+            ON CONFLICT (id) DO NOTHING`;
+  await sql`INSERT INTO deal_participants (deal_id, person_id, is_primary) VALUES (${D2}, ${PERSON}, true) ON CONFLICT DO NOTHING`;
+
+  if (MOCK && process.env.TOKEN_ENCRYPTION_KEY) {
+    await sql`UPDATE ai_settings SET provider = 'anthropic', base_url = ${`${MOCK}/llm/anthropic`}, model = 'modelo-de-pruebas',
+                     api_key = ${enc("clave-llm-de-pruebas")}, last_error = NULL`;
+    // Reunión hecha con transcripción → «lo que sabemos», tareas con los próximos pasos y cambio de importe y fecha.
+    const [act] = await sql`INSERT INTO activities (type, subject, due_at, done, done_at, outcome, deal_id, person_id, owner_id, transcript)
+                            VALUES ('video_call', 'Demo con Ana e2e', now() - interval '2 hours', true, now() - interval '1 hour', 'held', ${D2}, ${PERSON}, ${ADMIN_ID},
+                                    'Ana: necesitamos automatizar la captación. Luis, el director financiero, decide. Presupuesto unos 30.000 al año, queremos arrancar en enero.')
+                            RETURNING id`;
+    await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, payload)
+              VALUES ('deal', ${D2}, 'activity.completed', 'user', ${sql.json({ activity_id: act.id, outcome: "held" })})`;
+    await run();
+    const [ins] = await sql`SELECT needs, decision_makers, budget, timeline, objections, competitors FROM deal_insights WHERE deal_id = ${D2}`;
+    check(ins?.needs.includes("(IA) Automatizar la captación") && ins.decision_makers[0]?.nombre === "Luis Martín" && ins.budget.includes("30.000")
+          && ins.competitors.includes("(IA) Acme CRM"), "tras la reunión: necesidades, decisores, presupuesto, plazos y competidores en el deal", JSON.stringify(ins));
+    const steps = await pending("call_next_steps", D2);
+    check(steps?.status === "pending" && steps.payload.note.includes("(IA) Enviar la propuesta revisada") && steps.payload.note.includes("(IA) Agendar la demo técnica")
+          && steps.payload.due_in_days === 2, "tras la reunión: propone las tareas con los próximos pasos", JSON.stringify(steps?.payload));
+    const upd = await pending("call_deal_update", D2);
+    check(upd?.status === "pending" && upd.payload.changes.value === 30000 && upd.payload.changes.expected_close_date === "2027-01-15",
+          "tras la reunión: propone actualizar importe y fecha de cierre", JSON.stringify(upd?.payload));
+    const page = await (await get(`/deals/${D2}`)).text();
+    check(page.includes("Lo que sabemos") && page.includes("Luis Martín, Director Financiero") && page.includes("(IA) Unos 30.000 € al año"),
+          "ficha: «lo que sabemos» del deal");
+
+    // Preparación de la reunión de dentro de 50 minutos, con aviso.
+    const [soon] = await sql`INSERT INTO activities (type, subject, due_at, deal_id, person_id, owner_id)
+                             VALUES ('demo', 'Demo técnica e2e', now() + interval '50 minutes', ${D2}, ${PERSON}, ${ADMIN_ID}) RETURNING id`;
+    await run();
+    const [prep] = await sql`SELECT prep, prep_notified_at FROM activities WHERE id = ${soon.id}`;
+    const [pn] = await sql`SELECT title, link FROM notifications WHERE kind = 'meeting_prep' AND link = ${`/deals/${D2}#act-${soon.id}`}`;
+    check(prep?.prep?.includes("Objetivo: (IA) Cerrar fecha de la demo técnica") && prep.prep.includes("Quién viene:") && prep.prep.includes("Ana García")
+          && prep.prep.includes("(IA) ¿Quién firma el contrato?") && prep.prep_notified_at && pn?.title.includes("Demo técnica e2e"),
+          "reuniones: ficha de preparación (IA) y aviso antes de empezar", JSON.stringify({ prep, pn }));
+    const page2 = await (await get(`/deals/${D2}`)).text();
+    check(page2.includes("Ficha de preparación") && page2.includes(`id="act-${soon.id}"`), "ficha: la preparación, en la reunión pendiente");
+    await sql`UPDATE ai_settings SET api_key = ${enc("clave-mala")}`;
+    // Sin IA: la ficha se prepara con los datos del CRM.
+    const [later] = await sql`INSERT INTO activities (type, subject, due_at, deal_id, person_id, owner_id)
+                              VALUES ('call', 'Llamada de seguimiento e2e', now() + interval '20 hours', ${D2}, ${PERSON}, ${ADMIN_ID}) RETURNING id`;
+    await run();
+    const [prep2] = await sql`SELECT prep, prep_notified_at FROM activities WHERE id = ${later.id}`;
+    check(prep2?.prep?.startsWith("Objetivo: avanzar") && prep2.prep.includes("Presupuesto: (IA) Unos 30.000") && !prep2.prep_notified_at,
+          "reuniones: sin IA, ficha con los datos del CRM (y sin aviso hasta que falte poco)", prep2?.prep?.slice(0, 200));
+  }
+
+  // Fecha de cierre pasada → propone una nueva; un solo contacto → a quién implicar.
+  await sql`UPDATE deals SET expected_close_date = current_date - 3 WHERE id = ${D2}`;
+  await run();
+  const cd = await pending("close_date_past", D2);
+  check(cd?.status === "pending" && cd.payload.changes.expected_close_date > new Date().toISOString().slice(0, 10), "fecha de cierre pasada: propone una realista", JSON.stringify(cd?.payload));
+  const mt = await pending("multithread", D2);
+  check(mt?.status === "pending" && /Implicar a|Identificar al decisor/.test(mt.title), "un solo contacto: propone a quién más implicar", mt?.title);
+  // El cliente abre la propuesta con el deal en una fase anterior → propone «Propuesta enviada».
+  await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, payload)
+            VALUES ('deal', ${D2}, 'proposal.viewed', 'integration', ${sql.json({ proposal_id: "00000000-0000-0000-0000-00000000abcd" })})`;
+  await run();
+  const ps = await pending("proposal_stage", D2);
+  check(ps?.status === "pending" && ps.payload.stage_name === "Propuesta enviada", "propuesta abierta: propone mover el deal a «Propuesta enviada»", JSON.stringify(ps?.payload));
+
+  // Plan de cierre: un paso vencido baja la salud; compartido, el cliente lo ve.
+  const ptok = "plan-de-cierre-e2e-0123456789";
+  await sql`INSERT INTO close_plans (deal_id, token, shared) VALUES (${D2}, ${ptok}, false) ON CONFLICT (deal_id) DO NOTHING`;
+  await sql`INSERT INTO close_plan_steps (deal_id, position, title, side, due_date, done, done_at) VALUES
+            (${D2}, 1, 'Validación de seguridad e2e', 'client', current_date - 2, false, NULL),
+            (${D2}, 2, 'Firma del contrato e2e', 'client', current_date + 20, false, NULL),
+            (${D2}, 3, 'Demo técnica hecha e2e', 'both', current_date - 5, true, now())`;
+  check((await fetch(`${BASE}/cp/${ptok}`)).status === 404, "plan de cierre: sin compartir, el enlace no funciona");
+  await sql`UPDATE close_plans SET shared = true WHERE deal_id = ${D2}`;
+  const cp = await fetch(`${BASE}/cp/${ptok}`);
+  const cph = (await cp.text()).replace(/<!-- -->/g, "");
+  check(cp.status === 200 && cph.includes("Plan de trabajo conjunto") && cph.includes("Firma del contrato e2e") && cph.includes("1 de 3 pasos hechos"),
+        "plan de cierre: compartido, el cliente lo ve sin iniciar sesión");
+  await run();
+  const [hp] = await sql`SELECT signals FROM deal_health WHERE deal_id = ${D2}`;
+  check(hp?.signals.some((x) => x.key === "plan_overdue"), "salud: un paso del plan de cierre vencido es un riesgo");
+  const dp = await (await get(`/deals/${D2}`)).text();
+  check(dp.includes("Plan de cierre") && dp.includes("Validación de seguridad e2e") && dp.includes("Dejar de compartir"), "ficha: plan de cierre con sus pasos");
+
+  // Descuento por encima del límite: espera aprobación y bloquea la propuesta.
+  const [prod] = await sql`SELECT id FROM products WHERE is_active LIMIT 1`;
+  if (prod) {
+    await sql`UPDATE app_settings SET max_discount_pct = 10`;
+    await sql`INSERT INTO deal_products (deal_id, product_id, quantity, unit_price, discount_pct, discount_status, discount_limit, requested_by)
+              VALUES (${D2}, ${prod.id}, 1, 1000, 25, 'pending', 10, ${MEMBER_ID})`;
+    const inbox = await (await get("/inbox")).text();
+    check(inbox.includes("Descuentos por aprobar") && inbox.includes("Agente ejecutivo e2e") && inbox.includes("Dejar en 10 %"),
+          "descuentos: los que superan el límite esperan aprobación en la bandeja");
+    const dpp = await (await get(`/deals/${D2}`)).text();
+    check(dpp.includes("Pendiente de aprobación"), "descuentos: la línea muestra que está pendiente");
+    const sp = await (await get("/settings/products")).text();
+    check(sp.includes("Descuento máximo sin aprobación"), "/settings/products: límite de descuento");
+    await sql`UPDATE app_settings SET max_discount_pct = NULL`;
+  }
+  await sql`DELETE FROM deals WHERE id = ${D2}`;
+}
+
 // ------------------------------------------------------------- Avisos, importar CSV, duplicados
 {
   // Abrir una propuesta avisa al responsable del deal.

@@ -1018,6 +1018,53 @@ await step("dar acceso a un comercial, que entra, cambia su contraseña temporal
   await sql`UPDATE users SET password_hash = NULL, must_change_password = false WHERE lower(email) = 'cs@example.com'`;
 });
 
+await step("plan de cierre: crear el de partida, marcar un paso y compartirlo con el cliente", async () => {
+  const [d] = await sql`SELECT ods.id FROM open_deals_status ods WHERE ods.pipeline_id = '10000000-0000-0000-0000-000000000001'
+                        AND NOT EXISTS (SELECT 1 FROM close_plan_steps c WHERE c.deal_id = ods.id) ORDER BY ods.title LIMIT 1`;
+  await page.goto(`/deals/${d.id}`);
+  const plan = page.locator("section.close-plan");
+  await plan.getByRole("button", { name: "Crear un plan de partida" }).click();
+  await plan.getByText("Firma del contrato").waitFor();
+  const first = plan.locator("ol.plan-steps li").first();
+  await first.locator("button.plan-check").click();
+  await plan.locator("ol.plan-steps li.done").first().waitFor();
+  await plan.getByRole("button", { name: "Compartir con el cliente" }).click();
+  const url = await plan.locator("code").first().textContent({ timeout: 8000 });
+  const cp = await context.newPage();
+  await cp.goto(new URL(url).pathname);
+  await cp.getByRole("heading", { name: "Plan de trabajo conjunto" }).waitFor();
+  expect(await cp.getByText(/1 de \d+ pasos hechos/).count() === 1, "el cliente no ve el progreso");
+  await cp.close();
+  await shot("plan-de-cierre");
+});
+
+await step("lo que sabemos del deal: se rellena a mano", async () => {
+  const [d] = await sql`SELECT id FROM open_deals_status WHERE pipeline_id = '10000000-0000-0000-0000-000000000001' ORDER BY title DESC LIMIT 1`;
+  await page.goto(`/deals/${d.id}`);
+  const box = page.locator("section.insights");
+  await box.locator("summary").click();
+  await box.locator("textarea[name=needs]").fill(`Centralizar la facturación ${stamp}`);
+  await box.locator("input[name=budget]").fill("20.000 € al año");
+  await box.getByRole("button", { name: "Guardar" }).click();
+  await box.getByText(`Centralizar la facturación ${stamp}`).waitFor();
+  await box.getByText("20.000 € al año").waitFor();
+});
+
+await step("descuento por encima del límite: queda pendiente y el administrador lo aprueba", async () => {
+  await sql`UPDATE app_settings SET max_discount_pct = 10`;
+  const [d] = await sql`SELECT id FROM open_deals_status WHERE pipeline_id = '10000000-0000-0000-0000-000000000001' ORDER BY title LIMIT 1 OFFSET 2`;
+  await page.goto(`/deals/${d.id}`);
+  const box = page.locator("section.deal-products");
+  await box.getByText("+ Añadir producto").click();
+  await box.locator("select[name=product_id]").selectOption({ index: 1 });
+  await box.locator("input[name=discount_pct]").fill("30");
+  await box.getByRole("button", { name: "Añadir", exact: true }).click();
+  await box.getByText("Pendiente de aprobación").waitFor();
+  await box.getByRole("button", { name: "Aprobar" }).click();
+  await box.getByText("Aprobado").waitFor();
+  await sql`UPDATE app_settings SET max_discount_pct = NULL`;
+});
+
 await step("sin errores de JavaScript en el navegador", async () => {
   expect(errors.length === 0, errors.slice(0, 3).join(" | "));
 });
