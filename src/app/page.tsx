@@ -51,7 +51,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
   const stats = [
     { label: "Decisiones pendientes", value: d.decisions.count, href: "/inbox", tone: d.decisions.count ? "accent" : "" },
-    { label: "En agenda hoy", value: d.agenda.length, href: "/activities", tone: "" },
+    { label: "Reuniones hoy", value: d.agenda.length, href: "/activities", tone: "", sub: `${d.tasks.length} tareas para hoy` },
     { label: "Vencidas", value: d.overdue.length, href: "/activities", tone: d.overdue.length ? "bad" : "" },
     { label: "Deals con atención", value: d.attention.length, href: "#atencion", tone: d.attention.length ? "warn" : "" },
     { label: "Pipeline abierto", value: money(d.pipeline.value), href: "/pipelines", tone: "", sub: `${d.pipeline.count} deals` },
@@ -131,8 +131,13 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
         <div className="today-col">
           <section className="panel" aria-label="Agenda de hoy">
-            <h2>Agenda de hoy</h2>
-            <List items={d.agenda} empty="Nada agendado para hoy." showTime />
+            <h2>Reuniones de hoy</h2>
+            <List items={d.agenda} empty="Ninguna reunión hoy." showTime />
+          </section>
+          <section className="panel" aria-label="Tareas de hoy">
+            <h2>Tareas de hoy <span className="muted">{d.tasks.length}</span></h2>
+            <List items={d.tasks.slice(0, 6)} empty="Ninguna tarea para hoy." />
+            {d.tasks.length > 6 && <Link href="/activities" className="meta">Ver las {d.tasks.length}</Link>}
           </section>
           <section className="panel" aria-label="Vencidas">
             <h2>Vencidas <span className="muted">{d.overdue.length}</span></h2>

@@ -8,6 +8,7 @@ Tecnología: **Next.js 16 + TypeScript + PostgreSQL**, empaquetado con Docker pa
 
 | Módulo | Funciones |
 | --- | --- |
+| **Hoy** | La portada: el parte del día de todo el equipo o de cada persona. Incluye lo que hay que decidir, las reuniones y tareas de hoy, lo vencido, los deals que piden atención con su siguiente paso, lo que hizo la IA y las novedades, con un «enfoque del día» redactado por la IA. Cada mañana (hora y días configurables) llega también al correo de quien tenga su cuenta conectada. |
 | **Navegación** | Menú lateral colapsado; buscador global de deals, contactos, empresas y leads (⌘K / Ctrl+K); botón «+» para crear; apariencia clara, oscura o según el sistema en el menú de usuario. |
 | **Dashboards** | Dashboards personalizables con widgets: qué medir (deals, leads, actividades), métrica, agrupación (fase, origen, responsable, motivo, campos personalizados, semana, mes…), periodo y filtros; cifra con comparación, barras, línea o tabla. Editor con vista previa en directo. |
 | **Deals** | Varios pipelines con su tablero o en lista; selector de pipeline y edición de sus fases; ordenar tarjetas; arrastrar entre fases; panel lateral del deal sin salir del tablero (anterior/siguiente, Esc, J/K); aviso de deals parados y sin sesión agendada; ficha con barra de fases, contactos del deal, actividades, notas, recorrido por fases e historial; ganar, perder (con motivo y tarea de seguimiento automática) y reabrir. |
@@ -16,6 +17,8 @@ Tecnología: **Next.js 16 + TypeScript + PostgreSQL**, empaquetado con Docker pa
 | **Actividades** | Llamadas, demos, videollamadas, tareas…; resultado («no se presentó», etc.); bandeja de vencidas, hoy y próximas. |
 | **Ajustes** | Pipelines y fases (orden, días para considerarse parado, sesión requerida), campos personalizados en las cuatro entidades y motivos de pérdida. |
 | **API de entrada** | `POST /api/v1/leads` para formularios, webinars, Zapier o Make: deduplica contactos por email y empresas por dominio; las solicitudes de demo crean el deal. Documentación dentro de la app, en Ajustes → Conectar formularios. |
+| **Resúmenes automáticos** | Cada deal tiene arriba su resumen, sus riesgos y el siguiente paso recomendado (responder un correo pendiente, marcar cómo fue una reunión, completar lo vencido, agendar la sesión de la fase…). Tras cada reunión, la IA prepara el correo al cliente con el resumen, los próximos pasos y tus huecos (puedes pegar la transcripción), y propone pasar de fase si era la sesión que pedía la fase. El traspaso a Customer Success también lo redacta la IA. |
+| **Modelo de IA** | Proveedor (Anthropic, OpenAI, xAI/Grok u otro compatible), modelo, clave cifrada y prompts editables para cada resumen. Opcional: sin él, todo funciona con resúmenes por reglas; si el modelo falla, se vuelve a las reglas y el error se ve en Ajustes. |
 | **IA con autonomía configurable** | Para cada tipo de acción (crear tareas, escribir notas, preparar correos, mover de fase, editar deals) y cada agente (el asistente del CRM o agentes externos), eliges: **No**, **Preguntar** (lo deja en la bandeja de decisiones) o **Sola** (lo hace y queda en el registro, con «Deshacer»). Reglas incluidas: fase sin su sesión agendada → tarea; deal parado → correo de seguimiento; «no se presentó» → correo para reagendar; deal muy parado → te pide decidir; deal ganado → tarea de traspaso a Customer Success con el resumen. Cada regla tiene sus días y plantillas, estadísticas de aprobación y sugerencias para subir o bajar su autonomía. Pausa general y «Revisar ahora». |
 | **Correo, calendario y documentos** | Cada usuario puede conectar su cuenta de **Microsoft 365** (Outlook, calendario, OneDrive/SharePoint) o de **Google Workspace** (Gmail, Google Calendar, Drive). Los correos del CRM (los que escribes en la ficha del deal y los que propone o envía la IA) salen desde su correo y quedan en «Enviados». Los correos y reuniones con contactos del CRM se registran solos en sus deals (sin duplicar). La IA ofrece tus huecos libres (`{huecos}`) según tu horario, duración, margen y antelación; al programar una actividad puedes invitar al contacto desde tu calendario con Teams o Meet. En cada deal, «Documentos» enlaza presentaciones y propuestas buscándolas en tu Drive/OneDrive o pegando un enlace. Accesos cifrados en la base de datos. Todo es opcional: sin configurar nada, el CRM funciona igual. |
 | **Historial** | Todo queda registrado como evento (quién, qué y cuándo): es el historial de cada ficha y será la base de las automatizaciones y de la auditoría de la IA. |
@@ -68,8 +71,8 @@ Arranca una base de datos temporal y ejecuta, en orden:
 
 1. Las migraciones, los datos de ejemplo y las 13 comprobaciones del modelo.
 2. La comprobación de tipos y la compilación.
-3. 111 pruebas de extremo a extremo contra la app arrancada: todas las pantallas, los 404, la protección de acceso, la API de entrada con deduplicación y envíos simultáneos, el motor de automatizaciones (reglas, permisos como techo, caducidad, pausa) y el correo, calendario y documentos contra Microsoft 365 y Google simulados (`scripts/mock-providers.mjs`): conexión OAuth con PKCE, huecos libres, sincronización sin duplicados, envío automático (también con acentos por Gmail), búsqueda en Drive, renovación y revocación del acceso.
-4. Si Playwright está instalado, 37 pruebas con navegador: formularios y sus errores, buscadores, arrastrar en el tablero, ganar/perder, campos personalizados, ajustes, leads, cambio de empresa, y la bandeja de la IA (aprobar un correo editado, descartar, deshacer, autonomía y pausa) y las cuentas conectadas (conectar Microsoft 365 y Google, preferencias, escribir con tus huecos, enviar una propuesta, enlazar documentos e invitar desde el calendario).
+3. 139 pruebas de extremo a extremo contra la app arrancada: todas las pantallas, los 404, la protección de acceso, la API de entrada con deduplicación y envíos simultáneos, el motor de automatizaciones (reglas, permisos como techo, caducidad, pausa) y el correo, calendario y documentos contra Microsoft 365 y Google simulados (`scripts/mock-providers.mjs`): conexión OAuth con PKCE, huecos libres, sincronización sin duplicados, envío automático (también con acentos por Gmail), búsqueda en Drive, renovación y revocación del acceso.
+4. Si Playwright está instalado, 47 pruebas con navegador: formularios y sus errores, buscadores, arrastrar en el tablero, ganar/perder, campos personalizados, ajustes, leads, cambio de empresa, y la bandeja de la IA (aprobar un correo editado, descartar, deshacer, autonomía y pausa) y las cuentas conectadas (conectar Microsoft 365 y Google, preferencias, escribir con tus huecos, enviar una propuesta, enlazar documentos e invitar desde el calendario).
 
 ## Base de datos
 
@@ -89,6 +92,7 @@ SQL puro en `db/migrations/`, aplicado con `scripts/db.mjs` (`npm run db:migrate
 - **events**: registro de todo lo que pasa (persona, IA, sistema o integración). Las reglas que se disparan con un evento lo leen de aquí.
 - **ai_permissions**: autonomía máxima por agente y tipo de acción.
 - **automation_rules**: reglas, su autonomía y sus parámetros.
+- **ai_settings**, **deal_briefs**, **digest_focus**, **digest_log**: modelo de IA, resúmenes de deals en caché, enfoque del día y partes enviados.
 - **mailbox_connections**: cuenta conectada de cada usuario (Microsoft 365 o Google), con los accesos cifrados y sus preferencias de huecos.
 - **deal_documents**: documentos enlazados a cada deal (Drive, OneDrive o enlace).
 - **automation_actions**: cada propuesta o acción de la IA; es a la vez la bandeja de decisiones y el registro, con lo necesario para deshacer.
@@ -104,6 +108,7 @@ Las tablas principales tienen `pipedrive_id` para que la importación desde Pipe
 - [x] Seguimiento automático de deals (sesiones por fase, ausencias, deals parados)
 - [x] Traspaso a Customer Success al ganar un deal (resumen con plantilla)
 - [ ] Conexión de agentes externos (Grok Bot…) por MCP, con los mismos permisos
-- [ ] IA integrada configurable (proveedor, modelo, clave y prompts): redacción de correos y resúmenes, y decisiones
+- [x] IA integrada configurable (proveedor, modelo, clave y prompts) para resúmenes, parte del día y seguimiento tras reuniones
+- [ ] Agente de IA que decide (proponer acciones libres más allá de las reglas)
 - [x] Correo, calendario y documentos de Microsoft 365 y Google Workspace (opcional)
 - [ ] Secuencias de email y enriquecimiento

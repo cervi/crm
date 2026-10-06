@@ -11,6 +11,7 @@ import { optText, optional, parse } from "./validation";
 import { hasActiveMailbox, sendEmail, senderFor, slotsText, syncAllMailboxes } from "./mailbox";
 import { generate, parseJsonReply } from "./ai";
 import { refreshStaleBriefs } from "./briefs";
+import { zonedToUtc } from "./slots";
 import { sendDueDigests } from "./digest";
 
 // ===========================================================================
@@ -727,7 +728,13 @@ const emailEdits = z.object({
 });
 const taskEdits = z.object({ subject: optText(300), note: optText(5000) });
 
-const dueAt = (days: unknown) => new Date(Date.now() + num(days, 0) * 86400000).toISOString();
+/** Vencimiento de una tarea: al final del día (hora local) dentro de `days` días; así no nace vencida. */
+const dueAt = (days: unknown) => {
+  const tz = process.env.TZ || "Europe/Madrid";
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return zonedToUtc(Number(p.year), Number(p.month), Number(p.day) + num(days, 0), 23, 59, tz).toISOString();
+};
 
 /**
  * Ejecuta una propuesta (aprobada por una persona o en modo automático).

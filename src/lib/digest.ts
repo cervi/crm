@@ -12,6 +12,7 @@ import { activityLabel, money } from "./format";
 // ===========================================================================
 
 const TZ = () => process.env.TZ || "Europe/Madrid";
+const SESSION_TYPES = ["call", "meeting", "video_call", "demo"];
 
 export type DigestSettings = { enabled: boolean; hour: number; days: number[] };
 
@@ -50,6 +51,7 @@ export type Digest = {
   focusSource: "ai" | "rules";
   decisions: { count: number; items: DigestItem[] };
   agenda: DigestItem[];
+  tasks: DigestItem[];
   overdue: DigestItem[];
   attention: AttentionItem[];
   aiDone: { count: number; items: DigestItem[] };
@@ -78,7 +80,7 @@ export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" 
       FROM activities a LEFT JOIN deals d ON d.id = a.deal_id LEFT JOIN persons p ON p.id = a.person_id
       WHERE NOT a.done AND a.due_at >= date_trunc('day', now()) AND a.due_at < date_trunc('day', now()) + interval '1 day'
         AND ${byOwner(sql.unsafe("a.owner_id"))}
-      ORDER BY a.due_at LIMIT 20`,
+      ORDER BY a.due_at LIMIT 60`,
     sql<{ subject: string; type: string; due_at: Date; deal_id: string | null; deal_title: string | null }[]>`
       SELECT a.subject, a.type, a.due_at, a.deal_id, d.title AS deal_title
       FROM activities a LEFT JOIN deals d ON d.id = a.deal_id
@@ -114,8 +116,11 @@ export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" 
     ownerId, ownerName: owner?.name ?? null, date: new Date(),
     focus: "", focusSource: "rules",
     decisions: { count: decisions[0]?.n ?? 0, items: decisions.map((x) => ({ title: x.title, detail: x.deal_title, href: x.deal_id ? `/deals/${x.deal_id}` : "/inbox" })) },
-    agenda: agenda.map((a) => ({ title: `${activityLabel(a.type)}: ${a.subject}`, detail: [a.deal_title, a.person].filter(Boolean).join(" · ") || null,
+    // Agenda: las sesiones con hora. Las tareas del día van aparte.
+    agenda: agenda.filter((a) => SESSION_TYPES.includes(a.type)).map((a) => ({ title: `${activityLabel(a.type)}: ${a.subject}`, detail: [a.deal_title, a.person].filter(Boolean).join(" · ") || null,
                                  href: a.deal_id ? `/deals/${a.deal_id}` : undefined, at: a.due_at })),
+    tasks: agenda.filter((a) => !SESSION_TYPES.includes(a.type)).map((a) => ({
+      title: a.subject, detail: a.deal_title, href: a.deal_id ? `/deals/${a.deal_id}` : "/activities", at: a.due_at })),
     overdue: overdue.map((a) => ({ title: a.subject, detail: a.deal_title, href: a.deal_id ? `/deals/${a.deal_id}` : "/activities", at: a.due_at, tone: "bad" as const })),
     attention,
     aiDone: { count: aiDone[0]?.n ?? 0, items: aiDone.map((x) => ({ title: x.title, detail: x.mode === "auto" ? "Lo hizo sola" : "Aprobada por ti", href: x.deal_id ? `/deals/${x.deal_id}` : undefined })) },
@@ -145,7 +150,8 @@ function ruleFocus(d: Digest): string {
   const lines: string[] = [];
   if (d.decisions.count > 0) lines.push(`Decide ${d.decisions.count === 1 ? "la propuesta" : `las ${d.decisions.count} propuestas`} de la IA en la bandeja.`);
   for (const a of d.attention.slice(0, 3 - lines.length)) lines.push(`${a.deal.title}: ${a.step.text.charAt(0).toLowerCase()}${a.step.text.slice(1)}.`);
-  if (lines.length < 3 && d.agenda.length) lines.push(`Tienes ${d.agenda.length} ${d.agenda.length === 1 ? "cosa" : "cosas"} en la agenda de hoy.`);
+  if (lines.length < 3 && d.agenda.length) lines.push(`Tienes ${d.agenda.length} ${d.agenda.length === 1 ? "reunión" : "reuniones"} hoy.`);
+  if (lines.length < 3 && d.tasks.length) lines.push(`Y ${d.tasks.length} ${d.tasks.length === 1 ? "tarea" : "tareas"} para hoy.`);
   if (lines.length === 0) return "Nada urgente: buen día para generar pipeline nuevo.";
   return lines.map((l, i) => `${i + 1}. ${l}`).join("\n");
 }
@@ -155,6 +161,7 @@ function digestFacts(d: Digest) {
     persona: d.ownerName ?? "todo el equipo",
     decisiones_pendientes: d.decisions.items.map((x) => x.title),
     agenda_de_hoy: d.agenda.map((x) => ({ que: x.title, con: x.detail })),
+    tareas_de_hoy: d.tasks.map((x) => ({ que: x.title, deal: x.detail })),
     vencidas: d.overdue.map((x) => ({ que: x.title, deal: x.detail })),
     deals_que_piden_atencion: d.attention.map((a) => ({ deal: a.deal.title, importe: money(a.deal.value, a.deal.currency),
                                                          siguiente_paso: a.step.text, motivo: a.step.why })),
@@ -180,6 +187,7 @@ export function digestEmail(d: Digest, appUrl: string) {
     "",
     ...section(`Decisiones pendientes (${d.decisions.count}) — ${url("/inbox")}`, d.decisions.items.map((x) => `- ${x.title}${x.detail ? ` (${x.detail})` : ""}`)),
     ...section("Agenda de hoy", d.agenda.map((x) => `- ${hhmm(x.at)} ${x.title}${x.detail ? ` — ${x.detail}` : ""}`)),
+    ...section(`Tareas de hoy (${d.tasks.length})`, d.tasks.slice(0, 10).map((x) => `- ${x.title}${x.detail ? ` (${x.detail})` : ""}`)),
     ...section("Vencidas", d.overdue.map((x) => `- ${x.title}${x.detail ? ` (${x.detail})` : ""}`)),
     ...section("Deals que piden atención", d.attention.map((a) => `- ${a.deal.title} (${money(a.deal.value, a.deal.currency)}): ${a.step.text}. ${a.step.why} ${url(`/deals/${a.deal.id}`)}`)),
     ...section(`Lo que hizo la IA en las últimas 24 h (${d.aiDone.count})`, d.aiDone.items.map((x) => `- ${x.title} — ${x.detail}`)),
@@ -189,7 +197,7 @@ export function digestEmail(d: Digest, appUrl: string) {
     "",
     `Ábrelo en el CRM: ${url("/")}`,
   ].join("\n");
-  return { subject: `Tu parte del día: ${d.decisions.count} decisiones, ${d.agenda.length} en agenda, ${d.attention.length} deals con atención`, body };
+  return { subject: `Tu parte del día: ${d.decisions.count} decisiones, ${d.agenda.length} reuniones, ${d.attention.length} deals con atención`, body };
 }
 
 const appUrl = () => (process.env.APP_URL || "").replace(/\/$/, "");
