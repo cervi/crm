@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ScoreBadge, ScoreReasons } from "@/components/ScoreBadge";
+import { recomputeScores } from "@/lib/scoring";
 import { notFound } from "next/navigation";
 import { getLead } from "@/lib/leads";
 import { listPipelines } from "@/lib/pipelines";
@@ -22,8 +24,13 @@ export const metadata = { title: "Lead" };
 export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isId(id)) notFound();
-  const lead = await getLead(id);
+  let lead = await getLead(id);
   if (!lead) notFound();
+  // Aún sin puntuar (recién llegado): se calcula ahora.
+  if (lead.score === null) {
+    await recomputeScores(id).catch(() => 0);
+    lead = (await getLead(id)) ?? lead;
+  }
 
   const [pipelines, activities, notes, users, events] = await Promise.all([
     listPipelines(), listActivitiesFor({ leadId: id }), listNotesFor({ leadId: id }), listUsers(),
@@ -39,6 +46,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         <h1>{lead.person_name ?? lead.title}</h1>
         <span className={`badge ${lead.status}`}>{STATUS_LABELS[lead.status]}</span>
         {lead.funnel_stage && <span className={`badge ${lead.funnel_stage}`}>{lead.funnel_stage.toUpperCase()}</span>}
+        <ScoreBadge score={lead.score} reasons={lead.score_reasons} />
         <span className="spacer" />
         {lead.status === "open" && (
           <ActionForm action={archiveLeadAction.bind(null, id)} submitLabel="Archivar" secondary className="form inline" />
@@ -62,6 +70,11 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 <div className="dl-row"><dt>Deal</dt><dd><Link href={`/deals/${lead.converted_deal_id}`}>{lead.deal_title}</Link> · {dateTime(lead.converted_at)}</dd></div>
               )}
             </dl>
+          </section>
+
+          <section className="panel" aria-label="Puntuación">
+            <h2>Puntuación {lead.score !== null && <span className="muted">{lead.score} / 100</span>}</h2>
+            <ScoreReasons reasons={lead.score_reasons} />
           </section>
 
           {lead.status === "open" && (

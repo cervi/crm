@@ -965,6 +965,37 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   await sql`UPDATE automation_settings SET paused = false`;
 }
 
+// ------------------------------------------------------------- Puntuación y reparto
+if (KEY) {
+  const CS_ID = "00000000-0000-0000-0000-000000000003";
+  await sql`DELETE FROM assignment_rules`;
+  await sql`INSERT INTO assignment_rules (position, entity, field, value, user_ids) VALUES
+              (1, 'both', 'source', 'webinar-e2e', ${[MEMBER_ID, CS_ID]}::uuid[]),
+              (2, 'both', 'any', NULL, ${[ADMIN_ID]}::uuid[])`;
+  await sql`UPDATE app_settings SET assignment_enabled = true, assignment_since = now() - interval '1 second'`;
+  const stamp = Date.now();
+  const r1 = await (await api({ email: `uno.${stamp}@empresa-e2e.example`, full_name: "Uno E2E", source: "webinar-e2e", job_title: "CEO", company: `Empresa E2E ${stamp}` })).json();
+  const r2 = await (await api({ email: `dos.${stamp}@empresa-e2e.example`, full_name: "Dos E2E", source: "Webinar-E2E de octubre" })).json();
+  const r3 = await (await api({ email: `tres.${stamp}@gmail.com`, full_name: "Tres E2E", source: "ebook", intent: "demo_request" })).json();
+  const owners = await sql`SELECT id, owner_id, score, score_reasons FROM leads WHERE id IN (${r1.lead_id}, ${r2.lead_id}, ${r3.lead_id})`;
+  const by = (id) => owners.find((o) => o.id === id);
+  check(by(r1.lead_id)?.owner_id === MEMBER_ID && by(r2.lead_id)?.owner_id === CS_ID && by(r3.lead_id)?.owner_id === ADMIN_ID,
+        "reparto: por origen y por turnos; lo demás, a la regla general", JSON.stringify(owners.map((o) => o.owner_id)));
+  const [d3] = await sql`SELECT owner_id FROM deals WHERE id = ${r3.deal_id}`;
+  check(d3?.owner_id === ADMIN_ID, "reparto: el deal de una solicitud de demo también se asigna", JSON.stringify(d3));
+  const s1 = by(r1.lead_id), s3 = by(r3.lead_id);
+  check(s1?.score >= 25 && s1.score_reasons.some((x) => x.label.startsWith("Cargo con capacidad de decisión")) && s3?.score >= 50
+        && s3.score_reasons.some((x) => x.label === "Ha pedido una demo o reunión"),
+        "puntuación: el cargo y la petición de demo suben la nota, con sus motivos", JSON.stringify({ s1: s1?.score, s3: s3?.score }));
+  const leadsHtml = await (await get("/leads?sort=score&temp=warm")).text();
+  check(leadsHtml.includes("Puntuación") && leadsHtml.includes("Tres E2E"), "leads: ordenar y filtrar por puntuación");
+  const leadPage = await (await get(`/leads/${r3.lead_id}`)).text();
+  check(leadPage.includes("Ha pedido una demo o reunión") && leadPage.includes("/ 100"), "ficha del lead: la puntuación con sus motivos");
+  const asg = await (await get("/settings/assignment")).text();
+  check(asg.includes("Reparto automático: activado") && asg.includes("webinar-e2e"), "/settings/assignment muestra las reglas");
+  await sql`UPDATE app_settings SET assignment_enabled = false`;
+}
+
 // ------------------------------------------------------------- Reservas y semana
 {
   check((await fetch(`${BASE}/book/no-existe`)).status === 404, "reservas: una página que no existe → 404 (sin pedir sesión)");

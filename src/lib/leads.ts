@@ -24,9 +24,11 @@ export type LeadListRow = {
   tags: string[];
   created_at: Date;
   last_activity_at: Date;
+  score: number | null;
+  score_reasons: { label: string; points: number }[];
 };
 
-export async function listLeads(f: { q?: string; status?: string; source?: string; funnel?: string } = {}) {
+export async function listLeads(f: { q?: string; status?: string; source?: string; funnel?: string; sort?: string; temp?: string } = {}) {
   const q = (f.q ?? "").trim().toLowerCase();
   const like = `%${q}%`;
   return sql<LeadListRow[]>`
@@ -36,7 +38,7 @@ export async function listLeads(f: { q?: string; status?: string; source?: strin
            l.organization_id, o.name AS organization_name, u.name AS owner_name, l.converted_deal_id,
            coalesce((SELECT array_agg(t.name ORDER BY t.name) FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id
                      WHERE lt.lead_id = l.id), '{}') AS tags,
-           l.created_at,
+           l.created_at, l.score, l.score_reasons,
            greatest(l.updated_at, coalesce((SELECT max(occurred_at) FROM events ev
                      WHERE ev.entity_type = 'lead' AND ev.entity_id = l.id), l.updated_at)) AS last_activity_at
     FROM leads l
@@ -50,7 +52,11 @@ export async function listLeads(f: { q?: string; status?: string; source?: strin
       AND (${q === ""} OR lower(l.title) LIKE ${like} OR lower(coalesce(p.full_name, '')) LIKE ${like}
            OR lower(coalesce(o.name, '')) LIKE ${like}
            OR EXISTS (SELECT 1 FROM person_emails e WHERE e.person_id = p.id AND lower(e.email) LIKE ${like}))
-    ORDER BY last_activity_at DESC
+      AND (${f.temp || null}::text IS NULL
+           OR (${f.temp || null}::text = 'hot' AND l.score >= 70)
+           OR (${f.temp || null}::text = 'warm' AND l.score >= 40 AND l.score < 70)
+           OR (${f.temp || null}::text = 'cold' AND coalesce(l.score, 0) < 40))
+    ORDER BY ${f.sort === "score" ? sql`l.score DESC NULLS LAST,` : sql``} last_activity_at DESC
     LIMIT 500`;
 }
 
@@ -70,7 +76,7 @@ export async function getLead(leadId: string) {
            l.converted_deal_id, d.title AS deal_title, l.converted_at, l.custom,
            coalesce((SELECT array_agg(t.name ORDER BY t.name) FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id
                      WHERE lt.lead_id = l.id), '{}') AS tags,
-           l.created_at, l.updated_at AS last_activity_at
+           l.created_at, l.updated_at AS last_activity_at, l.score, l.score_reasons
     FROM leads l
     LEFT JOIN persons p ON p.id = l.person_id
     LEFT JOIN organizations o ON o.id = l.organization_id

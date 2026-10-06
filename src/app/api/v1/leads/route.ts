@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkApiKey } from "@/lib/api-auth";
 import { ingestLead } from "@/lib/leads";
+import { recomputeScores } from "@/lib/scoring";
+import { applyAssignment } from "@/lib/assignment";
 import { INTEGRATION_ACTOR } from "@/lib/events";
 import { toUserMessage, UserError } from "@/lib/errors";
 
@@ -38,6 +40,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await ingestLead(INTEGRATION_ACTOR, body);
+    // Puntuación y reparto al momento (sin esperar a la revisión periódica).
+    await recomputeScores(result.lead_id).then(() => applyAssignment()).catch((err) => console.error("[puntuación/reparto]", err));
     return NextResponse.json(result, { status: result.created.lead || result.created.deal ? 201 : 200 });
   } catch (err) {
     const code = (err as { code?: string })?.code;

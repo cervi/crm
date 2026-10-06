@@ -891,3 +891,13 @@ a.btn.small svg { width: 14px; height: 14px; }
 .deal-sequences ul { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
 .deal-sequences li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .deal-sequences li form { margin-left: auto; }
+
+/* Puntuación de leads */
+.score { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: help; }
+.score strong { font-size: 13px; font-variant-numeric: tabular-nums; }
+.score-hot { background: var(--bad-soft); color: var(--bad); }
+.score-warm { background: var(--warn-soft); color: var(--warn); }
+.score-cold { background: var(--sunken); color: var(--text-2); }
+.score-reasons { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.score-reasons span { display: inline-block; min-width: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.check-grid { display: flex; flex-wrap: wrap; gap: 6px 18px; }

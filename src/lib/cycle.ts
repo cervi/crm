@@ -2,6 +2,8 @@ import { runAutomations } from "./automations";
 import { sendDueEmails } from "./emails";
 import { importTick } from "./pipedrive-import";
 import { processSequences } from "./sequences";
+import { recomputeScores } from "./scoring";
+import { applyAssignment } from "./assignment";
 
 /**
  * Revisión periódica completa: primero la importación de Pipedrive (si hay
@@ -11,6 +13,9 @@ import { processSequences } from "./sequences";
 export async function runCycle() {
   await importTick().catch((err) => console.error("[importación pipedrive]", err));
   const scheduled = await sendDueEmails().catch((err) => { console.error("[correos programados]", err); return { sent: 0, failed: 0 }; });
+  // Puntuación de los leads y, con ella, el reparto de lo nuevo sin responsable.
+  const scored = await recomputeScores().catch((err) => { console.error("[puntuación]", err); return 0; });
+  const assigned = await applyAssignment().catch((err) => { console.error("[reparto]", err); return null; });
   const sequences = await processSequences().catch((err) => { console.error("[secuencias]", err); return null; });
-  return { ...(await runAutomations()), scheduled, sequences };
+  return { ...(await runAutomations()), scheduled, sequences, scored, assigned };
 }
