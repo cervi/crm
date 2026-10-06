@@ -851,5 +851,5 @@ a.btn.small svg { width: 14px; height: 14px; }
 .email-dir { color: var(--muted); font-weight: 700; width: 14px; }
 .email-main { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .email-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.email-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.email-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
 .email-item details > :not(summary) { margin: 0 12px 12px 36px; }
