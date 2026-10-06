@@ -124,7 +124,7 @@ await step("arrastrar el deal en el tablero a otra fase", async () => {
 
 await step("programar una demo y marcar que no se presentó", async () => {
   await page.goto(`/deals/${dealId}`);
-  await page.getByRole("tab", { name: "Actividad" }).click();
+  await page.getByRole("tab", { name: "Actividad", exact: true }).click();
   await page.getByLabel("Tipo").selectOption({ label: "Demo" });
   await page.getByLabel("Asunto").fill("Demo del producto");
   await page.getByLabel("Fecha y hora").fill("2026-12-01T10:30");
@@ -139,7 +139,7 @@ await step("programar una demo y marcar que no se presentó", async () => {
 });
 
 await step("añadir una nota", async () => {
-  await page.getByRole("tab", { name: "Nota" }).click();
+  await page.getByRole("tab", { name: "Nota", exact: true }).click();
   await page.getByLabel("Nota", { exact: true }).fill("Interesados en la integración con su ERP.");
   await submit("Guardar nota");
   await page.locator(".note-body", { hasText: "integración con su ERP" }).waitFor();
@@ -175,6 +175,7 @@ await step("crear un campo personalizado y usarlo en un deal", async () => {
   await page.getByLabel(`Prioridad ${stamp}`).selectOption({ label: "Alta" });
   await submit("Guardar cambios");
   await page.waitForURL(new RegExp(`/deals/${dealId}$`));
+  await page.locator("summary", { hasText: "Campos" }).click();
   await page.locator(".dl-row", { hasText: `Prioridad ${stamp}` }).getByText("Alta").waitFor();
 });
 
@@ -204,7 +205,7 @@ await step("crear un lead a mano y convertirlo en deal", async () => {
   await page.goto("/leads/new");
   await page.getByLabel("Email *").fill(`carlos.${stamp}@leadui${stamp}.com`);
   await page.getByLabel("Nombre").fill("Carlos");
-  await page.getByLabel("Empresa").fill(`Lead UI ${stamp}`);
+  await page.getByLabel("Empresa", { exact: true }).fill(`Lead UI ${stamp}`);
   await page.getByLabel("Origen *").fill("evento");
   await page.getByLabel("Etapa").selectOption({ label: "MOFU" });
   await submit("Crear lead");

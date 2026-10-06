@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 
 /** Pestañas del compositor (nota / actividad): solo cambian qué formulario se ve. */
@@ -75,17 +75,22 @@ export function PanelControls({ closeHref, fullHref, prevHref, nextHref }: {
   closeHref: string; fullHref: string; prevHref: string | null; nextHref: string | null;
 }) {
   const router = useRouter();
+  // Los enlaces vigentes se leen de una referencia, así el atajo siempre usa
+  // los del deal que se está viendo aunque se pulse justo al cambiar de deal.
+  const links = useRef({ closeHref, prevHref, nextHref });
+  links.current = { closeHref, prevHref, nextHref };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (el.closest("input, textarea, select, [contenteditable]")) return;
-      if (e.key === "Escape") router.push(closeHref, { scroll: false });
-      if (e.key === "k" && prevHref) router.push(prevHref, { scroll: false });
-      if (e.key === "j" && nextHref) router.push(nextHref, { scroll: false });
+      if (e.metaKey || e.ctrlKey || e.altKey || el.closest("input, textarea, select, [contenteditable]")) return;
+      const { closeHref: close, prevHref: prev, nextHref: next } = links.current;
+      if (e.key === "Escape") router.push(close, { scroll: false });
+      if (e.key === "k" && prev) router.push(prev, { scroll: false });
+      if (e.key === "j" && next) router.push(next, { scroll: false });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, closeHref, prevHref, nextHref]);
+  }, [router]);
 
   return (
     <div className="panel-controls">
