@@ -591,10 +591,13 @@ if (process.env.MOCK_URL) {
                                              WHERE r.key = 'won_handoff_email' AND x.deal_id = ${id}`)[0];
     await sql`UPDATE automation_rules SET params = params || ${sql.json({ cs_email: "cs@aikit.example", cs_name: "equipo de CS" })}
               WHERE key = 'won_handoff_email'`;
-    const [dA, dB, dC] = await sql`SELECT ods.id, ods.organization_id FROM open_deals_status ods
-                                   WHERE ods.organization_id IS NOT NULL AND ods.id <> ${DEAL_OPEN}
-                                     AND ods.organization_id NOT IN (SELECT organization_id FROM deals WHERE id = ${DEAL_OPEN})
-                                   ORDER BY ods.id LIMIT 3`;
+    // Tres deals de empresas distintas (si compartieran empresa, el responsable de CS se pisaría).
+    const [dA, dB, dC] = await sql`SELECT * FROM (
+                                     SELECT DISTINCT ON (ods.organization_id) ods.id, ods.organization_id FROM open_deals_status ods
+                                     WHERE ods.organization_id IS NOT NULL AND ods.id <> ${DEAL_OPEN}
+                                       AND ods.organization_id NOT IN (SELECT organization_id FROM deals WHERE id = ${DEAL_OPEN})
+                                     ORDER BY ods.organization_id, ods.id) x
+                                   ORDER BY id LIMIT 3`;
     await sql`UPDATE organizations SET cs_manager_name = 'Lucía CS', cs_manager_email = 'lucia@aikit.example' WHERE id = ${dA.organization_id}`;
     await sql`UPDATE organizations SET cs_manager_name = NULL, cs_manager_email = NULL WHERE id IN (${dB.organization_id}, ${dC.organization_id})`;
     const llmBefore = (await (await fetch(`${MOCK}/__state`)).json()).llm.filter((c) => c.task === "handoff").length;
