@@ -4,6 +4,7 @@ import {
   listPermissions, listRules, ruleStats, AUTONOMY_LEVELS,
 } from "@/lib/automations";
 import { dateTime } from "@/lib/format";
+import { hasActiveMailbox } from "@/lib/mailbox";
 import {
   runNowAction, setPausedAction, setPermissionAction, setRuleAutonomyAction, updateRuleParamsAction,
 } from "@/app/actions/automations";
@@ -14,7 +15,11 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Automatizaciones e IA" };
 
 export default async function AutomationsSettingsPage() {
-  const [rules, permissions, settings, stats] = await Promise.all([listRules(), listPermissions(), getSettings(), ruleStats()]);
+  const [rules, permissions, settings, stats, mailbox] = await Promise.all([listRules(), listPermissions(), getSettings(), ruleStats(), hasActiveMailbox()]);
+  // Sin buzón conectado, un correo no puede salir solo.
+  const allowedFor = (action: string, allowed: typeof permissions[number]["allowed_autonomy"]) =>
+    action === "draft_email" && !mailbox ? allowed.filter((l) => l !== "auto") : allowed;
+  const NO_MAILBOX = "Para que envíe correos sola, conecta tu correo en Ajustes → Correo y calendario.";
   const perm = (actor: string, action: string) => permissions.find((p) => p.actor === actor && p.action_type === action);
   const levelLabel = (v: string) => AUTONOMY_LEVELS.find((l) => l.value === v)?.label ?? v;
 
@@ -68,9 +73,9 @@ export default async function AutomationsSettingsPage() {
                           <AutonomyPicker
                             label={`${t.label} — ${a.label}`}
                             value={p.autonomy}
-                            allowed={p.allowed_autonomy}
+                            allowed={allowedFor(t.value, p.allowed_autonomy)}
                             action={setPermissionAction.bind(null, a.value, t.value)}
-                            unavailableHint={t.value === "draft_email" ? "Enviar correos solos llegará con el buzón conectado." : undefined}
+                            unavailableHint={t.value === "draft_email" ? NO_MAILBOX : undefined}
                           />
                         )}
                       </td>
@@ -88,7 +93,7 @@ export default async function AutomationsSettingsPage() {
         <div className="rules">
           {rules.map((r) => {
             const action = RULE_ACTION[r.key];
-            const eff = effectiveAutonomy(r, permissions);
+            const eff = effectiveAutonomy(r, permissions, { mailbox });
             const st = stats.get(r.id);
             const tip = autonomySuggestion(r, st);
             const specs = RULE_PARAMS[r.key] ?? [];
@@ -102,15 +107,17 @@ export default async function AutomationsSettingsPage() {
                   <AutonomyPicker
                     label={`Autonomía: ${r.name}`}
                     value={r.autonomy}
-                    allowed={r.allowed_autonomy}
+                    allowed={allowedFor(action, r.allowed_autonomy)}
                     action={setRuleAutonomyAction.bind(null, r.id)}
-                    unavailableHint="Enviar correos solos llegará con el buzón conectado."
+                    unavailableHint={NO_MAILBOX}
                   />
                 </div>
                 <div className="rule-foot meta">
                   <span>Acción: {actionLabel(action)}</span>
                   {eff !== r.autonomy && (
-                    <span className="badge warn">Limitada a «{levelLabel(eff)}» por el permiso «{actionLabel(action)}»</span>
+                    <span className="badge warn">
+                      Limitada a «{levelLabel(eff)}» {action === "draft_email" && !mailbox && r.autonomy === "auto" ? "hasta que conectes tu correo" : <>por el permiso «{actionLabel(action)}»</>}
+                    </span>
                   )}
                   {st ? (
                     <span>

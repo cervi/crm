@@ -300,6 +300,97 @@ if (!KEY) {
   check(/Bandeja de la IA \(\d+ pendientes?\)/.test(nav), "el menú lateral avisa de las propuestas pendientes");
 }
 
+// ------------------------------------------------------------- Correo y calendario (Microsoft simulado)
+if (process.env.MOCK_GRAPH_URL) {
+  const MOCK = process.env.MOCK_GRAPH_URL;
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  const mock = async (path, method = "GET") => (await fetch(`${MOCK}${path}`, { method })).json();
+  const [{ owner_id: OWNER }] = await sql`SELECT owner_id FROM deals WHERE id = ${DEAL_OPEN}`;
+
+  const page0 = await (await get("/settings/mailbox")).text();
+  check(page0.includes("Conectar Outlook") && page0.includes("Correo y calendario"), "/settings/mailbox ofrece conectar Outlook");
+
+  // Conexión OAuth completa: CRM → Microsoft → vuelta al CRM.
+  const connect = async (tamper = false) => {
+    const r1 = await get(`/api/integrations/microsoft/connect?user=${OWNER}`);
+    const cookie = (r1.headers.get("set-cookie") ?? "").split(";")[0];
+    const r2 = await fetch(r1.headers.get("location"), { redirect: "manual" });
+    let back = r2.headers.get("location");
+    if (tamper) back = back.replace(/state=[^&]+/, "state=otro");
+    const r3 = await get(back.replace(/^https?:\/\/[^/]+/, ""), { headers: { cookie } });
+    return { r1, r3, location: r3.headers.get("location") ?? "" };
+  };
+  const bad = await connect(true);
+  check(bad.location.includes("error="), "conexión con «state» manipulado: se rechaza", bad.location);
+  const c = await connect();
+  check(c.r1.status === 307 && c.r1.headers.get("location").includes("code_challenge="), "conectar: redirige a Microsoft con PKCE");
+  check(c.location.includes("/settings/mailbox?connected="), "conectar: vuelve al CRM conectado", c.location);
+  const [conn] = await sql`SELECT email, tokens, scheduling, status FROM mailbox_connections WHERE user_id = ${OWNER}`;
+  check(conn?.email === "jesus@aikit.example" && conn.status === "active" && !conn.tokens.includes("rt-") && conn.tokens.startsWith("v1."),
+        "la conexión se guarda con los tokens cifrados", JSON.stringify(conn && { ...conn, tokens: conn.tokens.slice(0, 12) }));
+  check(conn?.scheduling?.end === "17:00" && conn.scheduling.days.join() === "1,2,3,4,5", "toma el horario laboral de Outlook", JSON.stringify(conn?.scheduling));
+
+  // Huecos libres: dentro del horario, sin solaparse con lo ocupado y con antelación.
+  const slotsRes = await get(`/api/calendar/slots?deal=${DEAL_OPEN}`);
+  const slots = await slotsRes.json();
+  const madrid = (d) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", weekday: "short", hourCycle: "h23" }).format(new Date(d));
+  const okSlots = slotsRes.ok && slots.slots.length === 3 && slots.slots.every((x) => {
+    const [wd, hm] = madrid(x.start).split(" ");
+    return !["Sat", "Sun"].includes(wd.replace(",", "")) && hm >= "13:30" && madrid(x.end).split(" ")[1] <= "17:00"
+      && Date.parse(x.start) >= Date.now() + 23.9 * 3600000;
+  });
+  check(okSlots, "huecos libres: en horario, tras lo ocupado y con 24 h de antelación", JSON.stringify(slots.slots?.map((x) => madrid(x.start))));
+  check(slots.text?.includes("(hora de Madrid)"), "los huecos se formatean para el correo", slots.text);
+
+  // Sincronización: correos y reuniones con contactos del CRM, sin duplicar.
+  const r1 = await run();
+  check(r1.sync?.emails === 2 && r1.sync?.meetings === 1, "sincroniza 2 correos y 1 reunión con contactos (ignora el resto)", JSON.stringify(r1.sync));
+  const synced = await sql`SELECT type, subject, done, external_ref FROM activities WHERE deal_id = ${DEAL_OPEN} AND external_ref IS NOT NULL ORDER BY external_ref`;
+  check(synced.some((a) => a.external_ref === "msg:<m1@mock>" && a.type === "email" && a.done)
+        && synced.some((a) => a.external_ref === "evt:e1" && !a.done), "los correos y la reunión quedan en el deal", JSON.stringify(synced));
+  const r2 = await run();
+  check(r2.sync?.emails === 0 && r2.sync?.meetings === 0, "una segunda sincronización no duplica", JSON.stringify(r2.sync));
+
+  // Con calendario conectado, la IA ofrece huecos para la sesión de la fase.
+  const [offer] = await sql`SELECT x.* FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                            WHERE r.key = 'offer_session_slots' AND x.deal_id = ${DEAL_OPEN} AND x.status = 'pending'`;
+  check(offer && offer.payload.body.includes("(hora de Madrid)") && !offer.payload.body.includes("{huecos}") && offer.payload.to === "ana@paco.example",
+        "fase sin sesión: propone un correo con tus huecos libres", JSON.stringify(offer?.payload));
+
+  // Envío automático desde Outlook (con permiso y regla en «Sola»).
+  await sql`UPDATE ai_permissions SET autonomy = 'auto' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
+  await sql`UPDATE automation_rules SET autonomy = 'auto' WHERE key = 'offer_session_slots'`;
+  await sql`DELETE FROM automation_actions WHERE id = ${offer.id}`;
+  const before = (await mock("/__state")).sent.length;
+  await run();
+  const st = await mock("/__state");
+  const mail = st.sent.at(-1);
+  const [sentRow] = await sql`SELECT x.status, x.result FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                              WHERE r.key = 'offer_session_slots' AND x.deal_id = ${DEAL_OPEN} ORDER BY x.created_at DESC LIMIT 1`;
+  check(st.sent.length === before + 1 && mail.toRecipients[0].emailAddress.address === "ana@paco.example" && sentRow?.status === "done" && sentRow.result.sent,
+        "en «Sola», el correo sale desde Outlook", JSON.stringify({ n: st.sent.length - before, sentRow }));
+  const r3 = await run();
+  const [{ n: refs }] = await sql`SELECT count(*)::int AS n FROM activities WHERE external_ref = ${`msg:${mail.internetMessageId}`}`;
+  check(refs === 1 && r3.sync.emails === 0, "el correo enviado no se duplica al sincronizar «Enviados»", String(refs));
+  await sql`UPDATE ai_permissions SET autonomy = 'ask' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
+  await sql`UPDATE automation_rules SET autonomy = 'ask' WHERE key = 'offer_session_slots'`;
+
+  // Acceso caducado: se renueva solo.
+  await mock("/__expire", "POST");
+  check((await get(`/api/calendar/slots?deal=${DEAL_OPEN}`)).ok, "si caduca el acceso, se renueva sin intervención");
+
+  // Acceso revocado: queda marcado para reconectar.
+  await mock("/__revoke", "POST");
+  await get(`/api/calendar/slots?deal=${DEAL_OPEN}`);
+  const [revoked] = await sql`SELECT status, last_error FROM mailbox_connections WHERE user_id = ${OWNER}`;
+  const page1 = await (await get("/settings/mailbox")).text();
+  check(revoked.status === "error" && page1.includes("Reconectar Outlook"), "si Microsoft revoca el acceso, pide reconectar", JSON.stringify(revoked));
+  // Sin buzón activo, el correo vuelve a no poder salir solo.
+  const conf = await (await get("/settings/automations")).text();
+  check(conf.includes("Enviar correos"), "/settings/automations sigue respondiendo con el buzón caído");
+}
+
 await sql.end();
 console.log(`\n${failed === 0 ? "✓" : "✗"} ${passed} correctas, ${failed} fallidas`);
 process.exit(failed === 0 ? 0 : 1);

@@ -387,9 +387,9 @@ await step("autonomía: limitar un permiso se refleja en las reglas", async () =
   expect(p.autonomy === "auto", p.autonomy);
 });
 
-await step("autonomía: un correo no puede enviarse solo todavía", async () => {
+await step("autonomía: sin correo conectado, un correo no puede salir solo", async () => {
   await page.goto("/settings/automations");
-  const btn = page.getByRole("group", { name: "Preparar correos — Asistente del CRM" }).getByRole("button", { name: "Sola" });
+  const btn = page.getByRole("group", { name: "Enviar correos — Asistente del CRM" }).getByRole("button", { name: "Sola" });
   expect(await btn.isDisabled(), "el botón «Sola» de correos debería estar desactivado");
 });
 
@@ -419,10 +419,81 @@ await step("pausar y reanudar la IA", async () => {
   await page.getByText("La IA está en pausa").waitFor({ state: "detached" });
 });
 
+// ------------------------------------------------------------- Correo y calendario (Microsoft simulado)
+const MOCK = process.env.MOCK_GRAPH_URL;
+const mockState = async () => (await fetch(`${MOCK}/__state`)).json();
+
+if (MOCK) {
+  await step("conectar Outlook desde Ajustes", async () => {
+    const [{ owner_id }] = await sql`SELECT owner_id FROM deals WHERE id = ${PACO_OPEN}`;
+    const [u] = await sql`SELECT name FROM users WHERE id = ${owner_id}`;
+    await page.goto("/settings/mailbox");
+    await page.getByRole("article", { name: `Correo de ${u.name}` }).getByRole("link", { name: "Conectar Outlook" }).click();
+    await page.waitForURL(/\/settings\/mailbox\?connected=/);
+    await page.getByText("Correo conectado: jesus@aikit.example").waitFor();
+    await page.getByRole("article", { name: `Correo de ${u.name}` }).locator(".slots-preview").filter({ hasText: "(hora de Madrid)" }).waitFor();
+    await shot("correo");
+  });
+
+  await step("preferencias de huecos: quitar el viernes", async () => {
+    await page.goto("/settings/mailbox");
+    const card = page.locator("article.mailbox", { has: page.getByText("jesus@aikit.example") });
+    await card.getByLabel("Vie").uncheck();
+    await card.getByRole("button", { name: "Guardar preferencias" }).click();
+    await page.waitForTimeout(500);
+    const [c] = await sql`SELECT scheduling FROM mailbox_connections`;
+    expect(c.scheduling.days.join() === "1,2,3,4", c.scheduling.days.join());
+  });
+
+  await step("escribir desde el deal con mis huecos y enviarlo por Outlook", async () => {
+    await page.goto(`/deals/${PACO_OPEN}`);
+    await page.getByRole("tab", { name: "Correo" }).click();
+    const form = page.locator(".composer form", { has: page.getByRole("button", { name: "Insertar mis huecos" }) });
+    await form.getByLabel("Asunto").fill(`Huecos ${stamp}`);
+    await form.getByRole("button", { name: "Insertar mis huecos" }).click();
+    await page.waitForFunction(() => document.querySelector(".composer textarea[name=body]")?.value.includes("(hora de Madrid)"));
+    await form.getByRole("button", { name: "Enviar desde Outlook" }).click();
+    await page.getByText(`Email: Huecos ${stamp}`).waitFor();
+    const st = await mockState();
+    const m = st.sent.find((x) => x.subject === `Huecos ${stamp}`);
+    expect(m && m.body.content.includes("(hora de Madrid)") && m.toRecipients[0].emailAddress.address === "ana@paco.example", "no salió por Outlook");
+  });
+
+  await step("bandeja: la IA ofrece huecos y se envía desde Outlook", async () => {
+    await page.goto("/inbox");
+    await submit("Revisar ahora");
+    const card = page.locator("article.proposal", { hasText: "Ofrecer huecos" }).first();
+    await card.waitFor();
+    const subject = await card.getByLabel("Asunto").inputValue();
+    expect((await card.getByLabel("Texto").inputValue()).includes("(hora de Madrid)"), "el borrador no lleva los huecos");
+    await card.getByRole("button", { name: "Enviar desde Outlook" }).click();
+    await card.waitFor({ state: "detached" });
+    expect((await mockState()).sent.some((x) => x.subject === subject), "no salió por Outlook");
+  });
+
+  await step("programar una demo invitando desde el calendario", async () => {
+    await page.goto(`/deals/${PACO_OPEN}`);
+    await page.getByRole("tab", { name: "Actividad" }).click();
+    const form = page.locator("form", { has: page.getByRole("button", { name: "Programar" }) });
+    await form.locator("select[name=type]").selectOption("demo");
+    await form.locator("input[name=subject]").fill(`Demo ${stamp}`);
+    const d = new Date(Date.now() + 3 * 86400000);
+    const pad = (n) => String(n).padStart(2, "0");
+    await form.locator("input[name=due_at]").fill(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T16:00`);
+    await form.getByLabel(/Invitar a Ana García desde mi calendario/).check();
+    await submit("Programar");
+    await page.locator(".item", { hasText: `Demo ${stamp}` }).waitFor();
+    const ev = (await mockState()).events.find((e) => e.subject === `Demo ${stamp}`);
+    const [a] = await sql`SELECT external_ref, meeting_url FROM activities WHERE subject = ${`Demo ${stamp}`}`;
+    expect(ev && ev.isOnlineMeeting && ev.attendees[0].emailAddress.address === "ana@paco.example", "no se creó el evento con Teams");
+    expect(a.external_ref === `evt:${ev.id}` && a.meeting_url?.includes("teams.example"), JSON.stringify(a));
+  });
+}
+
 await step("capturas de las pantallas principales", async () => {
   for (const [name, path] of [["tablero", "/pipelines/10000000-0000-0000-0000-000000000001"], ["empresa", "/organizations/60000000-0000-0000-0000-000000000001"],
                               ["leads", "/leads?status=all"], ["actividades", "/activities"], ["contacto", "/persons/70000000-0000-0000-0000-000000000001"],
-                              ["bandeja", "/inbox"], ["registro", "/inbox?view=log"], ["ia", "/settings/automations"]]) {
+                              ["bandeja", "/inbox"], ["registro", "/inbox?view=log"], ["ia", "/settings/automations"], ["correo-ajustes", "/settings/mailbox"]]) {
     await page.goto(path);
     await shot(name);
   }

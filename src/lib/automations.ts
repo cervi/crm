@@ -8,6 +8,7 @@ import { moveDealToStage } from "./deals";
 import { UserError } from "./errors";
 import { activityLabel, money } from "./format";
 import { optText, optional, parse } from "./validation";
+import { hasActiveMailbox, sendEmail, senderFor, slotsText, syncAllMailboxes } from "./mailbox";
 
 // ===========================================================================
 // Motor de automatizaciones
@@ -38,7 +39,7 @@ export const AUTONOMY_LEVELS: { value: Autonomy; label: string; help: string }[]
 export const ACTION_TYPES: { value: ExecutableAction; label: string; help: string }[] = [
   { value: "create_task", label: "Crear tareas", help: "Tareas y recordatorios en los deals." },
   { value: "add_note", label: "Escribir notas", help: "Notas en la ficha del deal." },
-  { value: "draft_email", label: "Preparar correos", help: "Borradores para que los envíes tú. Enviar solo llegará con el buzón conectado." },
+  { value: "draft_email", label: "Enviar correos", help: "Desde tu buzón de Outlook. Sin buzón conectado, solo prepara borradores." },
   { value: "move_stage", label: "Mover deals de fase", help: "Avanzar o retroceder un deal en su pipeline." },
   { value: "update_deal", label: "Editar deals", help: "Cambiar título, importe o fecha de cierre." },
 ];
@@ -69,6 +70,7 @@ export type Rule = {
 
 /** Qué acción produce cada regla incluida. */
 export const RULE_ACTION: Record<string, ActionType> = {
+  offer_session_slots: "draft_email",
   missing_stage_session: "create_task",
   stale_deal_followup: "draft_email",
   no_show_rebook: "draft_email",
@@ -80,6 +82,12 @@ type ParamSpec = { key: string; label: string; kind: "days" | "number" | "text" 
 
 /** Parámetros ajustables de cada regla. */
 export const RULE_PARAMS: Record<string, ParamSpec[]> = {
+  offer_session_slots: [
+    { key: "grace_days", label: "Días de margen al entrar en la fase", kind: "days" },
+    { key: "cooldown_days", label: "No repetir antes de (días)", kind: "days" },
+    { key: "subject", label: "Asunto", kind: "text" },
+    { key: "body", label: "Texto", kind: "textarea", help: "Puedes usar {deal}, {nombre}, {responsable}, {sesion} y {huecos} (tus próximos huecos libres)." },
+  ],
   missing_stage_session: [
     { key: "grace_days", label: "Días de margen al entrar en la fase", kind: "days" },
     { key: "cooldown_days", label: "No repetir antes de (días)", kind: "days" },
@@ -87,11 +95,11 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
   stale_deal_followup: [
     { key: "cooldown_days", label: "No repetir antes de (días)", kind: "days" },
     { key: "subject", label: "Asunto", kind: "text" },
-    { key: "body", label: "Texto", kind: "textarea", help: "Puedes usar {deal}, {nombre} y {responsable}." },
+    { key: "body", label: "Texto", kind: "textarea", help: "Puedes usar {deal}, {nombre}, {responsable} y {huecos} (tus próximos huecos libres)." },
   ],
   no_show_rebook: [
     { key: "subject", label: "Asunto", kind: "text" },
-    { key: "body", label: "Texto", kind: "textarea", help: "Puedes usar {deal}, {nombre}, {responsable} y {sesion}." },
+    { key: "body", label: "Texto", kind: "textarea", help: "Puedes usar {deal}, {nombre}, {responsable}, {sesion} y {huecos} (tus próximos huecos libres)." },
   ],
   stale_deal_escalate: [
     { key: "factor", label: "Veces el límite de días de la fase", kind: "number" },
@@ -114,15 +122,23 @@ export async function listPermissions(): Promise<Permission[]> {
   return sql<Permission[]>`SELECT actor, action_type, autonomy, allowed_autonomy FROM ai_permissions`;
 }
 
-/** Autonomía con la que actúa una regla: la menor entre la regla y el permiso del asistente. */
-export function effectiveAutonomy(rule: Rule, permissions: Permission[]): Autonomy {
+/**
+ * Autonomía con la que actúa una regla: la menor entre la regla y el permiso
+ * del asistente. Sin buzón conectado, un correo no puede salir solo.
+ */
+export function effectiveAutonomy(rule: Rule, permissions: Permission[], ctx: { mailbox: boolean }): Autonomy {
   const action = RULE_ACTION[rule.key];
   if (!action) return "off";
   // Pedir una decisión nunca es automático: es una pregunta.
   if (action === "notify") return minAutonomy(rule.autonomy, "ask");
   const perm = permissions.find((p) => p.actor === "assistant" && p.action_type === action);
-  return minAutonomy(rule.autonomy, perm?.autonomy ?? "off");
+  const level = minAutonomy(rule.autonomy, perm?.autonomy ?? "off");
+  return action === "draft_email" && !ctx.mailbox ? minAutonomy(level, "ask") : level;
 }
+
+/** Límite de un permiso de correo cuando no hay buzón. */
+export const capForMailbox = (action: string, level: Autonomy, mailbox: boolean): Autonomy =>
+  action === "draft_email" && !mailbox ? minAutonomy(level, "ask") : level;
 
 export async function setRuleAutonomy(ruleId: string, autonomy: Autonomy) {
   const [rule] = await sql<{ allowed_autonomy: Autonomy[] }[]>`SELECT allowed_autonomy FROM automation_rules WHERE id = ${ruleId}`;
@@ -225,19 +241,57 @@ const openDeals = (where: Fragment) => sql<DealContact[]>`
   ORDER BY ods.days_in_stage DESC
   LIMIT 500`;
 
-type Scanner = (rule: Rule, all: Rule[]) => Promise<Candidate[]>;
+/** Lo que necesitan las reglas en una revisión: todas las reglas, permisos y el calendario. */
+export type RunContext = {
+  rules: Rule[];
+  permissions: Permission[];
+  /** Hay al menos un buzón conectado (para enviar correos y leer el calendario). */
+  mailbox: boolean;
+  /** Texto con los próximos huecos libres del calendario del responsable (se calcula una vez por revisión). */
+  slotsFor: (ownerId: string | null) => Promise<string>;
+};
+
+export async function buildContext(): Promise<RunContext> {
+  const [rules, permissions, mailbox] = await Promise.all([listRules(), listPermissions(), hasActiveMailbox()]);
+  const cache = new Map<string, Promise<string>>();
+  return {
+    rules, permissions, mailbox,
+    slotsFor(ownerId) {
+      const key = ownerId ?? "";
+      if (!cache.has(key)) cache.set(key, senderFor(ownerId).then((c) => slotsText(c)));
+      return cache.get(key)!;
+    },
+  };
+}
+
+type Scanner = (rule: Rule, ctx: RunContext) => Promise<Candidate[]>;
 type EventRow = { id: string; entity_id: string; event_type: string; payload: Record<string, unknown>; occurred_at: Date };
-type EventHandler = { events: string[]; handle: (rule: Rule, e: EventRow) => Promise<Candidate | null>; stillValid: () => Fragment };
+type EventHandler = { events: string[]; handle: (rule: Rule, e: EventRow, ctx: RunContext) => Promise<Candidate | null>; stillValid: () => Fragment };
 
 const escalateFactor = (all: Rule[]) => num(all.find((r) => r.key === "stale_deal_escalate")?.params.factor, 2);
 
+/** Rellena una plantilla de correo; {huecos} solo se calcula si aparece. */
+async function renderEmail(rule: Rule, ctx: RunContext, ownerId: string | null, vars: Record<string, string>, defaults: { subject: string; body: string }) {
+  const subjectT = str(rule.params.subject, defaults.subject), bodyT = str(rule.params.body, defaults.body);
+  const all = { ...vars };
+  if (bodyT.includes("{huecos}") || subjectT.includes("{huecos}")) all.huecos = await ctx.slotsFor(ownerId);
+  return { subject: renderTemplate(subjectT, all), body: renderTemplate(bodyT, all) };
+}
+
+/** Las condiciones del deal que piden una sesión sin agendar. */
+const missingSession = (grace: number) => sql`
+  ods.required_activity_type IS NOT NULL AND NOT ods.has_upcoming_session AND ods.days_in_stage >= ${grace}`;
+
 const SCANNERS: Record<string, Scanner> = {
   // Fase que requiere una sesión (demo, llamada…) y el deal no la tiene agendada.
-  async missing_stage_session(rule) {
+  // Si el calendario está conectado y la regla de ofrecer huecos está activa, de
+  // los deals con email se encarga esa regla; aquí quedan los demás.
+  async missing_stage_session(rule, ctx) {
     const grace = num(rule.params.grace_days, 1);
-    const rows = await openDeals(sql`
-      ods.required_activity_type IS NOT NULL AND NOT ods.has_upcoming_session AND ods.days_in_stage >= ${grace}`);
-    return rows.map((d) => {
+    const offer = ctx.rules.find((r) => r.key === "offer_session_slots");
+    const offering = ctx.mailbox && offer !== undefined && effectiveAutonomy(offer, ctx.permissions, ctx) !== "off";
+    const rows = await openDeals(missingSession(grace));
+    return rows.filter((d) => !(offering && d.email)).map((d) => {
       const session = activityLabel(d.required_activity_type).toLowerCase();
       return {
         dealId: d.id,
@@ -252,25 +306,51 @@ const SCANNERS: Record<string, Scanner> = {
     });
   },
 
-  // Deal parado (supera los días de su fase) sin nada agendado: correo de seguimiento.
-  async stale_deal_followup(rule, all) {
-    const factor = escalateFactor(all);
+  // Fase que requiere una sesión: correo al contacto con tus huecos libres.
+  async offer_session_slots(rule, ctx) {
+    if (!ctx.mailbox) return [];
+    const rows = await openDeals(missingSession(num(rule.params.grace_days, 0)));
+    const out: Candidate[] = [];
+    for (const d of rows.filter((r) => r.email)) {
+      const session = activityLabel(d.required_activity_type).toLowerCase();
+      const vars = { deal: d.title, nombre: firstName(d.person_name), responsable: d.owner_name ?? "", sesion: session };
+      out.push({
+        dealId: d.id,
+        title: `Ofrecer huecos a ${d.person_name} para la ${session}`,
+        reason: `«${d.title}» está en «${d.stage_name}», que requiere una ${session}, y no hay ninguna agendada.`,
+        payload: {
+          stage_id: d.stage_id, to: d.email, to_name: d.person_name, person_id: d.person_id,
+          ...(await renderEmail(rule, ctx, d.owner_id, vars, { subject: "{deal}: ¿cuándo hacemos la {sesion}?", body: "Hola {nombre},\n\n{huecos}" })),
+        },
+      });
+    }
+    return out;
+  },
+
+  // Deal parado (supera los días de su fase) sin nada agendado ni correos
+  // recientes: correo de seguimiento.
+  async stale_deal_followup(rule, ctx) {
+    const factor = escalateFactor(ctx.rules);
+    const quiet = num(rule.params.cooldown_days, 7);
     const rows = await openDeals(sql`
       ods.is_rotten AND ods.days_in_stage < s.rotten_after_days * ${factor}
-      AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = ods.id AND NOT a.done AND a.due_at >= now())`);
-    return rows.filter((d) => d.email).map((d) => {
+      AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = ods.id AND NOT a.done AND a.due_at >= now())
+      AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = ods.id AND a.type = 'email' AND a.done
+                        AND a.done_at > now() - make_interval(days => ${quiet}))`);
+    const out: Candidate[] = [];
+    for (const d of rows.filter((r) => r.email)) {
       const vars = { deal: d.title, nombre: firstName(d.person_name), responsable: d.owner_name ?? "" };
-      return {
+      out.push({
         dealId: d.id,
         title: `Escribir a ${d.person_name} para retomar «${d.title}»`,
         reason: `Lleva ${d.days_in_stage} días en «${d.stage_name}» (el límite es ${d.rotten_after_days}) y no hay nada agendado.`,
         payload: {
           stage_id: d.stage_id, to: d.email, to_name: d.person_name, person_id: d.person_id,
-          subject: renderTemplate(str(rule.params.subject, "¿Seguimos con {deal}?"), vars),
-          body: renderTemplate(str(rule.params.body, "Hola {nombre},"), vars),
+          ...(await renderEmail(rule, ctx, d.owner_id, vars, { subject: "¿Seguimos con {deal}?", body: "Hola {nombre}," })),
         },
-      };
-    });
+      });
+    }
+    return out;
   },
 
   // Deal muy parado: pide a una persona que decida.
@@ -290,7 +370,7 @@ const EVENT_HANDLERS: Record<string, EventHandler> = {
   // Sesión marcada como «No se presentó»: correo para reagendar.
   no_show_rebook: {
     events: ["activity.completed"],
-    async handle(rule, e) {
+    async handle(rule, e, ctx) {
       if (e.payload.outcome !== "no_show" || typeof e.payload.activity_id !== "string") return null;
       const [a] = await sql<{ type: string; subject: string; person_id: string | null }[]>`
         SELECT type, subject, person_id FROM activities WHERE id = ${e.payload.activity_id}`;
@@ -313,8 +393,7 @@ const EVENT_HANDLERS: Record<string, EventHandler> = {
         reason: `No se presentó a «${a.subject}».`,
         payload: {
           activity_id: e.payload.activity_id, to: to.email, to_name: to.name, person_id: to.person_id,
-          subject: renderTemplate(str(rule.params.subject, "¿Buscamos otro hueco?"), vars),
-          body: renderTemplate(str(rule.params.body, "Hola {nombre},"), vars),
+          ...(await renderEmail(rule, ctx, d.owner_id, vars, { subject: "¿Buscamos otro hueco?", body: "Hola {nombre},\n\n{huecos}" })),
         },
       };
     },
@@ -440,7 +519,10 @@ async function propose(rule: Rule, mode: "ask" | "auto", c: Candidate): Promise<
 // ---------------------------------------------------------------------------
 // Ejecución
 
-export type RunResult = { status: "ok" | "paused" | "busy"; proposed: number; executed: number; expired: number; failed: number };
+export type RunResult = {
+  status: "ok" | "paused" | "busy"; proposed: number; executed: number; expired: number; failed: number;
+  sync?: { emails: number; meetings: number; updated: number; error?: string };
+};
 
 const LOCK_KEY = 4_201_337; // pg_advisory_lock: una sola ejecución a la vez
 
@@ -452,6 +534,8 @@ export async function runAutomations(): Promise<RunResult> {
     const [{ locked }] = await conn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${LOCK_KEY}) AS locked`;
     if (!locked) return { ...result, status: "busy" };
     try {
+      // Primero se traen los correos y reuniones (aunque la IA esté en pausa).
+      result.sync = await syncAllMailboxes();
       if ((await getSettings()).paused) return { ...result, status: "paused" };
       await runLocked(result);
       await sql`UPDATE automation_settings SET last_run_at = now()`;
@@ -465,7 +549,8 @@ export async function runAutomations(): Promise<RunResult> {
 }
 
 async function runLocked(result: RunResult) {
-  const [rules, permissions] = await Promise.all([listRules(), listPermissions()]);
+  const ctx = await buildContext();
+  const { rules, permissions } = ctx;
   const count = (r: Awaited<ReturnType<typeof propose>>) => {
     if (r === "proposed") result.proposed++;
     else if (r === "executed") result.executed++;
@@ -473,7 +558,7 @@ async function runLocked(result: RunResult) {
   };
 
   for (const rule of rules) {
-    const mode = effectiveAutonomy(rule, permissions);
+    const mode = effectiveAutonomy(rule, permissions, ctx);
     if (mode === "off") {
       const expired = await sql`UPDATE automation_actions SET status = 'expired', decided_at = now()
                                 WHERE rule_id = ${rule.id} AND status = 'pending'`;
@@ -483,7 +568,14 @@ async function runLocked(result: RunResult) {
 
     const scan = SCANNERS[rule.key];
     if (scan) {
-      const candidates = await scan(rule, rules);
+      // Los huecos ofrecidos caducan: una propuesta con {huecos} de hace más de
+      // dos días se retira y se vuelve a proponer con huecos actuales.
+      if (str(rule.params.body, "").includes("{huecos}")) {
+        const stale = await sql`UPDATE automation_actions SET status = 'expired', decided_at = now()
+                                 WHERE rule_id = ${rule.id} AND status = 'pending' AND created_at < now() - interval '2 days'`;
+        result.expired += stale.count;
+      }
+      const candidates = await scan(rule, ctx);
       // Las propuestas pendientes que ya no se cumplen caducan (p. ej. ya se agendó la demo).
       const keys = candidates.map((c) => `${c.dealId}:${c.payload.stage_id ?? ""}`);
       const expired = await sql`
@@ -517,10 +609,10 @@ async function runLocked(result: RunResult) {
     for (const rule of rules) {
       const handler = EVENT_HANDLERS[rule.key];
       if (!handler || !handler.events.includes(e.event_type)) continue;
-      const mode = effectiveAutonomy(rule, permissions);
+      const mode = effectiveAutonomy(rule, permissions, ctx);
       if (mode === "off") continue;
       try {
-        const c = await handler.handle(rule, e);
+        const c = await handler.handle(rule, e, ctx);
         if (!c || (await alreadyHandled(rule, c))) continue;
         count(await propose(rule, mode, c));
       } catch (err) {
@@ -561,7 +653,7 @@ export async function executeAction(actionId: string, opts: { actor: Actor; edit
     RETURNING id, action_type, deal_id, title, payload, status, result, executed_at`;
   if (!a) throw new UserError("Esta propuesta ya no está pendiente.");
   try {
-    const result = await perform(a, opts.edits ?? {});
+    const result = await perform(a, opts.edits ?? {}, opts.actor);
     await sql`UPDATE automation_actions SET status = 'done', executed_at = now(), result = ${json(result)}
               WHERE id = ${actionId}`;
   } catch (err) {
@@ -572,7 +664,7 @@ export async function executeAction(actionId: string, opts: { actor: Actor; edit
   }
 }
 
-async function perform(a: ActionRow, edits: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Actor): Promise<Record<string, unknown>> {
   const p = a.payload;
   switch (a.action_type) {
     case "create_task": {
@@ -585,12 +677,25 @@ async function perform(a: ActionRow, edits: Record<string, unknown>): Promise<Re
       return { activity_id: activityId };
     }
     case "draft_email": {
-      // Hasta tener buzón conectado, lo envía la persona; aquí queda registrado.
       const e = parse(emailEdits, edits);
       const to = e.to ?? str(p.to, "");
       if (!to) throw new UserError("Falta el destinatario.");
       const subject = e.subject ?? str(p.subject, a.title);
       const body = e.body ?? str(p.body, "");
+      const [deal] = a.deal_id
+        ? await sql<{ owner_id: string | null; organization_id: string | null }[]>`SELECT owner_id, organization_id FROM deals WHERE id = ${a.deal_id}`
+        : [];
+      // Con buzón conectado sale desde Outlook (salvo que la persona diga que ya lo envió ella).
+      const sender = edits.manual === "1" ? null : await senderFor(deal?.owner_id);
+      if (sender) {
+        const sent = await sendEmail(sender, actor, {
+          to: { email: to, name: str(p.to_name, "") || null }, subject, body,
+          dealId: a.deal_id, personId: (p.person_id as string | null) ?? null, organizationId: deal?.organization_id ?? null,
+        });
+        return { activity_id: sent.activityId, to, subject, from: sent.from, sent: true };
+      }
+      if (actor.type !== "user") throw new UserError("No hay ningún buzón conectado desde el que enviar.");
+      // Sin buzón: lo envía la persona desde su correo y aquí queda registrado.
       const activityId = await createActivity(UI_ACTOR, {
         type: "email", subject, note: `Para: ${to}\n\n${body}`.slice(0, 5000),
         deal_id: a.deal_id ?? undefined, person_id: (p.person_id as string | null) ?? undefined,

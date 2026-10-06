@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { countPending, getSettings, listActions } from "@/lib/automations";
+import { hasActiveMailbox } from "@/lib/mailbox";
 import { dateTime } from "@/lib/format";
 import { runNowAction, setPausedAction } from "@/app/actions/automations";
 import { ActionForm } from "@/components/ActionForm";
@@ -10,7 +11,7 @@ export const metadata = { title: "Bandeja de la IA" };
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const view = (await searchParams).view === "log" ? "log" : "pending";
-  const [items, pending, settings] = await Promise.all([listActions({ view }), countPending(), getSettings()]);
+  const [items, pending, settings, canSend] = await Promise.all([listActions({ view }), countPending(), getSettings(), hasActiveMailbox()]);
 
   return (
     <main className="page" style={{ maxWidth: 980 }}>
@@ -46,7 +47,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         items.length === 0 ? (
           <div className="empty">No hay nada pendiente de decidir.</div>
         ) : (
-          <div className="proposals">{items.map((i) => <ProposalCard key={i.id} item={i} />)}</div>
+          <div className="proposals">{items.map((i) => <ProposalCard key={i.id} item={i} canSend={canSend} />)}</div>
         )
       ) : (
         <div className="table-wrap">

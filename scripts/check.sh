@@ -16,6 +16,11 @@ export BASIC_AUTH_USER="pruebas" BASIC_AUTH_PASSWORD="contraseña-de-pruebas"
 export TZ="${TZ:-Europe/Madrid}" NEXT_TELEMETRY_DISABLED=1
 # Las pruebas lanzan el motor de automatizaciones a mano, no con el temporizador.
 export AUTOMATIONS_INTERVAL_MINUTES=0 CRON_SECRET="secreto-de-pruebas-0123456789"
+# Microsoft simulado (scripts/mock-graph.mjs) para el correo y el calendario.
+MOCK_PORT="${CHECK_MOCK_PORT:-3998}"
+export MS_CLIENT_ID="cliente-de-pruebas" MS_CLIENT_SECRET="secreto-cliente-de-pruebas" MS_TENANT_ID="inquilino-de-pruebas"
+export MS_LOGIN_URL="http://127.0.0.1:${MOCK_PORT}" MS_GRAPH_URL="http://127.0.0.1:${MOCK_PORT}/v1.0" MOCK_GRAPH_URL="http://127.0.0.1:${MOCK_PORT}"
+export TOKEN_ENCRYPTION_KEY="clave-de-cifrado-de-pruebas-0123456789abcdef"
 
 pids=()
 cleanup() { for p in "${pids[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$DATA_DIR"; }
@@ -36,6 +41,9 @@ echo "▸ Compilación"
 npx next build > "$DATA_DIR.build.log" 2>&1 || { cat "$DATA_DIR.build.log"; exit 1; }
 
 echo "▸ Pruebas de extremo a extremo"
+MOCK_GRAPH_PORT="$MOCK_PORT" node scripts/mock-graph.mjs > "$DATA_DIR.mock.log" 2>&1 &
+pids+=($!)
+export APP_URL="http://127.0.0.1:${APP_PORT}"
 # Igual que en producción: servidor "standalone" con sus ficheros estáticos.
 cp -R .next/static .next/standalone/.next/ && cp -R public .next/standalone/
 PORT="$APP_PORT" HOSTNAME=127.0.0.1 node .next/standalone/server.js > "$DATA_DIR.app.log" 2>&1 &
@@ -50,6 +58,7 @@ fi
 if node -e "require.resolve('playwright')" 2>/dev/null; then
   echo "▸ Pruebas con navegador"
   node scripts/db.mjs reset > /dev/null
+  curl -s -X POST "http://127.0.0.1:${MOCK_PORT}/__reset" > /dev/null
   BASE_URL="http://127.0.0.1:${APP_PORT}" node scripts/ui-check.mjs
 else
   echo "▸ (Pruebas con navegador omitidas: Playwright no está instalado)"

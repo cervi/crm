@@ -5,18 +5,56 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 
-/** Pestañas del compositor (nota / actividad): solo cambian qué formulario se ve. */
-export function ComposerTabs({ note, activity }: { note: React.ReactNode; activity: React.ReactNode }) {
-  const [tab, setTab] = useState<"note" | "activity">("note");
+/** Pestañas del compositor (nota / actividad / correo): solo cambian qué formulario se ve. */
+export function ComposerTabs({ note, activity, email }: { note: React.ReactNode; activity: React.ReactNode; email?: React.ReactNode }) {
+  const [tab, setTab] = useState<"note" | "activity" | "email">("note");
   return (
     <div className="composer">
       <div className="composer-tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "note"} onClick={() => setTab("note")}>Nota</button>
         <button type="button" role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}>Actividad</button>
+        {email && <button type="button" role="tab" aria-selected={tab === "email"} onClick={() => setTab("email")}>Correo</button>}
       </div>
       <div hidden={tab !== "note"}>{note}</div>
       <div hidden={tab !== "activity"}>{activity}</div>
+      {email && <div hidden={tab !== "email"}>{email}</div>}
     </div>
+  );
+}
+
+/**
+ * Texto del correo con el botón «Insertar mis huecos»: pide al calendario los
+ * próximos huecos libres y los pega donde esté el cursor.
+ */
+export function EmailBodyWithSlots({ dealId }: { dealId: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [state, setState] = useState<{ loading?: boolean; error?: string }>({});
+  async function insert() {
+    setState({ loading: true });
+    try {
+      const res = await fetch(`/api/calendar/slots?deal=${dealId}`);
+      const j = await res.json();
+      if (!res.ok || !j.text) throw new Error(j.error ?? "No hay huecos libres con tus preferencias.");
+      const el = ref.current!;
+      el.focus();
+      el.setRangeText(`${j.text}\n`, el.selectionStart, el.selectionEnd, "end");
+      setState({});
+    } catch (err) {
+      setState({ error: err instanceof Error ? err.message : "No se pudo leer el calendario." });
+    }
+  }
+  return (
+    <>
+      <label className="field"><span className="label">Texto</span>
+        <textarea ref={ref} name="body" rows={7} required />
+      </label>
+      <div className="compose-tools">
+        <button type="button" className="btn secondary small" onClick={insert} disabled={state.loading}>
+          {state.loading ? "Leyendo el calendario…" : "Insertar mis huecos"}
+        </button>
+        {state.error && <span className="meta tone-bad" role="status">{state.error}</span>}
+      </div>
+    </>
   );
 }
 

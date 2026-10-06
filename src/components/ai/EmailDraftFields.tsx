@@ -6,7 +6,7 @@ import { useState } from "react";
  * Borrador de correo editable. Hasta tener buzón conectado se envía desde tu
  * correo («Abrir en el correo» o «Copiar») y luego se marca como enviado.
  */
-export function EmailDraftFields({ to, subject, body }: { to: string; subject: string; body: string }) {
+export function EmailDraftFields({ to, subject, body, canSend = false }: { to: string; subject: string; body: string; canSend?: boolean }) {
   const [v, setV] = useState({ to, subject, body });
   const [copied, setCopied] = useState(false);
   const mailto = `mailto:${encodeURIComponent(v.to)}?subject=${encodeURIComponent(v.subject)}&body=${encodeURIComponent(v.body)}`;
@@ -21,6 +21,11 @@ export function EmailDraftFields({ to, subject, body }: { to: string; subject: s
       <label className="field"><span className="label">Texto</span>
         <textarea name="body" rows={7} required value={v.body} onChange={(e) => setV({ ...v, body: e.target.value })} />
       </label>
+      {canSend ? (
+        <div className="email-draft-tools">
+          <span className="meta">Saldrá desde tu Outlook y quedará en tus «Enviados» y en la historia del deal.</span>
+        </div>
+      ) : (
       <div className="email-draft-tools">
         <a className="btn secondary small" href={mailto}>Abrir en el correo</a>
         <button type="button" className="btn secondary small" onClick={async () => {
@@ -32,6 +37,7 @@ export function EmailDraftFields({ to, subject, body }: { to: string; subject: s
         }}>{copied ? "Copiado" : "Copiar texto"}</button>
         <span className="meta">Envíalo desde tu correo y márcalo como enviado: quedará en la historia del deal.</span>
       </div>
+      )}
     </div>
   );
 }

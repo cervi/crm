@@ -9,6 +9,7 @@ import { createOrganization, getOrganization, updateOrganization } from "@/lib/o
 import { changeCompany, createPerson, getPerson, updatePerson } from "@/lib/persons";
 import { createActivity, completeActivity, reopenActivity } from "@/lib/activities";
 import { createNote } from "@/lib/notes";
+import { addActivityToCalendar } from "@/lib/mailbox";
 
 const fields = (form: FormData) => Object.fromEntries(form);
 
@@ -70,7 +71,13 @@ export async function changeCompanyAction(personId: string, _: ActionState, form
 
 /** `back` es la ruta que se refresca tras guardar (la ficha desde la que se crea). */
 export async function createActivityAction(back: string, _: ActionState, form: FormData): Promise<ActionState> {
-  const res = await attempt(() => createActivity(UI_ACTOR, fields(form)));
+  let activityId = "";
+  let res = await attempt(async () => { activityId = await createActivity(UI_ACTOR, fields(form)); });
+  // «Invitar desde mi calendario»: la reunión se crea en Outlook (con Teams si es en línea).
+  if (!res?.error && form.get("add_to_calendar") === "on") {
+    const cal = await attempt(() => addActivityToCalendar(activityId));
+    if (cal?.error) res = { error: `Actividad creada, pero no se pudo añadir al calendario: ${cal.error}` };
+  }
   revalidatePath(back);
   revalidatePath("/activities");
   return res;

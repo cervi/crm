@@ -8,6 +8,8 @@ import { eventLabel, timeline } from "@/lib/events";
 import { listUsers } from "@/lib/users";
 import { sql } from "@/lib/db";
 import { listActions } from "@/lib/automations";
+import { hasActiveMailbox } from "@/lib/mailbox";
+import { sendDealEmailAction } from "@/app/actions/mailbox";
 import { ACTIVITY_TYPES, OUTCOMES, activityLabel, date, dateTime, money, outcomeLabel, STATUS_LABELS } from "@/lib/format";
 import {
   addParticipantAction, loseDealAction, moveDealFormAction, removeParticipantAction, reopenDealAction, winDealAction,
@@ -19,7 +21,7 @@ import { CustomFieldValues } from "../CustomFieldValues";
 import { EntityPicker } from "../EntityPicker";
 import { ProposalCard } from "../ai/ProposalCard";
 import { Icon } from "../Icon";
-import { ComposerTabs, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
+import { ComposerTabs, EmailBodyWithSlots, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
 
 type PanelNav = { closeHref: string; fullHref: string; prevHref: string | null; nextHref: string | null };
 
@@ -32,7 +34,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   const deal = await getDeal(dealId);
   if (!deal) return <div className="empty">Este deal ya no existe.</div>;
 
-  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals] = await Promise.all([
+  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals, canSend] = await Promise.all([
     listStages(deal.pipeline_id), dealParticipants(dealId), stageHistory(dealId), listActivitiesFor({ dealId }),
     listNotesFor({ dealId }), listFieldDefinitions("deal", true), listUsers(), listLostReasons(),
     timeline(sql, [{ type: "deal", id: dealId }], 100),
@@ -43,7 +45,9 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
           SELECT id, source, source_detail FROM leads WHERE id = ${deal.lead_id}`
       : Promise.resolve([]),
     listActions({ view: "pending", dealId, limit: 10 }),
+    hasActiveMailbox(),
   ]);
+  const reachable = participants.filter((p) => p.email);
 
   const isOpen = deal.status === "open";
   const currentPos = stages.find((s) => s.id === deal.stage_id)?.position ?? 0;
@@ -216,6 +220,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                   </label>
                   <label className="field"><span className="label">Asunto</span><input name="subject" required /></label>
                   <label className="field"><span className="label">Fecha y hora</span><input type="datetime-local" name="due_at" /></label>
+                  <label className="field"><span className="label">Duración (min)</span><input type="number" name="duration_minutes" min={5} max={480} placeholder="30" /></label>
                   <label className="field"><span className="label">Responsable</span>
                     <select name="owner_id" defaultValue={deal.owner_id ?? ""}>
                       <option value="">—</option>
@@ -223,14 +228,39 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                     </select>
                   </label>
                 </div>
+                {canSend && (
+                  <label className="checkbox">
+                    <input type="checkbox" name="add_to_calendar" />
+                    Invitar {primary ? `a ${primary.full_name} ` : ""}desde mi calendario de Outlook (con Teams si es videollamada o demo)
+                  </label>
+                )}
               </ActionForm>
+            }
+            email={
+              canSend ? (
+                reachable.length === 0 ? <p className="muted">Ningún contacto del deal tiene email.</p> : (
+                  <ActionForm action={sendDealEmailAction.bind(null, dealId, back)} submitLabel="Enviar desde Outlook" pendingLabel="Enviando…" resetOnSuccess>
+                    <div className="grid-2">
+                      <label className="field"><span className="label">Para</span>
+                        <select name="person_id" defaultValue={primary?.email ? primary.person_id : reachable[0].person_id}>
+                          {reachable.map((p) => <option key={p.person_id} value={p.person_id}>{p.full_name} · {p.email}</option>)}
+                        </select>
+                      </label>
+                      <label className="field"><span className="label">Asunto</span><input name="subject" required /></label>
+                    </div>
+                    <EmailBodyWithSlots dealId={dealId} />
+                  </ActionForm>
+                )
+              ) : (
+                <p className="muted">Conecta tu correo en <Link href="/settings/mailbox">Ajustes → Correo y calendario</Link> para escribir desde aquí: saldrá desde tu Outlook y quedará en tus enviados.</p>
+              )
             }
           />
 
           {proposals.length > 0 && (
             <section className="deal-proposals" aria-label="Propuestas de la IA">
               <h2 className="section-title"><Icon name="spark" />Propuestas de la IA <span className="muted">{proposals.length}</span></h2>
-              <div className="proposals">{proposals.map((p) => <ProposalCard key={p.id} item={p} showDeal={false} />)}</div>
+              <div className="proposals">{proposals.map((p) => <ProposalCard key={p.id} item={p} showDeal={false} canSend={canSend} />)}</div>
             </section>
           )}
 
