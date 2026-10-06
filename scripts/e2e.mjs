@@ -690,6 +690,11 @@ if (process.env.MOCK_URL) {
     const fset = await (await get("/settings/forms")).text();
     check(fset.includes("Formularios web") && fset.includes("/f/contacto-e2e"), "/settings/forms lista los formularios");
 
+    // Pregunta en lenguaje natural → informe del catálogo.
+    const askHtml = await (await get(`/reports?q=${encodeURIComponent("¿Cuánto hemos ganado por origen?")}`)).text();
+    check(askHtml.includes("(IA) Importe ganado por origen") && askHtml.includes("Guardar en el dashboard"),
+          "informes: una pregunta en lenguaje natural se convierte en un informe que se puede guardar");
+
     // Si el modelo falla, se sigue con reglas y el error queda visible.
     await sql`UPDATE ai_settings SET api_key = ${enc("clave-mala")}`;
     await sql`DELETE FROM deal_briefs`;
@@ -1020,6 +1025,25 @@ if (KEY) {
   const asg = await (await get("/settings/assignment")).text();
   check(asg.includes("Reparto automático: activado") && asg.includes("webinar-e2e"), "/settings/assignment muestra las reglas");
   await sql`UPDATE app_settings SET assignment_enabled = false`;
+}
+
+// ------------------------------------------------------------- Informes
+{
+  await sql`DELETE FROM goals`;
+  await sql`INSERT INTO goals (user_id, metric, period, target) VALUES (NULL, 'won_value', 'month', 10000), (${ADMIN_ID}, 'activities_done', 'quarter', 20)`;
+  const rep = await (await get(`/reports?pipeline=${P.inbound}`)).text();
+  check(rep.includes("Previsión ponderada") && rep.includes("Previsión por mes de cierre") && rep.includes("Velocidad de ventas")
+        && rep.includes("Equipo · Importe ganado") && rep.includes("Gestor de cuentas · Actividades hechas") && rep.includes("Embudo · Inbound"),
+        "informes: previsión, velocidad, objetivos y embudo");
+  const [w] = await sql`SELECT coalesce(sum(d.value * coalesce(s.win_probability, 0) / 100.0), 0)::float8 AS v
+                        FROM deals d JOIN stages s ON s.id = d.stage_id WHERE d.status = 'open' AND d.deleted_at IS NULL AND d.pipeline_id = ${P.inbound}`;
+  const shown = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0, useGrouping: "always" }).format(w.v);
+  check(rep.replace(/\u00a0/g, " ").includes(shown.replace(/\u00a0/g, " ")), "informes: el ponderado cuadra con la base de datos", shown);
+  const prev = await (await get("/api/analytics/preview", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ config: { source: "deals", metric: "weighted_value", group_by: "pipeline", date_field: "created_at", period: "all", chart: "bar", filters: {} } }),
+  })).json();
+  check(prev.kind === "series" && prev.points.length > 0, "dashboards: nueva métrica «importe ponderado»", JSON.stringify(prev).slice(0, 120));
 }
 
 // ------------------------------------------------------------- Reservas y semana

@@ -23,6 +23,7 @@ export const CATALOG = {
     metrics: {
       count: { label: "Número de deals", format: "number" },
       sum_value: { label: "Importe total", format: "money" },
+      weighted_value: { label: "Importe ponderado (abiertos × probabilidad de su fase)", format: "money" },
       avg_value: { label: "Importe medio", format: "money" },
       win_rate: { label: "Tasa de cierre (ganados / cerrados)", format: "percent" },
       avg_days_to_close: { label: "Días medios hasta ganar", format: "days" },
@@ -207,6 +208,7 @@ function sourceParts(c: WidgetConfig) {
     const metric = {
       count: sql`count(*)::float8`,
       sum_value: sql`coalesce(sum(d.value), 0)::float8`,
+      weighted_value: sql`coalesce(sum(d.value * coalesce(s.win_probability, 0) / 100.0) FILTER (WHERE d.status = 'open'), 0)::float8`,
       avg_value: sql`avg(d.value)::float8`,
       win_rate: sql`(count(*) FILTER (WHERE d.status = 'won'))::float8 / nullif(count(*) FILTER (WHERE d.status IN ('won', 'lost')), 0)`,
       avg_days_to_close: sql`avg(extract(epoch FROM d.won_at - d.created_at) / 86400) FILTER (WHERE d.status = 'won')`,

@@ -923,3 +923,28 @@ a.btn.small svg { width: 14px; height: 14px; }
 .form-field-row { display: grid; grid-template-columns: 140px 1fr auto; gap: 10px; align-items: center; }
 @media (max-width: 640px) { .form-field-row { grid-template-columns: 1fr; } }
 .bare:has(.webform.embed) { background: transparent; min-height: 0; padding: 0; place-items: start center; }
+
+/* Informes */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.reports-grid { margin-bottom: 14px; }
+.reports .panel table { width: 100%; }
+.ask-form { display: flex; gap: 8px; }
+.ask-form input { flex: 1; }
+.answer { margin-top: 14px; display: grid; gap: 10px; }
+.answer h3 { margin: 0; }
+.goals { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 14px; }
+.goal-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.goal-head .spacer { flex: 1; }
+.goal-bar { position: relative; height: 10px; background: var(--sunken); border-radius: 999px; margin: 6px 0 4px; overflow: visible; }
+.goal-bar span { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
+.goal-bar span.good { background: var(--good); }
+.goal-bar span.behind { background: var(--warn); }
+.goal-bar i { position: absolute; top: -3px; width: 2px; height: 16px; background: var(--text-2); }
+.funnel { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.funnel li { display: grid; grid-template-columns: 200px 1fr 260px; gap: 12px; align-items: center; }
+.funnel-bar { position: relative; height: 22px; background: var(--sunken); border-radius: 6px; overflow: hidden; }
+.funnel-bar span { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); border-right: 2px solid var(--accent); }
+.funnel-bar b { position: relative; padding-left: 8px; font-size: 12.5px; line-height: 22px; }
+@media (max-width: 760px) { .funnel li { grid-template-columns: 1fr; gap: 4px; } }

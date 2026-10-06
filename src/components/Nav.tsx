@@ -13,7 +13,7 @@ export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: Ic
   { href: "/activities", match: ["/activities"], label: "Actividades", icon: "activities" },
   { href: "/organizations", match: ["/organizations"], label: "Empresas", icon: "organizations" },
   { href: "/persons", match: ["/persons"], label: "Contactos", icon: "persons" },
-  { href: "/dashboards", match: ["/dashboards"], label: "Dashboards", icon: "dashboards" },
+  { href: "/reports", match: ["/reports", "/dashboards"], label: "Informes y dashboards", icon: "dashboards" },
   { href: "/settings", match: ["/settings"], label: "Ajustes", icon: "settings" },
 ];
 
