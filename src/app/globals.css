@@ -805,8 +805,12 @@ a.btn.small svg { width: 14px; height: 14px; }
 
 /* Lista de deals: vistas guardadas, filtros, columnas y acciones en bloque */
 .chips.views { align-items: center; }
-.view-chip { display: inline-flex; align-items: center; }
+.view-chip { display: inline-flex; align-items: center; position: relative; }
+.view-chip:has(form) a { padding-right: 24px; }
+.view-chip form { position: absolute; right: 5px; }
 .view-chip form { display: inline-flex; }
+.view-del { opacity: .55; }
+.view-chip:hover .view-del, .view-del:focus-visible { opacity: 1; }
 .view-del { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px; display: inline-grid; border-radius: 999px; }
 .view-del svg { width: 12px; height: 12px; stroke: currentColor; }
 .view-del:hover { color: var(--bad); background: var(--bad-soft); }
@@ -814,6 +818,8 @@ a.btn.small svg { width: 14px; height: 14px; }
 .save-view[open] { flex-basis: 100%; }
 .save-view .form { margin-top: 6px; }
 .list-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.list-filters select, .list-filters input { width: auto; flex: 0 1 auto; }
+.list-filters select { max-width: 220px; }
 .list-filters input[type="search"] { min-width: 240px; flex: 1 1 240px; max-width: 360px; }
 .list-filters .num-input { width: 120px; }
 .list-filters .spacer, .board-toolbar .spacer { flex: 1; }

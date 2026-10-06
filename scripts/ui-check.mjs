@@ -760,7 +760,7 @@ await step("capturas de las pantallas principales", async () => {
 
 await step("lista de deals: filtrar, guardar la vista y cambiar el responsable de varios a la vez", async () => {
   const inbound = "10000000-0000-0000-0000-000000000001";
-  await page.goto(`/pipelines/${inbound}?view=list`);
+  await page.goto(`/pipelines/${inbound}?view=list&status=all`);
   await page.getByLabel("Buscar en la lista").fill("Paco");
   await page.getByRole("button", { name: "Filtrar", exact: true }).click();
   await page.waitForURL(/q=Paco/);
