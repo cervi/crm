@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { listConnections, availableSlots, providerOf, type Connection } from "@/lib/mailbox";
+import { listConnections, listOutboundMailboxes, availableSlots, providerOf, warmupLimit, type Connection } from "@/lib/mailbox";
+import { disconnectMailboxAction, updateMailboxAction } from "@/app/actions/outbound";
+import { sql } from "@/lib/db";
 import { PROVIDER_LIST, PROVIDERS, redirectUri, type Provider } from "@/lib/integrations";
 import { encryptionConfigured } from "@/lib/crypto";
 import { formatSlots } from "@/lib/slots";
@@ -51,9 +53,14 @@ function SetupSteps({ provider, redirect }: { provider: Provider; redirect: stri
   );
 }
 
-export default async function MailboxSettingsPage({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
+export default async function MailboxSettingsPage({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string; outbound?: string }> }) {
   const [sp, me] = await Promise.all([searchParams, requireUser()]);
-  const [users, connections] = await Promise.all([listUsers(), listConnections()]);
+  const [users, connections, outbound] = await Promise.all([listUsers(), listConnections(), listOutboundMailboxes()]);
+  const health = outbound.length ? await sql<{ mailbox_id: string; sent_today: number; sent_7d: number; bounced_7d: number }[]>`
+    SELECT mailbox_id, count(*) FILTER (WHERE sent_at >= date_trunc('day', now()))::int AS sent_today,
+           count(*)::int AS sent_7d, count(*) FILTER (WHERE bounced)::int AS bounced_7d
+    FROM emails WHERE direction = 'out' AND mailbox_id = ANY(${outbound.map((m) => m.id)}::uuid[]) AND sent_at > now() - interval '7 days'
+    GROUP BY mailbox_id` : [];
   // Cada uno ve su cuenta; un administrador, las de todo el equipo.
   const humans = users.filter((u) => u.kind === "human" && (me.role === "admin" || u.id === me.id));
   const encryption = encryptionConfigured();
@@ -75,7 +82,7 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
         </div>
       </div>
 
-      {sp.connected && <p className="callout good">Cuenta conectada: {sp.connected}.</p>}
+      {sp.connected && <p className="callout good">{sp.outbound ? "Buzón de outbound conectado" : "Cuenta conectada"}: {sp.connected}.</p>}
       {sp.error && <p className="callout bad" role="alert">{sp.error}</p>}
 
       <section className="panel">
@@ -184,6 +191,43 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
           );
         })}
       </div>
+
+      {me.role === "admin" && (
+        <section className="panel" style={{ marginTop: 22 }} aria-label="Buzones de outbound">
+          <h2>Buzones de outbound</h2>
+          <p className="muted">
+            Para las campañas, usad buzones de <strong>dominios secundarios</strong> (p. ej. <code>aikit-mail.com</code>), nunca el principal: si una campaña
+            rebota o la marcan como spam, vuestro dominio de siempre no se resiente. Cada buzón empieza enviando 10 correos al día y sube 5 cada día hasta su
+            límite (calentamiento); si rebota más del 5 % en una semana, se pausa solo y te avisa.
+          </p>
+          {outbound.map((m) => {
+            const h = health.find((x) => x.mailbox_id === m.id);
+            const rate = h && h.sent_7d ? Math.round((h.bounced_7d / h.sent_7d) * 1000) / 10 : 0;
+            return (
+              <div key={m.id} className="mailbox-row">
+                <div className="provider-row">
+                  <strong>{m.email}</strong>
+                  <span className="meta">{providerOf(m).label} · de {m.user_name} · hoy {h?.sent_today ?? 0} de {warmupLimit(m)} · 7 días: {h?.sent_7d ?? 0} enviados, {rate} % rebotes</span>
+                  <span className={`badge ${m.paused || m.status !== "active" ? "lost" : "won"}`}>{m.status !== "active" ? "Reconectar" : m.paused ? "En pausa" : "Activo"}</span>
+                </div>
+                {m.paused_reason && m.paused && <p className="meta tone-bad" style={{ margin: 0 }}>{m.paused_reason}</p>}
+                <ActionForm action={updateMailboxAction.bind(null, m.id)} submitLabel="Guardar" secondary className="form inline">
+                  <label className="field"><span className="label">Límite diario</span><input name="daily_limit" type="number" min={1} max={500} defaultValue={m.daily_limit} style={{ width: 90 }} /></label>
+                  <label className="field"><span className="label">Calentamiento desde</span><input name="warmup_start" type="date" defaultValue={m.warmup_start} /></label>
+                  <label className="checkbox"><input type="checkbox" name="paused" defaultChecked={m.paused} />En pausa</label>
+                </ActionForm>
+                <form action={disconnectMailboxAction.bind(null, m.id)}><button type="submit" className="link-btn meta">Desconectar</button></form>
+              </div>
+            );
+          })}
+          <div className="head-actions" style={{ marginTop: 10 }}>
+            {available.map((p) => (
+              <a key={p.key} className="btn secondary" href={`/api/integrations/${p.key}/connect?user=${me.id}&purpose=outbound`}>Conectar un buzón de {p.label}</a>
+            ))}
+            {available.length === 0 && <span className="meta">Activa antes Microsoft 365 o Google Workspace (arriba).</span>}
+          </div>
+        </section>
+      )}
     </main>
   );
 }

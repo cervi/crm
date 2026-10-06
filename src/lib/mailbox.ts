@@ -20,49 +20,74 @@ export type Connection = {
   id: string; user_id: string; user_name: string; provider: ProviderKey; email: string; display_name: string | null;
   status: "active" | "error"; last_error: string | null; scheduling: Scheduling;
   sync_mail: boolean; sync_calendar: boolean; mail_synced_at: Date | null; calendar_synced_at: Date | null; created_at: Date;
+  purpose: "main" | "outbound"; daily_limit: number; warmup_start: string; paused: boolean; paused_reason: string | null;
 };
 
 type Row = Omit<Connection, "scheduling"> & { scheduling: unknown };
 
 const selectConnections = (where = sql``) => sql<Row[]>`
   SELECT m.id, m.user_id, u.name AS user_name, m.provider, m.email, m.display_name, m.status, m.last_error, m.scheduling,
-         m.sync_mail, m.sync_calendar, m.mail_synced_at, m.calendar_synced_at, m.created_at
+         m.sync_mail, m.sync_calendar, m.mail_synced_at, m.calendar_synced_at, m.created_at,
+         m.purpose, m.daily_limit, m.warmup_start::text, m.paused, m.paused_reason
   FROM mailbox_connections m JOIN users u ON u.id = m.user_id
   ${where}
   ORDER BY m.created_at`;
+const MAIN = sql`m.purpose = 'main'`;
 
 const withScheduling = (rows: Row[]): Connection[] => rows.map((r) => ({ ...r, scheduling: normalizeScheduling(r.scheduling) }));
 
 export const providerOf = (conn: { provider: ProviderKey }): Provider => PROVIDERS[conn.provider];
 
+/** Las cuentas principales de cada persona (las de outbound van aparte). */
 export async function listConnections(): Promise<Connection[]> {
-  return withScheduling(await selectConnections());
+  return withScheduling(await selectConnections(sql`WHERE ${MAIN}`));
+}
+
+/** Buzones de outbound (dominios secundarios para campañas). */
+export async function listOutboundMailboxes(): Promise<Connection[]> {
+  return withScheduling(await selectConnections(sql`WHERE m.purpose = 'outbound'`));
+}
+
+export async function connectionById(id: string): Promise<Connection | null> {
+  const [row] = withScheduling(await selectConnections(sql`WHERE m.id = ${id}`));
+  return row ?? null;
 }
 
 export async function hasActiveMailbox(): Promise<boolean> {
-  const [r] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM mailbox_connections WHERE status = 'active'`;
+  const [r] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM mailbox_connections WHERE status = 'active' AND purpose = 'main'`;
   return r.n > 0;
 }
 
 /** Cuenta desde la que se actúa: la del usuario indicado o, si no tiene, la primera conectada. */
 export async function senderFor(ownerId: string | null | undefined): Promise<Connection | null> {
-  const rows = withScheduling(await selectConnections(sql`WHERE m.status = 'active'`));
+  const rows = withScheduling(await selectConnections(sql`WHERE m.status = 'active' AND ${MAIN}`));
   return rows.find((c) => c.user_id === ownerId) ?? rows[0] ?? null;
 }
 
 export async function connectionOf(userId: string): Promise<Connection | null> {
-  const [row] = withScheduling(await selectConnections(sql`WHERE m.user_id = ${userId}`));
+  const [row] = withScheduling(await selectConnections(sql`WHERE m.user_id = ${userId} AND ${MAIN}`));
   return row ?? null;
 }
 
 export async function saveConnection(v: {
   userId: string; provider: ProviderKey; email: string; displayName: string | null; tokens: Tokens; scheduling?: Partial<Scheduling>;
+  purpose?: "main" | "outbound";
 }) {
   const scheduling = normalizeScheduling({ ...DEFAULT_SCHEDULING, ...(v.scheduling ?? {}) });
+  if (v.purpose === "outbound") {
+    // Buzón de outbound: solo para enviar campañas y leer sus respuestas (sin calendario).
+    await sql`
+      INSERT INTO mailbox_connections (user_id, provider, email, display_name, tokens, scheduling, purpose, sync_calendar)
+      VALUES (${v.userId}, ${v.provider}, ${v.email}, ${v.displayName}, ${encrypt(JSON.stringify(v.tokens))}, ${json(scheduling)}, 'outbound', false)
+      ON CONFLICT (lower(email)) WHERE purpose = 'outbound' DO UPDATE SET
+        user_id = EXCLUDED.user_id, provider = EXCLUDED.provider, display_name = EXCLUDED.display_name, tokens = EXCLUDED.tokens,
+        status = 'active', last_error = NULL`;
+    return;
+  }
   await sql`
     INSERT INTO mailbox_connections (user_id, provider, email, display_name, tokens, scheduling)
     VALUES (${v.userId}, ${v.provider}, ${v.email}, ${v.displayName}, ${encrypt(JSON.stringify(v.tokens))}, ${json(scheduling)})
-    ON CONFLICT (user_id) DO UPDATE SET
+    ON CONFLICT (user_id) WHERE purpose = 'main' DO UPDATE SET
       provider = EXCLUDED.provider, email = EXCLUDED.email, display_name = EXCLUDED.display_name, tokens = EXCLUDED.tokens,
       status = 'active', last_error = NULL,
       -- al cambiar de cuenta se empieza a sincronizar de cero; al reconectar la misma, se sigue
@@ -71,7 +96,38 @@ export async function saveConnection(v: {
 }
 
 export async function disconnect(userId: string) {
-  await sql`DELETE FROM mailbox_connections WHERE user_id = ${userId}`;
+  await sql`DELETE FROM mailbox_connections WHERE user_id = ${userId} AND purpose = 'main'`;
+}
+
+export async function disconnectMailbox(id: string) {
+  await sql`DELETE FROM mailbox_connections WHERE id = ${id} AND purpose = 'outbound'`;
+}
+
+/** Límite, calentamiento y pausa de un buzón de outbound. */
+export async function updateOutboundMailbox(id: string, data: Record<string, unknown>) {
+  const limit = Number(data.daily_limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new UserError("El límite diario va de 1 a 500 correos.");
+  const warm = String(data.warmup_start ?? "");
+  if (warm && !/^\d{4}-\d{2}-\d{2}$/.test(warm)) throw new UserError("Fecha de calentamiento no válida.");
+  const paused = data.paused === "on";
+  await sql`UPDATE mailbox_connections SET daily_limit = ${limit}, warmup_start = coalesce(${warm || null}::date, warmup_start),
+                   paused = ${paused}, paused_reason = CASE WHEN ${paused} THEN coalesce(paused_reason, 'Pausado a mano') END
+            WHERE id = ${id} AND purpose = 'outbound'`;
+}
+
+/**
+ * Cuántos correos puede enviar hoy un buzón de outbound: el calentamiento
+ * empieza en 10 al día y sube 5 cada día hasta su límite.
+ */
+export function warmupLimit(conn: Pick<Connection, "daily_limit" | "warmup_start">, now = new Date()) {
+  const days = Math.max(0, Math.floor((now.getTime() - new Date(`${conn.warmup_start}T00:00:00`).getTime()) / 86400000));
+  return Math.min(conn.daily_limit, 10 + 5 * days);
+}
+
+export async function sentToday(mailboxId: string): Promise<number> {
+  const [r] = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM emails WHERE mailbox_id = ${mailboxId} AND direction = 'out' AND sent_at >= date_trunc('day', now())`;
+  return r.n;
 }
 
 export async function updateConnectionSettings(userId: string, data: Record<string, unknown>) {
@@ -170,7 +226,8 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
     due_at: new Date(), done: true, deal_id: v.dealId ?? null, person_id: v.personId ?? null,
     organization_id: v.organizationId ?? null, owner_id: conn.user_id, external_ref: sent.ref,
   }));
-  await sql`UPDATE emails SET status = 'sent', sent_at = now(), external_ref = ${sent.ref}, activity_id = ${activityId} WHERE id = ${row.id}`;
+  await sql`UPDATE emails SET status = 'sent', sent_at = now(), external_ref = ${sent.ref}, activity_id = ${activityId}, mailbox_id = ${conn.id}
+            WHERE id = ${row.id}`;
   await sql`UPDATE mailbox_connections SET last_error = NULL WHERE id = ${conn.id}`;
   return { activityId: activityId!, from: conn.email, emailId: row.id };
 }
@@ -308,6 +365,11 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
         const others = [...new Set(outgoing ? m.to : [m.from])].filter((e) => e && e !== own);
         const matches = await matchContacts(others);
         const who = others.map((e) => matches.find((x) => x.email === e)).find(Boolean);
+        // Rebotes: el aviso del servidor de correo no viene de un contacto.
+        if (!outgoing && /mailer-daemon|postmaster|mail delivery|maildelivery/i.test(m.from)) {
+          await recordBounce(conn, `${m.subject ?? ""}\n${m.preview ?? ""}`, m.ref).catch((err) => console.error("[rebote]", err));
+          continue;
+        }
         if (!who) continue;
         const id = await transaction((tx) => logActivity(tx, INTEGRATION_ACTOR, {
           type: "email", subject: m.subject || "(sin asunto)",
@@ -377,6 +439,46 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
   });
   await sql`UPDATE mailbox_connections SET last_error = NULL, status = 'active' WHERE id = ${conn.id}`;
   return result;
+}
+
+/**
+ * Un rebote: se marca el email del contacto, se para lo que tuviera en marcha
+ * y, si el buzón rebota demasiado (más del 5 % en una semana), se pausa.
+ */
+export async function recordBounce(conn: Connection, text: string, ref: string) {
+  const addresses = [...new Set((text.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? []).map((x) => x.toLowerCase()))]
+    .filter((x) => x !== conn.email.toLowerCase() && !/mailer-daemon|postmaster/.test(x));
+  if (addresses.length === 0) return;
+  const [seen] = await sql`SELECT 1 FROM emails WHERE external_ref = ${ref}`;
+  if (seen) return;
+  await sql`INSERT INTO emails (direction, status, user_id, mailbox_id, from_email, subject, body, sent_at, external_ref, reply_class)
+            VALUES ('in', 'sent', ${conn.user_id}, ${conn.id}, 'mailer-daemon', 'Rebote', ${text.slice(0, 2000)}, now(), ${ref}, 'bounce')`;
+  for (const addr of addresses) {
+    const [hit] = await sql<{ id: string }[]>`
+      UPDATE emails SET bounced = true WHERE id = (
+        SELECT id FROM emails WHERE direction = 'out' AND lower(to_email) = ${addr} AND sent_at > now() - interval '7 days'
+        ORDER BY sent_at DESC LIMIT 1) RETURNING id`;
+    if (!hit) continue;
+    await sql`UPDATE person_emails SET bounced_at = now() WHERE lower(email) = ${addr}`;
+    await sql`UPDATE campaign_contacts SET status = 'bounced', updated_at = now() WHERE lower(email) = ${addr} AND status IN ('enrolled', 'approved', 'ready')`;
+    await sql`UPDATE sequence_enrollments SET status = 'stopped', stopped_reason = 'Rebotó', finished_at = now(), next_run_at = NULL
+              WHERE status = 'active' AND person_id IN (SELECT person_id FROM person_emails WHERE lower(email) = ${addr})`;
+  }
+  if (conn.purpose !== "outbound") return;
+  const [r] = await sql<{ sent: number; bounced: number }[]>`
+    SELECT count(*)::int AS sent, count(*) FILTER (WHERE bounced)::int AS bounced FROM emails
+    WHERE mailbox_id = ${conn.id} AND direction = 'out' AND sent_at > now() - interval '7 days'`;
+  if (r.sent >= 20 && r.bounced / r.sent > 0.05) {
+    const reason = `Pausado solo: ${r.bounced} rebotes de ${r.sent} envíos en 7 días (más del 5 %). Revisa la lista y la configuración del dominio.`;
+    const [p] = await sql`UPDATE mailbox_connections SET paused = true, paused_reason = ${reason} WHERE id = ${conn.id} AND NOT paused RETURNING id`;
+    if (p) {
+      const admins = await sql<{ id: string }[]>`SELECT id FROM users WHERE role = 'admin' AND is_active AND kind = 'human'`;
+      for (const a of admins) {
+        await sql`INSERT INTO notifications (user_id, kind, title, body, link)
+                  VALUES (${a.id}, 'mailbox', ${`Buzón de outbound pausado: ${conn.email}`}, ${reason}, '/settings/mailbox')`;
+      }
+    }
+  }
 }
 
 /** Sincroniza todas las cuentas activas; un fallo en una no para las demás. */

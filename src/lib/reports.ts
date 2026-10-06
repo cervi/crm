@@ -187,3 +187,31 @@ export async function ask(question: string): Promise<Answer> {
   }
   return { title: (j.titulo ?? q).slice(0, 120), config, result: await safeRun(config) };
 }
+
+// ---------------------------------------------------------------------------
+// Atribución: de qué canal y campaña vienen los leads, los deals y lo ganado.
+
+export type AttributionRow = { source: string; campaign: string | null; leads: number; deals: number; won: number; won_value: number; lost: number };
+
+export async function attribution(days = 365): Promise<AttributionRow[]> {
+  return sql<AttributionRow[]>`
+    WITH l AS (
+      SELECT l.id, coalesce(nullif(l.utm->>'source', ''), l.source, 'Sin origen') AS source, nullif(l.utm->>'campaign', '') AS campaign
+      FROM leads l WHERE l.deleted_at IS NULL AND l.created_at > now() - make_interval(days => ${days})
+    ),
+    d AS (
+      SELECT coalesce(nullif(ld.utm->>'source', ''), ld.source, d.source, 'Sin origen') AS source, nullif(ld.utm->>'campaign', '') AS campaign,
+             d.status, d.value
+      FROM deals d LEFT JOIN leads ld ON ld.id = d.lead_id
+      WHERE d.deleted_at IS NULL AND d.created_at > now() - make_interval(days => ${days})
+    )
+    SELECT source, campaign, sum(leads)::int AS leads, sum(deals)::int AS deals, sum(won)::int AS won, sum(won_value)::float8 AS won_value, sum(lost)::int AS lost
+    FROM (
+      SELECT source, campaign, 1 AS leads, 0 AS deals, 0 AS won, 0 AS won_value, 0 AS lost FROM l
+      UNION ALL
+      SELECT source, campaign, 0, 1, (status = 'won')::int, CASE WHEN status = 'won' THEN coalesce(value, 0) ELSE 0 END, (status = 'lost')::int FROM d
+    ) x
+    GROUP BY source, campaign
+    ORDER BY sum(won_value) DESC, sum(deals) DESC, sum(leads) DESC
+    LIMIT 50`;
+}

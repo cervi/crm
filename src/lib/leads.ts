@@ -26,9 +26,12 @@ export type LeadListRow = {
   last_activity_at: Date;
   score: number | null;
   score_reasons: { label: string; points: number }[];
+  fit: "fit" | "no_fit" | "unknown" | null;
+  fit_reason: string | null;
+  utm: Record<string, string>;
 };
 
-export async function listLeads(f: { q?: string; status?: string; source?: string; funnel?: string; sort?: string; temp?: string } = {}) {
+export async function listLeads(f: { q?: string; status?: string; source?: string; funnel?: string; sort?: string; temp?: string; fit?: string } = {}) {
   const q = (f.q ?? "").trim().toLowerCase();
   const like = `%${q}%`;
   return sql<LeadListRow[]>`
@@ -38,7 +41,7 @@ export async function listLeads(f: { q?: string; status?: string; source?: strin
            l.organization_id, o.name AS organization_name, u.name AS owner_name, l.converted_deal_id,
            coalesce((SELECT array_agg(t.name ORDER BY t.name) FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id
                      WHERE lt.lead_id = l.id), '{}') AS tags,
-           l.created_at, l.score, l.score_reasons,
+           l.created_at, l.score, l.score_reasons, l.fit, l.fit_reason, l.utm,
            greatest(l.updated_at, coalesce((SELECT max(occurred_at) FROM events ev
                      WHERE ev.entity_type = 'lead' AND ev.entity_id = l.id), l.updated_at)) AS last_activity_at
     FROM leads l
@@ -56,6 +59,7 @@ export async function listLeads(f: { q?: string; status?: string; source?: strin
            OR (${f.temp || null}::text = 'hot' AND l.score >= 70)
            OR (${f.temp || null}::text = 'warm' AND l.score >= 40 AND l.score < 70)
            OR (${f.temp || null}::text = 'cold' AND coalesce(l.score, 0) < 40))
+      AND (${f.fit || null}::text IS NULL OR l.fit = ${f.fit || null}::text)
     ORDER BY ${f.sort === "score" ? sql`l.score DESC NULLS LAST,` : sql``} last_activity_at DESC
     LIMIT 500`;
 }
@@ -76,7 +80,7 @@ export async function getLead(leadId: string) {
            l.converted_deal_id, d.title AS deal_title, l.converted_at, l.custom,
            coalesce((SELECT array_agg(t.name ORDER BY t.name) FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id
                      WHERE lt.lead_id = l.id), '{}') AS tags,
-           l.created_at, l.updated_at AS last_activity_at, l.score, l.score_reasons
+           l.created_at, l.updated_at AS last_activity_at, l.score, l.score_reasons, l.fit, l.fit_reason, l.utm
     FROM leads l
     LEFT JOIN persons p ON p.id = l.person_id
     LEFT JOIN organizations o ON o.id = l.organization_id
@@ -118,6 +122,12 @@ export const inboundSchema = z.object({
   message: optText(5000),
   pipeline_id: optId,
   value: optMoney,
+  // Atribución: de qué campaña o anuncio viene (primer contacto en el lead; cada envío, en su historia).
+  utm_source: optText(200),
+  utm_medium: optText(200),
+  utm_campaign: optText(200),
+  utm_term: optText(200),
+  utm_content: optText(200),
 });
 export type InboundLead = z.infer<typeof inboundSchema>;
 
@@ -167,6 +177,8 @@ async function attachTags(db: Db, leadId: string, personId: string, tags: string
  */
 export async function ingestLead(actor: Actor, data: unknown): Promise<IngestResult> {
   const v = parse(inboundSchema, data);
+  const utm = Object.fromEntries((["source", "medium", "campaign", "term", "content"] as const)
+    .map((k) => [k, v[`utm_${k}`]]).filter(([, x]) => x)) as Record<string, string>;
   return transaction(async (tx) => {
     const created = { person: false, organization: false, lead: false, deal: false };
     const domain = normalizeDomain(v.domain) ?? companyDomainFromEmail(v.email);
@@ -219,6 +231,7 @@ export async function ingestLead(actor: Actor, data: unknown): Promise<IngestRes
       const higher = stage && (!open.funnel_stage || FUNNEL_ORDER[stage] > FUNNEL_ORDER[open.funnel_stage]);
       if (higher) await tx`UPDATE leads SET funnel_stage = ${stage} WHERE id = ${leadId}`;
       if (org) await tx`UPDATE leads SET organization_id = coalesce(organization_id, ${org.id}) WHERE id = ${leadId}`;
+      if (Object.keys(utm).length) await tx`UPDATE leads SET utm = ${json(utm)} WHERE id = ${leadId} AND utm = '{}'::jsonb`;
     } else {
       const [p] = await tx<{ full_name: string }[]>`SELECT full_name FROM persons WHERE id = ${personId}`;
       const [lead] = await tx<{ id: string }[]>`
@@ -230,6 +243,7 @@ export async function ingestLead(actor: Actor, data: unknown): Promise<IngestRes
           source_detail: v.source_detail ?? null,
           funnel_stage: stage,
           custom: json({}),
+          utm: json(utm),
         })} RETURNING id`;
       leadId = lead.id;
       created.lead = true;
@@ -237,6 +251,7 @@ export async function ingestLead(actor: Actor, data: unknown): Promise<IngestRes
     }
     await recordEvent(tx, actor, "lead", leadId, "lead.form_submitted", {
       source: v.source, source_detail: v.source_detail ?? null, intent: v.intent ?? "lead", funnel_stage: stage,
+      ...(Object.keys(utm).length ? { utm } : {}),
     });
     if (v.tags?.length) await attachTags(tx, leadId, personId, v.tags);
     if (v.message) {

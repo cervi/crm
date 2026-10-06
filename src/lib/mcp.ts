@@ -8,6 +8,9 @@ import { hasActiveMailbox } from "./mailbox";
 import { activityTypes } from "./activity-types";
 import type { Agent } from "./agents";
 import { isId } from "./validation";
+import { getHealth } from "./health";
+import { getInsights } from "./deal-agent";
+import { addContacts, CAMPAIGN_STATUS, listCampaigns } from "./campaigns";
 
 // ===========================================================================
 // Servidor MCP para agentes externos (Grok Bot u otros): consultan el CRM y
@@ -109,6 +112,8 @@ const TOOLS: Tool[] = [
         responsable: d.owner_name, cierre_previsto: d.expected_close_date, enlace: appUrl(`/deals/${d.id}`),
         resumen: brief ? { texto: brief.resumen, siguiente_paso: brief.siguiente_paso, por_que: brief.por_que, riesgos: brief.riesgos } : null,
         contactos: facts?.contacts ?? undefined, historia_reciente: facts?.history?.slice(0, 10) ?? undefined, actividades_pendientes: pending,
+        salud: await getHealth(d.id).then((h) => h && { puntuacion: h.score, senales: h.signals.map((x) => `${x.tone === "risk" ? "riesgo" : "a favor"}: ${x.label}`) }),
+        lo_que_sabemos: await getInsights(d.id),
       };
     },
   },
@@ -226,6 +231,68 @@ const TOOLS: Tool[] = [
       if (Object.keys(changes).length === 0) throw new UserError("No hay nada que cambiar.");
       const what = Object.entries(changes).map(([k, v]) => `${{ title: "título", value: "importe", expected_close_date: "cierre" }[k]}: ${v}`).join(", ");
       return propose(agent, "update_deal", d.id, `Cambiar «${d.title}» (${what})`, str(a.motivo), { changes });
+    },
+  },
+  {
+    name: "lectura_correos",
+    description: "Correos enviados de un deal con su lectura: cuántas veces se abrió cada uno, cuándo (cada apertura), clics y si respondieron.",
+    inputSchema: { type: "object", properties: { deal_id: { type: "string" } }, required: ["deal_id"] },
+    run: async (a) => {
+      const d = await needDeal(a.deal_id);
+      return sql`
+        SELECT e.subject AS asunto, e.to_email AS para, e.sent_at AS enviado, e.open_count AS aperturas, e.click_count AS clics,
+               (SELECT json_agg(json_build_object('cuando', o.at, 'dispositivo', o.device, 'programa', o.client, 'lugar', o.place) ORDER BY o.at)
+                  FROM email_opens o WHERE o.email_id = e.id AND NOT o.automatic) AS cada_apertura,
+               EXISTS (SELECT 1 FROM emails r WHERE r.direction = 'in' AND r.person_id = e.person_id AND r.sent_at > e.sent_at) AS respondio
+        FROM emails e WHERE e.deal_id = ${d.id} AND e.direction = 'out' AND e.status = 'sent' ORDER BY e.sent_at DESC LIMIT 30`;
+    },
+  },
+  {
+    name: "deals_en_riesgo",
+    description: "Deals abiertos con peor salud (0-100) y sus señales de riesgo.",
+    inputSchema: { type: "object", properties: { limite: { type: "integer", minimum: 1, maximum: 50 } } },
+    run: async (a) => {
+      const limit = Math.min(50, Math.max(1, Math.round(num(a.limite)) || 10));
+      return sql`
+        SELECT d.id, d.title AS titulo, h.score AS salud, u.name AS responsable,
+               (SELECT json_agg(x->>'label') FROM jsonb_array_elements(h.signals) x WHERE x->>'tone' = 'risk') AS riesgos
+        FROM deal_health h JOIN deals d ON d.id = h.deal_id AND d.status = 'open' AND d.deleted_at IS NULL LEFT JOIN users u ON u.id = d.owner_id
+        ORDER BY h.score LIMIT ${limit}`;
+    },
+  },
+  {
+    name: "listar_campanas",
+    description: "Campañas de outbound con su estado y resultados (contactos, enviados, respuestas, interesados, deals).",
+    inputSchema: { type: "object", properties: {} },
+    run: async () => (await listCampaigns()).map((c) => ({
+      id: c.id, nombre: c.name, estado: CAMPAIGN_STATUS[c.status], contactos: c.stats.contacts, enviados: c.stats.sent, respuestas: c.stats.replied,
+      interesados: c.stats.interested, deals: c.stats.deals, enlace: appUrl(`/campaigns/${c.id}`),
+    })),
+  },
+  {
+    name: "anadir_contactos_campana",
+    description: "Añade contactos a una campaña de outbound (p. ej. una lista que has preparado). Se verifican, se personalizan y una persona aprueba antes de enviar.",
+    write: true,
+    inputSchema: {
+      type: "object",
+      properties: {
+        campana_id: { type: "string" },
+        contactos: {
+          type: "array", maxItems: 500,
+          items: { type: "object", properties: { email: { type: "string" }, nombre: { type: "string" }, empresa: { type: "string" }, cargo: { type: "string" }, dominio: { type: "string" } }, required: ["email"] },
+        },
+      },
+      required: ["campana_id", "contactos"],
+    },
+    run: async (a, agent) => {
+      if (!agent.can_write) throw new UserError("Esta clave es de solo lectura.");
+      const id = str(a.campana_id);
+      if (!isId(id)) throw new UserError("campana_id no válido (usa «listar_campanas»).");
+      if (!Array.isArray(a.contactos) || a.contactos.length > 500) throw new UserError("«contactos» tiene que ser una lista de hasta 500.");
+      const r = await addContacts({ type: "integration", id: null }, id, (a.contactos as Record<string, unknown>[]).map((c) => ({
+        email: str(c?.email), full_name: str(c?.nombre) || undefined, company: str(c?.empresa) || undefined, job_title: str(c?.cargo) || undefined, domain: str(c?.dominio) || undefined,
+      })), `mcp:${agent.name}`.slice(0, 60));
+      return { anadidos: r.added, ya_estaban: r.existing, descartados: r.skipped, siguiente: "Se verifican y personalizan en la próxima revisión; una persona los aprueba antes de enviar.", enlace: appUrl(`/campaigns/${id}`) };
     },
   },
 ];

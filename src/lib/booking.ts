@@ -69,6 +69,14 @@ export async function bookingSlots(page: BookingPage): Promise<{ slots: Interval
 }
 
 /** Enlace personal de reserva para un contacto de un deal (o null si el responsable no tiene página). */
+/** La página de reservas de alguien (sin ligarla a un deal), si la tiene activa. */
+export async function bookingPageLink(userId: string | null): Promise<string | null> {
+  const base = publicBase();
+  if (!userId || !base) return null;
+  const page = await myBookingPage(userId);
+  return page?.is_active ? `${base}/book/${page.slug}` : null;
+}
+
 export async function bookingLinkFor(userId: string | null, dealId: string, personId: string | null): Promise<string | null> {
   const base = publicBase();
   if (!userId || !base) return null;

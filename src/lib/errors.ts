@@ -32,7 +32,7 @@ export function toUserMessage(err: unknown): string {
   return "Ha ocurrido un error inesperado.";
 }
 
-export type ActionState = { error?: string; ok?: boolean } | undefined;
+export type ActionState = { error?: string; ok?: boolean; message?: string } | undefined;
 
 /** Ejecuta una acción de formulario y convierte los errores en estado para la interfaz. */
 export async function attempt(fn: () => Promise<unknown>): Promise<ActionState> {

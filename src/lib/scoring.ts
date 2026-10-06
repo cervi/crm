@@ -17,7 +17,7 @@ export const TEMPERATURE_LABEL: Record<Temperature, string> = { hot: "Caliente",
 export type LeadFacts = {
   email: string | null; organization_id: string | null; job_title: string | null; employee_count: number | null;
   funnel_stage: string | null; forms: number; demo_requests: number; opened: number; clicked: number; replied: number;
-  meetings: number; last_touch: Date;
+  meetings: number; last_touch: Date; fit?: "fit" | "no_fit" | "unknown" | null;
 };
 
 const DECISION = /\b(ceo|cto|cfo|coo|cmo|cio|director|directora|head|jefe|jefa|gerente|founder|fundador|fundadora|owner|propietari[oa]|vp|chief|socio|socia|responsable|manager)\b/i;
@@ -40,6 +40,8 @@ export function scoreLead(f: LeadFacts, now = new Date()): { score: number; reas
   else if (f.clicked > 0) add("Ha hecho clic en un correo", 10);
   else if (f.opened > 0) add("Ha abierto un correo", 5);
   if (f.meetings > 0) add("Tiene una reunión agendada o hecha", 25);
+  if (f.fit === "fit") add("Encaja con el perfil de cliente ideal", 15);
+  else if (f.fit === "no_fit") add("No encaja con el perfil de cliente ideal", -25);
   const idle = Math.floor((now.getTime() - new Date(f.last_touch).getTime()) / 86400000);
   if (idle > 90) add(`Sin actividad desde hace ${idle} días`, -25);
   else if (idle > 30) add(`Sin actividad desde hace ${idle} días`, -10);
@@ -50,7 +52,7 @@ export function scoreLead(f: LeadFacts, now = new Date()): { score: number; reas
 /** Recalcula la puntuación de los leads abiertos (o de uno). Devuelve cuántos cambiaron. */
 export async function recomputeScores(leadId?: string): Promise<number> {
   const rows = await sql<(LeadFacts & { id: string; score: number | null })[]>`
-    SELECT l.id, l.score, l.funnel_stage, l.organization_id,
+    SELECT l.id, l.score, l.funnel_stage, l.organization_id, l.fit,
            (SELECT email FROM person_emails e WHERE e.person_id = l.person_id ORDER BY is_primary DESC, created_at LIMIT 1) AS email,
            po.job_title, o.employee_count,
            (SELECT count(*)::int FROM events ev WHERE ev.entity_type = 'lead' AND ev.entity_id = l.id AND ev.event_type = 'lead.form_submitted') AS forms,

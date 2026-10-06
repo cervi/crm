@@ -1020,9 +1020,18 @@ a.btn.small svg { width: 14px; height: 14px; }
 .close-plan { margin-bottom: 16px; }
 .close-plan .section-title { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 760px) { .plan-steps li { grid-template-columns: 26px 1fr; } .plan-steps li > .meta, .plan-steps li > form:last-child { grid-column: 2; } }
-.prep summary { display: inline-flex; align-items: center; gap: 4px; }
+.prep summary svg { width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; }
 .prep .note-body { background: var(--sunken); border-radius: 8px; padding: 8px 10px; }
 .discount-pending { display: grid; gap: 4px; justify-items: end; margin-top: 4px; }
 .discount-actions { display: flex; gap: 4px; }
 .insights dd { white-space: normal; }
 .shared-plan { max-width: 760px; }
+
+/* ---- Outbound ---- */
+.form-ok { color: var(--good); background: var(--good-soft); padding: 9px 12px; border-radius: var(--r-sm); margin: 0; }
+.campaign-funnel { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 960px) { .campaign-funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.approve-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 10px; }
+.approve-list li { display: grid; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.approve-list textarea { width: 100%; }
+.mailbox-row { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }

@@ -85,6 +85,8 @@ const LABELS: Record<string, string> = {
   "deal.health_red": "Salud del deal en rojo",
   "deal.close_date_changed": "Cambio de fecha de cierre",
   "deal.plan_created": "Plan de cierre creado",
+  "person.unsubscribed": "Se dio de baja de las comunicaciones",
+  "campaign.interested": "Interesado en una campaña de outbound",
   "deal.plan_step_done": "Paso del plan de cierre hecho",
   "deal.discount_requested": "Descuento pendiente de aprobación",
   "deal.discount_approved": "Descuento aprobado",

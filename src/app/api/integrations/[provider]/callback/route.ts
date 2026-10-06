@@ -34,8 +34,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
     if (!tokens.refresh_token) throw new Error(`${provider.label} no ha entregado acceso permanente. Quita el acceso del CRM en tu cuenta y vuelve a conectar.`);
     const client = apiClient({ provider: provider.label, tokens, refresh: provider.refresh, save: async () => {} });
     const me = await provider.profile(client);
-    await saveConnection({ userId: saved.userId, provider: key, email: me.email, displayName: me.displayName, tokens, scheduling: me.scheduling });
-    return done({ connected: me.email });
+    await saveConnection({ userId: saved.userId, provider: key, email: me.email, displayName: me.displayName, tokens, scheduling: me.scheduling, purpose: saved.purpose });
+    return done({ connected: me.email, ...(saved.purpose === "outbound" ? { outbound: "1" } : {}) });
   } catch (err) {
     return done({ error: err instanceof ProviderError || !(err instanceof Error) ? providerMessage(err) : err.message });
   }

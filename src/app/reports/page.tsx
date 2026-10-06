@@ -7,7 +7,7 @@ import { listDashboards } from "@/lib/analytics";
 import { requireUser } from "@/lib/auth";
 import { money } from "@/lib/format";
 import { listPipelines } from "@/lib/pipelines";
-import { ask, forecast, funnel, GOAL_METRICS, goalsProgress, velocity, type Answer } from "@/lib/reports";
+import { ask, attribution, forecast, funnel, GOAL_METRICS, goalsProgress, velocity, type Answer } from "@/lib/reports";
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
 import { toUserMessage } from "@/lib/errors";
@@ -32,8 +32,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const pipelineId = isId(sp.pipeline) ? sp.pipeline : null;
   const ownerId = isId(sp.owner) ? sp.owner : null;
   const funnelPipeline = pipelineId ?? active[0]?.id ?? null;
-  const [fc, vel, goals, fun] = await Promise.all([
-    forecast({ pipelineId, ownerId }), velocity(pipelineId), goalsProgress(), funnelPipeline ? funnel(funnelPipeline) : null,
+  const [fc, vel, goals, fun, attr] = await Promise.all([
+    forecast({ pipelineId, ownerId }), velocity(pipelineId), goalsProgress(), funnelPipeline ? funnel(funnelPipeline) : null, attribution(365),
   ]);
   let answer: Answer | null = null, askError: string | null = null;
   if (sp.q) {
@@ -190,6 +190,26 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </ol>
         </section>
       )}
+
+      <section className="panel" aria-label="Atribución">
+        <h2>Atribución <span className="muted">últimos 12 meses · qué canal trae deals ganados, no solo leads</span></h2>
+        {attr.length === 0 ? <p className="muted">Todavía no hay datos.</p> : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Origen</th><th>Campaña (utm_campaign)</th><th className="num">Leads</th><th className="num">Deals</th><th className="num">Ganados</th><th className="num">Importe ganado</th><th className="num">Tasa de cierre</th></tr></thead>
+              <tbody>
+                {attr.map((r) => (
+                  <tr key={`${r.source}|${r.campaign ?? ""}`}>
+                    <td>{r.source}</td><td>{r.campaign ?? "—"}</td><td className="num">{r.leads}</td><td className="num">{r.deals}</td>
+                    <td className="num">{r.won}</td><td className="num">{money(r.won_value)}</td>
+                    <td className="num">{pct(r.won + r.lost ? r.won / (r.won + r.lost) : null)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </main>
   );
 }

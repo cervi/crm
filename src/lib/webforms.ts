@@ -96,15 +96,26 @@ export async function deleteForm(formId: string) {
 }
 
 /** Lo que llega de la web: entra como lead (o solicitud de demo), se puntúa y se reparte. */
-async function intake(f: WebForm, v: { email: string; full_name?: string; phone?: string; company?: string; job_title?: string; message?: string }) {
+async function intake(f: WebForm, v: { email: string; full_name?: string; phone?: string; company?: string; job_title?: string; message?: string },
+                      utm: Record<string, string> = {}) {
   const r = await ingestLead(INTEGRATION_ACTOR, {
     email: v.email, full_name: v.full_name || undefined, phone: v.phone || undefined, company: v.company || undefined,
     job_title: v.job_title || undefined, message: v.message || undefined, source: f.source, source_detail: f.source_detail ?? f.name,
-    intent: f.intent, funnel_stage: f.funnel_stage ?? undefined, tags: f.tags.length ? f.tags : undefined,
+    intent: f.intent, funnel_stage: f.funnel_stage ?? undefined, tags: f.tags.length ? f.tags : undefined, ...utm,
   });
   await sql`UPDATE web_forms SET submissions = submissions + 1 WHERE id = ${f.id}`;
   await recomputeScores(r.lead_id).then(() => applyAssignment()).catch((err) => console.error("[formulario]", err));
   return r;
+}
+
+/** utm_* de la página donde estaba el formulario (campos ocultos). */
+export function utmFrom(data: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]) {
+    const v = String(data[k] ?? "").trim().slice(0, 200);
+    if (v) out[k] = v;
+  }
+  return out;
 }
 
 export async function submitForm(slug: string, data: Record<string, unknown>): Promise<{ message: string; redirect: string | null }> {
@@ -122,7 +133,7 @@ export async function submitForm(slug: string, data: Record<string, unknown>): P
   }
   const email = (values.email ?? "").toLowerCase();
   if (!z.email().safeParse(email).success) throw new UserError("El email no es válido.");
-  await intake(f, { ...values, email });
+  await intake(f, { ...values, email }, utmFrom(data));
   return { message: f.success_message, redirect: f.redirect_url };
 }
 

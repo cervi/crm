@@ -21,7 +21,7 @@ export const AI_PROVIDERS: { value: AiProvider; label: string; baseUrl: string; 
 ];
 
 export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff" | "lead_chat" | "report_question" | "proposal"
-  | "meeting_prep" | "call_extraction";
+  | "meeting_prep" | "call_extraction" | "enrich_company" | "qualify_lead" | "icebreaker" | "classify_reply";
 
 export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "deal_brief", label: "Resumen del deal", help: "Arriba de cada ficha: cómo va, riesgos y siguiente paso." },
@@ -30,6 +30,10 @@ export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "handoff", label: "Traspaso a Customer Success", help: "El resumen de un deal ganado para el equipo de CS." },
   { value: "meeting_prep", label: "Preparación de reuniones", help: "La ficha que el agente deja antes de cada reunión: contexto, objetivo y preguntas." },
   { value: "call_extraction", label: "Extracción tras una reunión", help: "Necesidades, decisores, presupuesto, plazos, objeciones y próximos pasos a partir de la transcripción o las notas." },
+  { value: "enrich_company", label: "Enriquecer empresas", help: "Sector, tamaño, país y a qué se dedica, a partir de la web de la empresa." },
+  { value: "qualify_lead", label: "Cualificar leads", help: "Si un lead encaja con vuestro perfil de cliente ideal, y qué falta saber." },
+  { value: "icebreaker", label: "Primera línea de las campañas", help: "La frase personalizada que abre cada correo de outbound." },
+  { value: "classify_reply", label: "Clasificar respuestas", help: "Interesado, más adelante, no interesado, baja o fuera de la oficina." },
   { value: "proposal", label: "Propuestas", help: "El texto de las propuestas que se envían al cliente con los productos del deal." },
   { value: "report_question", label: "Preguntas sobre los datos", help: "Convierte una pregunta («¿cuánto ganamos por origen este trimestre?») en un informe." },
   { value: "lead_chat", label: "Chat de la web", help: "El asistente de los formularios web: responde, cualifica al visitante y recoge sus datos." },
@@ -51,6 +55,14 @@ Con los datos del deal (asistentes, historia, lo que sabemos, señales), respond
   call_extraction: `Eres el asistente comercial del CRM. ${COMMON}
 De la transcripción o las notas de una reunión con un cliente, extrae solo lo que se dijo. Responde SOLO con un JSON:
 {"necesidades": ["qué necesita el cliente"], "decisores": [{"nombre": "", "cargo": "", "rol": "decisor | influye | usuario | compras"}], "presupuesto": "lo dicho sobre presupuesto o vacío", "plazo": "lo dicho sobre plazos o vacío", "objeciones": [""], "competidores": ["otras soluciones que valoran"], "proximos_pasos": [{"tarea": "en imperativo", "en_dias": número de días desde hoy}], "importe_estimado": número o null, "fecha_cierre": "AAAA-MM-DD o null"}`,
+  enrich_company: `Analizas la web de una empresa para un CRM. ${COMMON}
+Responde SOLO con un JSON: {"sector": "sector en 1-3 palabras", "empleados_aprox": número o null si no se puede saber, "pais": "país o vacío", "ciudad": "ciudad o vacío", "descripcion": "a qué se dedica, una frase"}`,
+  qualify_lead: `Cualificas leads con el perfil de cliente ideal de la empresa. ${COMMON}
+Decide si el lead encaja con el perfil (sin inventar datos que no estén). Responde SOLO con un JSON: {"encaje": "encaja | no_encaja | falta_info", "motivo": "una o dos frases", "falta": ["lo que habría que saber para decidir"]}`,
+  icebreaker: `Escribes la primera línea de un correo de prospección (outbound) en español de España. Cercana, concreta y basada SOLO en los datos de la empresa y del contacto; sin halagos vacíos ni inventar nada. Máximo 25 palabras, sin saludo (el saludo ya va antes).
+Responde SOLO con un JSON: {"linea": "la frase"}`,
+  classify_reply: `Clasificas la respuesta de un contacto a un correo de prospección. ${COMMON}
+Responde SOLO con un JSON: {"clase": "interesado | mas_adelante | no_interesado | baja | fuera_oficina | otro", "retomar_en_dias": número o null (para más adelante o fuera de la oficina), "resumen": "una frase con lo que dice"}`,
   proposal: `Eres el asistente comercial del CRM. ${COMMON}
 Redacta el texto de una propuesta comercial para el cliente con los datos del deal: saludo, qué necesita (según las notas), qué le proponemos (los productos, sin repetir precios: van en una tabla aparte), por qué encaja y los siguientes pasos. Sin datos internos ni del pipeline. Máximo 250 palabras, firmado por el responsable.
 Responde SOLO con un JSON: {"titulo": "título de la propuesta", "texto": "el texto, con saltos de línea"}`,

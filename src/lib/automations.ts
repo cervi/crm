@@ -15,6 +15,7 @@ import { refreshStaleBriefs } from "./briefs";
 import { zonedToUtc } from "./slots";
 import { sendDueDigests } from "./digest";
 import { applyExtraction, extractionFor } from "./deal-agent";
+import { bookingPageLink } from "./booking";
 
 // ===========================================================================
 // Motor de automatizaciones
@@ -130,6 +131,7 @@ export const RULE_ACTION: Record<string, ActionType> = {
   no_show_rebook: "draft_email",
   stale_deal_escalate: "notify",
   won_handoff: "create_task",
+  inbound_first_reply: "draft_email",
   call_next_steps: "create_task",
   call_deal_update: "update_deal",
   multithread: "create_task",
@@ -177,6 +179,11 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
   ],
   won_handoff: [
     { key: "due_days", label: "Plazo de la tarea (días)", kind: "days" },
+  ],
+  inbound_first_reply: [
+    { key: "max_age_hours", label: "Solo leads de las últimas (horas)", kind: "number" },
+    { key: "subject", label: "Asunto", kind: "text" },
+    { key: "body", label: "Texto", kind: "textarea", help: "Puedes usar {nombre}, {empresa}, {responsable}, {enlace_reserva} (tu página de reservas) y {huecos} (tus próximos huecos libres)." },
   ],
   multithread: [
     { key: "min_age_days", label: "Días desde que se creó el deal", kind: "days" },
@@ -281,7 +288,9 @@ export async function setPaused(paused: boolean) {
 // Propuestas
 
 type Candidate = {
+  /** El deal (o el lead, si `subject` es «lead») sobre el que actúa. */
   dealId: string;
+  subject?: "lead";
   title: string;
   reason: string;
   payload: Record<string, unknown> & { stage_id?: string; activity_id?: string; once_key?: string };
@@ -386,6 +395,41 @@ const missingSession = (grace: number) => sql`
   ods.required_activity_type IS NOT NULL AND NOT ods.has_upcoming_session AND ods.days_in_stage >= ${grace}`;
 
 const SCANNERS: Record<string, Scanner> = {
+  // Lead nuevo de la web que encaja (o sin perfil): primer correo en minutos.
+  async inbound_first_reply(rule, ctx) {
+    if (!ctx.mailbox) return [];
+    const hours = num(rule.params.max_age_hours, 72);
+    const rows = await sql<{ id: string; person_id: string; full_name: string; email: string; owner_id: string | null; owner_name: string | null;
+                             organization: string | null; fit: string | null; fit_reason: string | null; source: string | null }[]>`
+      SELECT l.id, p.id AS person_id, p.full_name, pe.email, l.owner_id, u.name AS owner_name, o.name AS organization, l.fit, l.fit_reason, l.source
+      FROM leads l JOIN persons p ON p.id = l.person_id AND p.deleted_at IS NULL AND p.unsubscribed_at IS NULL
+      JOIN LATERAL (SELECT email FROM person_emails WHERE person_id = p.id AND bounced_at IS NULL ORDER BY is_primary DESC LIMIT 1) pe ON true
+      LEFT JOIN organizations o ON o.id = l.organization_id LEFT JOIN users u ON u.id = l.owner_id
+      WHERE l.status = 'open' AND l.deleted_at IS NULL AND l.created_at > now() - make_interval(hours => ${hours})
+        AND l.qualified_at IS NOT NULL AND l.fit IS DISTINCT FROM 'no_fit'
+        AND EXISTS (SELECT 1 FROM events ev WHERE ev.entity_type = 'lead' AND ev.entity_id = l.id AND ev.event_type = 'lead.form_submitted'
+                      AND ev.actor_type = 'integration')
+        AND NOT EXISTS (SELECT 1 FROM emails m WHERE m.person_id = p.id AND m.direction = 'out' AND m.status IN ('sent', 'scheduled', 'sending'))
+        AND NOT EXISTS (SELECT 1 FROM campaign_contacts cc WHERE cc.person_id = p.id)
+      LIMIT 100`;
+    const out: Candidate[] = [];
+    for (const l of rows) {
+      const link = await bookingPageLink(l.owner_id);
+      const vars = { nombre: firstName(l.full_name), empresa: l.organization ?? "vosotros", responsable: l.owner_name ?? "", enlace_reserva: link ?? "{huecos}" };
+      const subjectT = str(rule.params.subject, "Gracias por escribirnos, {nombre}");
+      const bodyT = str(rule.params.body, "Hola {nombre},\n\nGracias por escribirnos. Para entender bien lo que necesitáis y ver cómo podemos ayudaros, ¿te va bien una llamada de 20 minutos? Puedes elegir el hueco que mejor te venga aquí:\n\n{enlace_reserva}\n\nUn saludo,\n{responsable}");
+      const first = { subject: renderTemplate(subjectT, vars), body: renderTemplate(bodyT, vars) };
+      const all = await renderTemplates(ctx, l.owner_id, {}, first.subject, first.body);
+      out.push({
+        dealId: l.id, subject: "lead",
+        title: `Responder a ${l.full_name}${l.organization ? ` (${l.organization})` : ""}`,
+        reason: `Lead nuevo ${l.source ? `de «${l.source}» ` : ""}sin respuesta todavía. ${l.fit === "fit" ? l.fit_reason ?? "Encaja con el perfil." : l.fit_reason ?? ""}`.trim(),
+        payload: { to: l.email, to_name: l.full_name, person_id: l.person_id, owner_id: l.owner_id, subject: all.subject, body: all.body },
+      });
+    }
+    return out;
+  },
+
   // Fase que requiere una sesión (demo, llamada…) y el deal no la tiene agendada.
   // Si el calendario está conectado y la regla de ofrecer huecos está activa, de
   // los deals con email se encarga esa regla; aquí quedan los demás.
@@ -491,12 +535,12 @@ const SCANNERS: Record<string, Scanner> = {
         LIMIT 1` : [];
       out.push(c ? {
         dealId: d.id, title: `Implicar a ${c.full_name}${c.job_title ? ` (${c.job_title})` : ""} en «${d.title}»`,
-        reason: `Solo hay ${d.contacts === 0 ? "ningún contacto" : `un contacto (${d.only_person})`}: si esa persona se va o se enfría, el deal se para.`,
+        reason: d.contacts === 0 ? "El deal no tiene ningún contacto." : `Solo hay un contacto (${d.only_person}): si esa persona se va o se enfría, el deal se para.`,
         payload: { type: "task", subject: `Implicar a ${c.full_name} en «${d.title}»`, person_id: c.id, owner_id: d.owner_id, due_in_days: 2,
                    note: `${c.full_name}${c.job_title ? `, ${c.job_title},` : ""} también está en ${d.org}. Preséntate, cuéntale el proyecto o pide a ${d.only_person ?? "tu contacto"} que os presente.` },
       } : {
         dealId: d.id, title: `Identificar al decisor de ${d.org ?? "la empresa"} para «${d.title}»`,
-        reason: `Solo hay ${d.contacts === 0 ? "ningún contacto" : `un contacto (${d.only_person})`} y no conocemos a nadie más en la empresa.`,
+        reason: d.contacts === 0 ? "El deal no tiene ningún contacto y no conocemos a nadie en la empresa." : `Solo hay un contacto (${d.only_person}) y no conocemos a nadie más en la empresa.`,
         payload: { type: "task", subject: `Identificar al decisor y a quien firma en ${d.org ?? d.title}`, owner_id: d.owner_id, due_in_days: 3,
                    note: "Pregunta quién más participa en la decisión (decisor, usuarios, compras) y añádelos al deal." },
       });
@@ -1049,7 +1093,7 @@ async function coolingDown(rule: Rule, c: Candidate) {
   const days = num(rule.params.cooldown_days, 0);
   const [row] = await sql<{ x: number }[]>`
     SELECT 1 AS x FROM automation_actions x
-    WHERE x.rule_id = ${rule.id} AND x.subject_type = 'deal' AND x.subject_id = ${c.dealId}
+    WHERE x.rule_id = ${rule.id} AND x.subject_type = ${c.subject ?? "deal"} AND x.subject_id = ${c.dealId}
       AND (
         (x.status IN ('pending', 'done', 'dismissed') AND x.created_at > now() - make_interval(days => ${days})
            AND (x.payload->>'stage_id') IS NOT DISTINCT FROM ${c.payload.stage_id ?? null}::text)
@@ -1064,7 +1108,7 @@ async function coolingDown(rule: Rule, c: Candidate) {
 async function alreadyHandled(rule: Rule, c: Candidate) {
   const [row] = await sql<{ x: number }[]>`
     SELECT 1 AS x FROM automation_actions
-    WHERE rule_id = ${rule.id} AND subject_type = 'deal' AND subject_id = ${c.dealId}
+    WHERE rule_id = ${rule.id} AND subject_type = ${c.subject ?? "deal"} AND subject_id = ${c.dealId}
       AND ${c.payload.activity_id
         ? sql`payload->>'activity_id' = ${c.payload.activity_id}`
         : c.payload.once_key
@@ -1078,7 +1122,7 @@ async function alreadyHandled(rule: Rule, c: Candidate) {
 async function propose(rule: Rule, mode: "ask" | "auto", c: Candidate): Promise<"proposed" | "executed" | "failed" | "exists"> {
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO automation_actions ${sql({
-      actor: "assistant", rule_id: rule.id, subject_type: "deal", subject_id: c.dealId, deal_id: c.dealId,
+      actor: "assistant", rule_id: rule.id, subject_type: c.subject ?? "deal", subject_id: c.dealId, deal_id: c.subject === "lead" ? null : c.dealId,
       action_type: ruleAction(rule), title: c.title, reason: c.reason, payload: json(c.payload), mode,
     })}
     ON CONFLICT (rule_id, subject_type, subject_id) WHERE status = 'pending' DO NOTHING
@@ -1280,7 +1324,7 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
         ? await sql<{ owner_id: string | null; organization_id: string | null }[]>`SELECT owner_id, organization_id FROM deals WHERE id = ${a.deal_id}`
         : [];
       // Con cuenta conectada sale desde su correo (salvo que la persona diga que ya lo envió ella).
-      const sender = edits.manual === "1" ? null : await senderFor(deal?.owner_id);
+      const sender = edits.manual === "1" ? null : await senderFor(deal?.owner_id ?? (p.owner_id as string | null | undefined));
       if (sender) {
         const sent = await sendEmail(sender, actor, {
           to: { email: to, name: str(p.to_name, "") || null }, subject, body,
@@ -1420,6 +1464,7 @@ export type InboxItem = {
   action_type: ActionType; title: string; reason: string; payload: Record<string, unknown>; status: ActionStatus;
   mode: "ask" | "auto"; result: Record<string, unknown> | null; error: string | null;
   deal_id: string | null; deal_title: string | null; organization_name: string | null;
+  lead_id: string | null; lead_title: string | null;
   created_at: Date; decided_at: Date | null; executed_at: Date | null;
 };
 
@@ -1427,10 +1472,11 @@ export async function listActions({ view, dealId, limit = 200 }: { view: "pendin
   return sql<InboxItem[]>`
     SELECT x.id, x.actor, x.agent_name, r.key AS rule_key, r.name AS rule_name, x.action_type, x.title, x.reason,
            x.payload, x.status, x.mode, x.result, x.error, x.deal_id, d.title AS deal_title,
-           o.name AS organization_name, x.created_at, x.decided_at, x.executed_at
+           o.name AS organization_name, l.id AS lead_id, l.title AS lead_title, x.created_at, x.decided_at, x.executed_at
     FROM automation_actions x
     LEFT JOIN automation_rules r ON r.id = x.rule_id
     LEFT JOIN deals d ON d.id = x.deal_id
+    LEFT JOIN leads l ON x.subject_type = 'lead' AND l.id = x.subject_id
     LEFT JOIN organizations o ON o.id = d.organization_id
     WHERE ${view === "pending" ? sql`x.status = 'pending'` : sql`x.status <> 'pending'`}
       AND (${dealId ?? null}::uuid IS NULL OR x.deal_id = ${dealId ?? null}::uuid)

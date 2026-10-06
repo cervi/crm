@@ -3,7 +3,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 export const COOKIE = "oauth_state";
 export const COOKIE_PATH = "/api/integrations";
 
-export type OAuthState = { provider: string; state: string; verifier: string; userId: string; redirect: string; at: number };
+export type OAuthState = { provider: string; state: string; verifier: string; userId: string; redirect: string; at: number; purpose?: "main" | "outbound" };
 
 export const sealState = (s: OAuthState) => encrypt(JSON.stringify(s));
 export function openState(raw: string | undefined): OAuthState | null {

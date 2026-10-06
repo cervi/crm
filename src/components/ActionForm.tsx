@@ -42,6 +42,7 @@ export function ActionForm({ action, children, submitLabel, pendingLabel, classN
     >
       {children}
       {state?.error && <p className="form-error" role="alert">{state.error}</p>}
+      {state?.ok && state.message && <p className="form-ok" role="status">{state.message}</p>}
       <div className="form-actions">
         <button type="submit" disabled={pending} className={danger ? "btn danger" : good ? "btn good" : secondary ? "btn secondary" : "btn"}>
           {pending ? (pendingLabel ?? "Guardando…") : submitLabel}

@@ -392,8 +392,9 @@ await step("panel del deal: muestra y resuelve sus propuestas", async () => {
   await page.goto(`/deals/${x.deal_id}`);
   const section = page.getByRole("region", { name: "Propuestas de la IA" });
   await section.getByRole("heading", { name: x.title }).waitFor();
-  await section.getByRole("button", { name: "Entendido" }).click();
-  await section.waitFor({ state: "detached" });
+  const card = section.getByRole("article", { name: x.title });
+  await card.getByRole("button", { name: "Entendido" }).click();
+  await section.getByRole("heading", { name: x.title }).waitFor({ state: "detached" });
 });
 
 await step("autonomía: limitar un permiso se refleja en las reglas", async () => {
@@ -1046,8 +1047,8 @@ await step("lo que sabemos del deal: se rellena a mano", async () => {
   await box.locator("textarea[name=needs]").fill(`Centralizar la facturación ${stamp}`);
   await box.locator("input[name=budget]").fill("20.000 € al año");
   await box.getByRole("button", { name: "Guardar" }).click();
-  await box.getByText(`Centralizar la facturación ${stamp}`).waitFor();
-  await box.getByText("20.000 € al año").waitFor();
+  await box.locator("dd", { hasText: `Centralizar la facturación ${stamp}` }).waitFor();
+  await box.locator("dd", { hasText: "20.000 € al año" }).waitFor();
 });
 
 await step("descuento por encima del límite: queda pendiente y el administrador lo aprueba", async () => {

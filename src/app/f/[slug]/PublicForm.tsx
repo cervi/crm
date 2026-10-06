@@ -6,8 +6,20 @@ import type { FormField } from "@/lib/webforms";
 
 type Msg = { rol: "visitante" | "asistente"; texto: string };
 
-export function PublicForm({ slug, fields, chat, startedAt }: { slug: string; fields: FormField[]; chat: boolean; startedAt: number }) {
+const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"];
+
+export function PublicForm({ slug, fields, chat, startedAt, utm = {} }: { slug: string; fields: FormField[]; chat: boolean; startedAt: number; utm?: Record<string, string> }) {
   const [mode, setMode] = useState<"form" | "chat">("form");
+  const [attribution, setAttribution] = useState<Record<string, string>>(utm);
+  // Incrustado en otra web: los utm_* de esa página llegan en el «referrer».
+  useEffect(() => {
+    if (Object.keys(utm).length || !document.referrer) return;
+    try {
+      const q = new URL(document.referrer).searchParams;
+      const found = Object.fromEntries(UTM_KEYS.map((k) => [k, q.get(k) ?? ""]).filter(([, v]) => v));
+      if (Object.keys(found).length) setAttribution(found);
+    } catch { /* sin referrer válido */ }
+  }, [utm]);
   const [state, action, pending] = useActionState<SubmitState, FormData>(submitFormAction.bind(null, slug), undefined);
   const [, start] = useTransition();
 
@@ -28,6 +40,7 @@ export function PublicForm({ slug, fields, chat, startedAt }: { slug: string; fi
       {mode === "chat" ? <Chat slug={slug} /> : (
         <form className="form" onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); start(() => action(d)); }}>
           <input type="hidden" name="_t" value={startedAt} />
+          {Object.entries(attribution).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
           {/* Campo trampa para robots: las personas no lo ven. */}
           <label className="hp" aria-hidden="true">Web<input name="website" tabIndex={-1} autoComplete="off" /></label>
           {fields.map((f) => (

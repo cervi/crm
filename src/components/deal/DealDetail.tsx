@@ -74,7 +74,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
       ? sql<{ id: string; source: string | null; source_detail: string | null }[]>`
           SELECT id, source, source_detail FROM leads WHERE id = ${deal.lead_id}`
       : Promise.resolve([]),
-    listActions({ view: "pending", dealId, limit: 10 }),
+    listActions({ view: "pending", dealId, limit: 30 }),
     senderFor(deal.owner_id),
     listDocuments(dealId),
     deal.status === "open" ? getDealBrief(dealId) : Promise.resolve(null),
@@ -714,7 +714,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                     <span className="meta">{a.due_at ? dateTime(a.due_at) : "Sin fecha"}{a.owner_name && ` · ${a.owner_name}`}</span>
                   </div>
                   {a.note && <p className="note-body">{a.note}</p>}
-                  {isSessionType(a.type) && (
+                  {isSessionType(a.type) && !a.is_overdue && (
                     <details className="prep" open={Boolean(a.prep) && a.due_at !== null && new Date(a.due_at).getTime() - Date.now() < 86400000}>
                       <summary className="meta"><Icon name="spark" />{a.prep ? `Ficha de preparación · ${dateTime(a.prep_at)}` : "Preparar esta reunión"}</summary>
                       {a.prep && <p className="note-body">{a.prep}</p>}

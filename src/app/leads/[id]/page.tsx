@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { trashAction } from "@/app/actions/trash";
 import { ScoreBadge, ScoreReasons } from "@/components/ScoreBadge";
+import { FitBadge } from "@/components/FitBadge";
 import { recomputeScores } from "@/lib/scoring";
 import { notFound } from "next/navigation";
 import { getLead } from "@/lib/leads";
@@ -38,6 +39,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     timeline(sql, [{ type: "lead", id }], 40),
   ]);
   const back = `/leads/${id}`;
+  const [org] = lead.organization_id
+    ? await sql<{ industry: string | null; employee_count: number | null; country: string | null; city: string | null; description: string | null }[]>`
+        SELECT industry, employee_count, country, city, description FROM organizations WHERE id = ${lead.organization_id}`
+    : [];
   const inbound = pipelines.find((p) => p.name.toLowerCase() === "inbound") ?? pipelines[0];
 
   return (
@@ -72,6 +77,23 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 <div className="dl-row"><dt>Deal</dt><dd><Link href={`/deals/${lead.converted_deal_id}`}>{lead.deal_title}</Link> · {dateTime(lead.converted_at)}</dd></div>
               )}
             </dl>
+          </section>
+
+          <section className="panel" aria-label="Encaje">
+            <h2>Encaje con vuestro perfil <FitBadge fit={lead.fit} reason={lead.fit_reason} /></h2>
+            <p className="muted" style={{ margin: 0 }}>{lead.fit_reason ?? "Todavía sin cualificar: el agente de captación lo hace en la próxima revisión."}</p>
+            {lead.fit === "unknown" && lead.fit_reason?.startsWith("Sin perfil") && <p className="meta"><Link href="/settings/icp">Definir el perfil de cliente ideal</Link></p>}
+            {org && (org.industry || org.employee_count || org.country || org.description) && (
+              <dl className="dl compact" style={{ marginTop: 10 }}>
+                {org.description && <div className="dl-row"><dt>A qué se dedica</dt><dd>{org.description}</dd></div>}
+                {org.industry && <div className="dl-row"><dt>Sector</dt><dd>{org.industry}</dd></div>}
+                {org.employee_count && <div className="dl-row"><dt>Empleados</dt><dd>{org.employee_count}</dd></div>}
+                {org.country && <div className="dl-row"><dt>País</dt><dd>{[org.city, org.country].filter(Boolean).join(", ")}</dd></div>}
+              </dl>
+            )}
+            {Object.keys(lead.utm ?? {}).length > 0 && (
+              <p className="meta">Atribución: {Object.entries(lead.utm).map(([k, v]) => `${k} = ${v}`).join(" · ")}</p>
+            )}
           </section>
 
           <section className="panel" aria-label="Puntuación">

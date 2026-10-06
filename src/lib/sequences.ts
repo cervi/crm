@@ -3,7 +3,8 @@ import { sql } from "./db";
 import { UserError } from "./errors";
 import { recordEvent, type Actor } from "./events";
 import { createActivity } from "./activities";
-import { connectionOf, sendEmail, slotsText } from "./mailbox";
+import { connectionById, connectionOf, sendEmail, sentToday, slotsText, warmupLimit } from "./mailbox";
+import { nextSendWindow, unsubscribeFooter, type Campaign } from "./campaigns";
 import { renderTemplate } from "./automations";
 import { templateVars } from "./emails";
 import { isId, parse, text } from "./validation";
@@ -202,7 +203,8 @@ async function stopFinished(): Promise<number> {
   };
   let n = 0;
   n += await stop("Respondió", sql`s.stop_on_reply AND EXISTS (
-    SELECT 1 FROM emails m WHERE m.person_id = e.person_id AND m.direction = 'in' AND m.sent_at > e.created_at)`);
+    SELECT 1 FROM emails m WHERE m.person_id = e.person_id AND m.direction = 'in' AND m.sent_at > e.created_at
+      AND m.reply_class IS DISTINCT FROM 'ooo' AND m.reply_class IS DISTINCT FROM 'bounce')`);
   n += await stop("Agendó una reunión", sql`s.stop_on_meeting AND EXISTS (
     SELECT 1 FROM activities a JOIN activity_types t ON t.key = a.type AND t.is_session
     WHERE (a.deal_id = e.deal_id OR a.person_id = e.person_id) AND a.created_at > e.created_at AND a.enrollment_id IS NULL
@@ -221,17 +223,58 @@ function endOfToday() {
   return zonedToUtc(y, m, d, 23, 59, tz).toISOString();
 }
 
+type CampaignCtx = Pick<Campaign, "send_days" | "send_from" | "send_to" | "status"> & {
+  campaign_id: string; personal_line: string | null; organization: string | null; organization_id: string | null;
+};
+
+async function campaignContext(contactId: string): Promise<CampaignCtx | null> {
+  const [c] = await sql<CampaignCtx[]>`
+    SELECT c.id AS campaign_id, c.status, c.send_days, c.send_from, c.send_to, cc.personal_line, o.name AS organization, o.id AS organization_id
+    FROM campaign_contacts cc JOIN campaigns c ON c.id = cc.campaign_id
+    LEFT JOIN LATERAL (SELECT organization_id FROM person_organizations WHERE person_id = cc.person_id AND status = 'current' LIMIT 1) po ON true
+    LEFT JOIN organizations o ON o.id = po.organization_id
+    WHERE cc.id = ${contactId}`;
+  return c ?? null;
+}
+
+/** ¿Puede salir ya este correo de campaña? Si no, cuándo reintentar (o null si hay que parar). */
+async function campaignGate(c: CampaignCtx, mailboxId: string | null): Promise<{ ok: true } | { ok: false; retryAt: Date | null; reason: string }> {
+  if (c.status === "finished") return { ok: false, retryAt: null, reason: "Campaña terminada" };
+  if (c.status !== "active") return { ok: false, retryAt: new Date(Date.now() + 3600000), reason: "Campaña en pausa" };
+  const window = nextSendWindow(c);
+  if (window.getTime() > Date.now() + 60000) return { ok: false, retryAt: window, reason: "Fuera del horario de envío" };
+  if (!mailboxId) return { ok: false, retryAt: null, reason: "Sin buzón de outbound" };
+  const conn = await connectionById(mailboxId);
+  if (!conn) return { ok: false, retryAt: null, reason: "El buzón de outbound ya no está conectado" };
+  if (conn.paused) return { ok: false, retryAt: new Date(Date.now() + 3600000), reason: "Buzón en pausa" };
+  if (await sentToday(mailboxId) >= warmupLimit(conn)) {
+    // Cupo del día agotado: mañana, dentro del horario.
+    return { ok: false, retryAt: nextSendWindow(c, new Date(Date.now() + 86400000 - (Date.now() % 86400000))), reason: "Límite diario del buzón" };
+  }
+  return { ok: true };
+}
+
 export async function processSequences(limit = 50): Promise<{ sent: number; tasks: number; stopped: number; failed: number }> {
   const out = { sent: 0, tasks: 0, stopped: await stopFinished(), failed: 0 };
   const due = await sql<{ id: string; sequence_id: string; deal_id: string | null; person_id: string; user_id: string | null;
-                          enrolled_by: string | null; next_step: number }[]>`
+                          enrolled_by: string | null; next_step: number; mailbox_id: string | null; campaign_contact_id: string | null }[]>`
     UPDATE sequence_enrollments SET next_run_at = now() + interval '10 minutes'   -- reclamada: nadie más la procesa a la vez
     WHERE id IN (
       SELECT e.id FROM sequence_enrollments e JOIN sequences s ON s.id = e.sequence_id AND s.is_active
       WHERE e.status = 'active' AND e.next_run_at <= now()
       ORDER BY e.next_run_at LIMIT ${limit} FOR UPDATE OF e SKIP LOCKED)
-    RETURNING id, sequence_id, deal_id, person_id, user_id, enrolled_by, next_step`;
+    RETURNING id, sequence_id, deal_id, person_id, user_id, enrolled_by, next_step, mailbox_id, campaign_contact_id`;
   for (const e of due) {
+    // Campañas de outbound: horario, buzón en pausa y límite diario (con calentamiento).
+    const camp = e.campaign_contact_id ? await campaignContext(e.campaign_contact_id) : null;
+    if (e.campaign_contact_id) {
+      const gate = camp ? await campaignGate(camp, e.mailbox_id) : { ok: false as const, retryAt: null, reason: "La campaña ya no existe" };
+      if (!gate.ok) {
+        if (gate.retryAt) await sql`UPDATE sequence_enrollments SET next_run_at = ${gate.retryAt} WHERE id = ${e.id}`;
+        else await sql`UPDATE sequence_enrollments SET status = 'stopped', stopped_reason = ${gate.reason}, finished_at = now(), next_run_at = NULL WHERE id = ${e.id}`;
+        continue;
+      }
+    }
     const steps = await sql<SequenceStep[]>`
       SELECT id, position, delay_days, kind, subject, body, task_type FROM sequence_steps WHERE sequence_id = ${e.sequence_id} ORDER BY position`;
     const step = steps[e.next_step];
@@ -242,17 +285,20 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
           SELECT p.full_name, (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email,
                  (SELECT organization_id FROM deals WHERE id = ${e.deal_id}) AS organization_id
           FROM persons p WHERE p.id = ${e.person_id}`;
-        const vars = { ...(e.deal_id ? await templateVars(e.deal_id) : {}), nombre: (p?.full_name ?? "").split(/\s+/)[0] ?? "" };
+        const vars = { ...(e.deal_id ? await templateVars(e.deal_id) : {}), nombre: (p?.full_name ?? "").split(/\s+/)[0] ?? "",
+                       ...(camp ? { empresa: camp.organization ?? "", gancho: camp.personal_line ?? "" } : {}) };
         if (step.kind === "email") {
-          const conn = e.user_id ? await connectionOf(e.user_id) : null;
+          const conn = e.mailbox_id ? await connectionById(e.mailbox_id) : e.user_id ? await connectionOf(e.user_id) : null;
           if (!conn || conn.status !== "active") throw new Error("La cuenta de correo del responsable no está conectada.");
           if (!p?.email) throw new Error("El contacto ya no tiene email.");
           const all = { ...vars, ...(step.body.includes("{huecos}") ? { huecos: await slotsText(conn) } : {}) };
+          // En campañas, la línea personalizada vacía no deja huecos raros y siempre va el enlace de baja.
+          const body = renderTemplate(step.body, all).replace(/\n{3,}/g, "\n\n").trim() + (camp ? unsubscribeFooter(e.person_id) : "");
           const sent = await sendEmail(conn, actor, {
-            to: { email: p.email, name: p.full_name }, subject: renderTemplate(step.subject, all), body: renderTemplate(step.body, all),
-            dealId: e.deal_id, personId: e.person_id, organizationId: p.organization_id,
+            to: { email: p.email, name: p.full_name }, subject: renderTemplate(step.subject, all), body,
+            dealId: e.deal_id, personId: e.person_id, organizationId: p.organization_id ?? camp?.organization_id ?? null,
           });
-          await sql`UPDATE emails SET enrollment_id = ${e.id} WHERE id = ${sent.emailId}`;
+          await sql`UPDATE emails SET enrollment_id = ${e.id}, campaign_id = ${camp?.campaign_id ?? null} WHERE id = ${sent.emailId}`;
           out.sent++;
         } else {
           const [d] = e.deal_id ? await sql<{ owner_id: string | null }[]>`SELECT owner_id FROM deals WHERE id = ${e.deal_id}` : [];
@@ -272,6 +318,7 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
       } else {
         await sql`UPDATE sequence_enrollments SET status = 'completed', next_step = ${steps.length}, next_run_at = NULL, finished_at = now(), error = NULL, attempts = 0
                   WHERE id = ${e.id}`;
+        if (e.campaign_contact_id) await sql`UPDATE campaign_contacts SET status = 'completed', updated_at = now() WHERE id = ${e.campaign_contact_id} AND status = 'enrolled'`;
       }
     } catch (err) {
       out.failed++;

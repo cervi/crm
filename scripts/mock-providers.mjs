@@ -193,9 +193,19 @@ createServer(async (req, res) => {
                                           presupuesto: "(IA) Unos 30.000 € al año", plazo: "(IA) Arrancar en enero", objeciones: ["(IA) El precio por usuario"],
                                           competidores: ["(IA) Acme CRM"], proximos_pasos: [{ tarea: "(IA) Enviar la propuesta revisada", en_dias: 2 }, { tarea: "(IA) Agendar la demo técnica", en_dias: 5 }],
                                           importe_estimado: 30000, fecha_cierre: "2027-01-15" }),
+        enrich_company: JSON.stringify({ sector: "Software", empleados_aprox: 120, pais: "España", ciudad: "Madrid", descripcion: "(IA) Software de logística para pymes" }),
+        qualify_lead: JSON.stringify({ encaje: "encaja", motivo: "(IA) Empresa de software mediana en España, como vuestro perfil", falta: [] }),
+        icebreaker: JSON.stringify({ linea: "(IA) He visto que estáis ampliando el equipo de ventas en Madrid." }),
         report_question: JSON.stringify({ titulo: "(IA) Importe ganado por origen", source: "deals", metric: "sum_value", group_by: "source",
                                           date_field: "won_at", period: "all", chart: "bar", filters: { status: "won" } }),
       };
+      if (task === "classify_reply") {
+        const t = JSON.stringify(JSON.parse(user).datos ?? {}).toLowerCase();
+        replies.classify_reply = JSON.stringify(/fuera de la oficina|vacaciones/.test(t) ? { clase: "fuera_oficina", retomar_en_dias: 7, resumen: "(IA) De vacaciones" }
+          : /más adelante|mas adelante|trimestre/.test(t) ? { clase: "mas_adelante", retomar_en_dias: 90, resumen: "(IA) Ahora no, el próximo trimestre" }
+          : /no nos interesa/.test(t) ? { clase: "no_interesado", retomar_en_dias: null, resumen: "(IA) No le interesa" }
+          : { clase: "interesado", retomar_en_dias: null, resumen: "(IA) Quiere una reunión" });
+      }
       if (task === "lead_chat") {
         // Chat de la web: pide el email hasta que aparece en la conversación.
         const conv = JSON.parse(user).datos?.conversacion ?? [];
@@ -209,6 +219,13 @@ createServer(async (req, res) => {
       return anthropic
         ? send(res, 200, { content: [{ type: "text", text }], stop_reason: "end_turn" })
         : send(res, 200, { choices: [{ message: { role: "assistant", content: text } }] });
+    }
+    // --- Webs de empresas (enriquecimiento)
+    const web = /^\/web\/([^/]+)$/.exec(p);
+    if (web) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      return res.end(`<!doctype html><html lang="es"><head><title>${decodeURIComponent(web[1])} — Software de logística</title>
+        <meta name="description" content="Gestionamos el transporte de 300 pymes en España."></head><body><h1>Logística sin papeles</h1><script>x()</script></body></html>`);
     }
     if (p === "/__expire") { state.access.clear(); return send(res, 200, { ok: true }); }
     if (p === "/__revoke") { state.access.clear(); state.refresh.clear(); return send(res, 200, { ok: true }); }
