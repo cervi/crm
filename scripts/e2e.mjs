@@ -552,7 +552,7 @@ if (process.env.MOCK_URL) {
     await winDeal(dC.id);
     await run();
     const mC = await csMail(dC.id);
-    const sentCs = (await (await fetch(`${MOCK}/__state`)).json()).gsent.filter((m) => m.to === "cs@aikit.example");
+    const sentCs = (await (await fetch(`${MOCK}/__state`)).json()).gsent.filter((m) => m.to.includes("cs@aikit.example"));
     check(mC?.status === "done" && mC.mode === "auto" && mC.result.sent && sentCs.some((m) => m.subject.startsWith("Nuevo cliente:")),
           "traspaso por correo en «Sola»: se envía al ganar", JSON.stringify({ st: mC?.status, n: sentCs.length }));
     await sql`UPDATE ai_permissions SET autonomy = 'ask' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
