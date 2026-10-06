@@ -528,7 +528,16 @@ if (process.env.MOCK_URL) {
   await sql`DELETE FROM automation_actions WHERE deal_id = ${DEAL_OPEN} AND rule_id = (SELECT id FROM automation_rules WHERE key = 'offer_session_slots')`;
   await sql`UPDATE ai_permissions SET autonomy = 'auto' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
   await sql`UPDATE automation_rules SET autonomy = 'auto' WHERE key = 'offer_session_slots'`;
+  // Jefe de agentes: la IA ya escribió hoy a Ana (desde Outlook) → este correo no sale solo, queda para decidir.
   await run();
+  const [held] = await sql`SELECT x.mode, x.status, x.reason FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                           WHERE r.key = 'offer_session_slots' AND x.deal_id = ${DEAL_OPEN} ORDER BY x.created_at DESC LIMIT 1`;
+  check(held?.mode === "ask" && held.status === "pending" && held.reason.includes("otro agente ya le ha escrito"),
+        "jefe de agentes: dos correos de los agentes al mismo contacto el mismo día no salen solos", JSON.stringify(held));
+  await sql`UPDATE app_settings SET agent_emails_per_contact_day = 5`;
+  await sql`DELETE FROM automation_actions WHERE deal_id = ${DEAL_OPEN} AND rule_id = (SELECT id FROM automation_rules WHERE key = 'offer_session_slots')`;
+  await run();
+  await sql`UPDATE app_settings SET agent_emails_per_contact_day = 1`;
   const gst = await mock("/__state");
   const gmail = gst.gsent.at(-1);
   check(gmail && gmail.to.includes("ana@paco.example") && gmail.subject.includes("¿cuándo hacemos la videollamada?") && gmail.body.includes("(hora de Madrid)"),
@@ -1564,7 +1573,7 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   check(xd?.kind === "expansion" && xd.origin === "cs" && xd.value === 3000 && xd.contract_id === xc.id && xd.title.includes("licencias"),
         "expansión: licencias llenas → oportunidad de upsell en el pipeline de expansión, con importe estimado", JSON.stringify(xd));
   const [xa] = await sql`SELECT x.reason FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id WHERE r.key = 'expansion_opportunity' AND x.subject_id = ${XORG}`;
-  check(xa?.reason.includes("usa 10 de 10 licencias"), "expansión: la propuesta explica su porqué", xa?.reason);
+  check(xa?.reason.toLowerCase().includes("usa 10 de 10 licencias"), "expansión: la propuesta explica su porqué", xa?.reason);
   await sql`UPDATE automation_rules SET autonomy = 'ask' WHERE key = 'expansion_opportunity'`;
   const matrix = await (await get("/accounts/matrix")).text();
   check(matrix.includes("Matriz de productos") && matrix.includes("Expande E2E") && matrix.includes("Segunda plataforma") && matrix.includes("matrix-gap"),
