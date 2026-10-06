@@ -1303,6 +1303,173 @@ if (KEY) {
   await sql`DELETE FROM deals WHERE id = ${D2}`;
 }
 
+// ------------------------------------------------------------- Fase 3: captación y outbound
+if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const MOCK = process.env.MOCK_URL;
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  const mock = async (path, method = "GET") => (await fetch(`${MOCK}${path}`, { method })).json();
+  const enc = (plain) => {
+    const key = createHash("sha256").update(process.env.TOKEN_ENCRYPTION_KEY ?? "").digest();
+    const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", key, iv);
+    const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
+    return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+  };
+  const [{ owner_id: OWNER }] = await sql`SELECT owner_id FROM deals WHERE id = ${DEAL_OPEN}`;
+  const oauth = async (purpose) => {
+    const r1 = await get(`/api/integrations/microsoft/connect?user=${OWNER}${purpose ? `&purpose=${purpose}` : ""}`);
+    const cookie = (r1.headers.get("set-cookie") ?? "").split(";")[0];
+    const r2 = await fetch(r1.headers.get("location"), { redirect: "manual" });
+    const r3 = await get(r2.headers.get("location").replace(/^https?:\/\/[^/]+/, ""), { headers: { cookie } });
+    return r3.headers.get("location") ?? "";
+  };
+  await oauth(null);
+  await sql`UPDATE ai_settings SET provider = 'anthropic', base_url = ${`${MOCK}/llm/anthropic`}, model = 'modelo-de-pruebas',
+                   api_key = ${enc("clave-llm-de-pruebas")}, last_error = NULL`;
+
+  // Sin perfil de cliente ideal: nadie se descarta.
+  const lead0 = await api({ email: "rosa@sinperfil-e2e.example", full_name: "Rosa Sin Perfil", company: "Sin Perfil S.L.", source: "web" });
+  const l0 = await lead0.json();
+  await run();
+  const [q0] = await sql`SELECT fit, fit_reason FROM leads WHERE id = ${l0.lead_id}`;
+  check(q0?.fit === "unknown" && q0.fit_reason.startsWith("Sin perfil"), "cualificación: sin perfil de cliente ideal no descarta a nadie", JSON.stringify(q0));
+
+  // Con perfil: enriquecimiento desde la web, encaje y atribución UTM.
+  await sql`UPDATE icp_profile SET sectors = ARRAY['Software'], countries = ARRAY['España'], min_employees = 50, max_employees = 1000, updated_at = now()`;
+  const lead1 = await api({ email: "laura@logistica-e2e.example", full_name: "Laura Logística", company: "Logística E2E", job_title: "Directora comercial",
+                            source: "web", utm_source: "linkedin", utm_medium: "cpc", utm_campaign: "otono-e2e" });
+  const l1 = await lead1.json();
+  await run();
+  const [org1] = await sql`SELECT industry, employee_count, country, city, description, enriched_at FROM organizations WHERE id = ${l1.organization_id}`;
+  check(org1?.enriched_at && org1.industry === "Software" && org1.employee_count === 120 && org1.country === "España" && org1.description.includes("(IA)"),
+        "enriquecimiento: sector, tamaño, país y a qué se dedica desde la web de la empresa", JSON.stringify(org1));
+  const [q1] = await sql`SELECT fit, fit_reason, utm, score_reasons FROM leads WHERE id = ${l1.lead_id}`;
+  check(q1?.fit === "fit" && q1.fit_reason.includes("Software") && q1.utm.campaign === "otono-e2e" && q1.utm.source === "linkedin",
+        "cualificación: encaja con el perfil, con el motivo; y la campaña de origen (UTM) queda en el lead", JSON.stringify(q1));
+  await run();
+  const [q1b] = await sql`SELECT score_reasons FROM leads WHERE id = ${l1.lead_id}`;
+  check(q1b.score_reasons.some((r) => r.label === "Encaja con el perfil de cliente ideal"), "puntuación: el encaje suma", JSON.stringify(q1b.score_reasons));
+  const [fr] = await sql`SELECT x.status, x.payload, x.subject_type FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                         WHERE r.key = 'inbound_first_reply' AND x.subject_id = ${l1.lead_id}`;
+  check(fr?.status === "pending" && fr.subject_type === "lead" && fr.payload.to === "laura@logistica-e2e.example" && fr.payload.body.includes("Hola Laura"),
+        "captación: propone responder en minutos al lead que encaja", JSON.stringify(fr));
+  const inbox = await (await get("/inbox")).text();
+  check(inbox.includes("Responder a Laura Logística") && inbox.includes(`/leads/${l1.lead_id}`), "bandeja: la propuesta enlaza al lead");
+  const leadPage = await (await get(`/leads/${l1.lead_id}`)).text();
+  check(leadPage.includes("Encaje con vuestro perfil") && leadPage.includes("Encaja") && leadPage.includes("utm_campaign = otono-e2e"),
+        "ficha del lead: encaje, datos de la empresa y atribución");
+  const fitList = await (await get("/leads?fit=fit")).text();
+  check(fitList.includes("Laura Logística") && !fitList.includes("Rosa Sin Perfil"), "leads: filtro por encaje");
+  // Exclusión: deja de encajar.
+  await sql`UPDATE icp_profile SET exclusions = ARRAY['logistica-e2e'], updated_at = now()`;
+  await run();
+  const [q2] = await sql`SELECT fit, fit_reason FROM leads WHERE id = ${l1.lead_id}`;
+  check(q2.fit === "no_fit" && q2.fit_reason.includes("exclusión"), "cualificación: una exclusión descarta (y se recalcula al cambiar el perfil)", JSON.stringify(q2));
+  const icpPage = await (await get("/settings/icp")).text();
+  check(icpPage.includes("Perfil de cliente ideal") && icpPage.includes("Software"), "/settings/icp");
+  const rep = await (await get("/reports")).text();
+  check(rep.includes("Atribución") && rep.includes("otono-e2e"), "informes: atribución por canal y campaña");
+  await sql`UPDATE icp_profile SET sectors = '{}', countries = '{}', min_employees = NULL, max_employees = NULL, exclusions = '{}', updated_at = now()`;
+
+  // Buzón de outbound (dominio secundario), aparte del principal.
+  const loc = await oauth("outbound");
+  const conns = await sql`SELECT id, purpose, sync_calendar FROM mailbox_connections WHERE user_id = ${OWNER} ORDER BY purpose`;
+  const ob = conns.find((c) => c.purpose === "outbound");
+  check(loc.includes("outbound=1") && conns.some((c) => c.purpose === "main") && ob && !ob.sync_calendar,
+        "buzones de outbound: se conectan aparte del principal (sin calendario)", JSON.stringify(conns));
+  const mbPage = await (await get("/settings/mailbox")).text();
+  check(mbPage.includes("Buzones de outbound") && mbPage.includes("hoy 0 de 10"), "ajustes: buzón de outbound con su calentamiento (10 al día el primer día)");
+
+  // Campaña: contactos por la API, verificación y primera línea, aprobación, envío y respuestas.
+  const [seq] = await sql`SELECT id FROM sequences WHERE name = 'Seguimiento tras la propuesta'`;
+  const [camp] = await sql`INSERT INTO campaigns (name, status, sequence_id, mailbox_ids, owner_id, require_approval, send_days, send_from, send_to, target)
+                           VALUES ('Outbound e2e', 'active', ${seq.id}, ${[ob.id]}, ${OWNER}, true, '{1,2,3,4,5,6,7}', 0, 24, ${sql.json({ sector: "Software" })})
+                           RETURNING id`;
+  const add = await fetch(`${BASE}/api/v1/campaigns/${camp.id}/contacts`, {
+    method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${KEY}` },
+    body: JSON.stringify({ contacts: [
+      { email: "marta@prospecto-e2e.example", full_name: "Marta Prospecto", company: "Prospecto E2E", job_title: "CEO" },
+      { email: "pedro@prospecto-e2e.example", full_name: "Pedro Prospecto", company: "Prospecto E2E", job_title: "CTO" },
+      { email: "nadie@mailinator.com", full_name: "Temporal" },
+      { email: "esto-no-es-un-email" },
+    ] }),
+  });
+  const added = await add.json();
+  check(add.status === 201 && added.added === 3 && added.skipped.length === 1, "campañas: contactos por la API (descarta los emails mal escritos)", JSON.stringify(added));
+  check((await fetch(`${BASE}/api/v1/campaigns/${camp.id}/contacts`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status === 401,
+        "campañas: la API pide clave");
+  await run();
+  const cc = await sql`SELECT cc.email, cc.status, cc.personal_line, cc.verify_note FROM campaign_contacts cc WHERE campaign_id = ${camp.id} ORDER BY email`;
+  const marta = cc.find((x) => x.email.startsWith("marta"));
+  check(marta?.status === "ready" && marta.personal_line?.startsWith("(IA)") && cc.find((x) => x.email.includes("mailinator"))?.status === "invalid",
+        "campañas: verificación del email y primera línea personalizada, a la espera de aprobación", JSON.stringify(cc));
+  const cpage = await (await get(`/campaigns/${camp.id}`)).text();
+  check(cpage.includes("Para aprobar") && cpage.includes("(IA) He visto que estáis ampliando") && cpage.includes("Aprobar todos (2)"), "campañas: lista para aprobar por lotes");
+  await sql`UPDATE campaign_contacts SET status = 'approved' WHERE campaign_id = ${camp.id} AND status = 'ready'`;
+  await run();
+  const enrolled = await sql`SELECT cc.email, cc.status, cc.mailbox_id, e.status AS enr FROM campaign_contacts cc LEFT JOIN sequence_enrollments e ON e.id = cc.enrollment_id
+                             WHERE cc.campaign_id = ${camp.id} AND cc.status = 'enrolled'`;
+  check(enrolled.length === 2 && enrolled.every((x) => x.mailbox_id === ob.id && x.enr === "active"), "campañas: los aprobados entran en la secuencia desde el buzón de outbound", JSON.stringify(enrolled));
+  const before = (await mock("/__state")).sent.length;
+  await sql`UPDATE sequence_enrollments SET next_run_at = now() - interval '1 minute' WHERE campaign_contact_id IN (SELECT id FROM campaign_contacts WHERE campaign_id = ${camp.id})`;
+  await run();
+  const st = await mock("/__state");
+  const out = await sql`SELECT to_email, body, mailbox_id, campaign_id FROM emails WHERE campaign_id = ${camp.id} AND direction = 'out' ORDER BY to_email`;
+  check(st.sent.length === before + 2 && out.length === 2 && out.every((e) => e.mailbox_id === ob.id && e.body.includes("/u/") && e.body.includes("darte de baja")),
+        "campañas: salen desde el buzón de outbound con el enlace de baja", JSON.stringify(out.map((e) => ({ to: e.to_email, mb: e.mailbox_id === ob.id }))));
+  check(out[0].body.includes("Prospecto E2E"), "campañas: {empresa} en el texto");
+  // Enlace de baja: página pública.
+  const unsubUrl = /\/u\/[^\s]+/.exec(out[0].body)[0];
+  const up = await fetch(`${BASE}${unsubUrl}`);
+  const uh = await up.text();
+  check(up.status === 200 && uh.includes("Darme de baja"), "baja: el enlace abre la página sin iniciar sesión");
+  check((await (await fetch(`${BASE}/u/00000000-0000-0000-0000-000000000000.firma-falsa`)).text()).includes("no es válido"), "baja: un enlace manipulado no sirve");
+  // Límite diario del buzón (calentamiento): con el cupo agotado, se aplaza.
+  await sql`UPDATE mailbox_connections SET daily_limit = 2 WHERE id = ${ob.id}`;
+  // Respuestas: interesada → deal; de vacaciones → pausa y retoma.
+  const people = Object.fromEntries((await sql`SELECT cc.email, cc.person_id FROM campaign_contacts cc WHERE cc.campaign_id = ${camp.id}`).map((x) => [x.email, x.person_id]));
+  await sql`INSERT INTO emails (direction, status, person_id, from_email, subject, body, sent_at)
+            VALUES ('in', 'sent', ${people["marta@prospecto-e2e.example"]}, 'marta@prospecto-e2e.example', 'Re: propuesta', 'Me interesa, ¿hablamos el jueves?', now()),
+                   ('in', 'sent', ${people["pedro@prospecto-e2e.example"]}, 'pedro@prospecto-e2e.example', 'Respuesta automática', 'Estoy de vacaciones hasta el lunes.', now())`;
+  await run();
+  const [mi] = await sql`SELECT cc.status, cc.reply_class, cc.deal_id, d.source, d.title FROM campaign_contacts cc LEFT JOIN deals d ON d.id = cc.deal_id
+                         WHERE cc.campaign_id = ${camp.id} AND cc.email = 'marta@prospecto-e2e.example'`;
+  check(mi?.status === "interested" && mi.deal_id && mi.source === "Outbound: Outbound e2e", "respuestas: interesada → deal en el pipeline, con su origen", JSON.stringify(mi));
+  const [mn] = await sql`SELECT count(*)::int AS n FROM notifications WHERE kind = 'campaign' AND title LIKE '%Marta Prospecto está interesado%'`;
+  check(mn.n === 1, "respuestas: aviso al responsable cuando alguien está interesado");
+  const [pe] = await sql`SELECT cc.status, cc.reply_class, e.status AS enr, e.next_run_at > now() + interval '6 days' AS later FROM campaign_contacts cc
+                         JOIN sequence_enrollments e ON e.id = cc.enrollment_id WHERE cc.campaign_id = ${camp.id} AND cc.email = 'pedro@prospecto-e2e.example'`;
+  await run();
+  const [pe2] = await sql`SELECT e.status FROM campaign_contacts cc JOIN sequence_enrollments e ON e.id = cc.enrollment_id
+                          WHERE cc.campaign_id = ${camp.id} AND cc.email = 'pedro@prospecto-e2e.example'`;
+  check(pe?.reply_class === "fuera_oficina" && pe.enr === "active" && pe.later && pe2.status === "active",
+        "respuestas: fuera de la oficina → la secuencia se pausa y se retoma después (no se para)", JSON.stringify({ pe, pe2 }));
+  const list = await (await get("/campaigns")).text();
+  check(list.includes("Outbound e2e") && list.includes("Campañas de outbound"), "/campaigns lista las campañas con sus resultados");
+  const cpage2 = await (await get(`/campaigns/${camp.id}`)).text();
+  check(cpage2.includes("Interesado") && cpage2.includes("Ver deal") && cpage2.includes("Fuera de la oficina"), "campañas: cada contacto con su estado y respuesta");
+
+  // Un agente externo prepara la lista y la vuelca por MCP.
+  const key = "crm_clave-agente-outbound-e2e-0123456789";
+  await sql`INSERT INTO agent_keys (name, key_hash, prefix, can_write) VALUES ('Agente de listas', ${createHash("sha256").update(key).digest("hex")}, 'crm_clave', true)
+            ON CONFLICT (key_hash) DO NOTHING`;
+  const mcp = async (name, args) => {
+    const r = await fetch(`${BASE}/api/v1/mcp`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) });
+    const j = await r.json();
+    try { return JSON.parse(j.result.content[0].text); } catch { return j; }
+  };
+  const lc = await mcp("listar_campanas", {});
+  check(Array.isArray(lc) && lc.some((c) => c.nombre === "Outbound e2e"), "MCP: listar campañas", JSON.stringify(lc).slice(0, 200));
+  const ac = await mcp("anadir_contactos_campana", { campana_id: camp.id, contactos: [{ email: "lucia@prospecto-e2e.example", nombre: "Lucía Prospecto", empresa: "Prospecto E2E" }] });
+  check(ac.anadidos === 1, "MCP: un agente añade contactos a una campaña", JSON.stringify(ac));
+  const risk = await mcp("deals_en_riesgo", { limite: 3 });
+  check(Array.isArray(risk), "MCP: deals en riesgo", JSON.stringify(risk).slice(0, 150));
+
+  await sql`UPDATE campaigns SET status = 'finished' WHERE id = ${camp.id}`;
+  await sql`UPDATE ai_settings SET api_key = ${enc("clave-mala")}`;
+}
+
 // ------------------------------------------------------------- Avisos, importar CSV, duplicados
 {
   // Abrir una propuesta avisa al responsable del deal.
