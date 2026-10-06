@@ -527,7 +527,7 @@ if (process.env.MOCK_URL) {
     const r3 = await run();
     const st = await (await fetch(`${MOCK}/__state`)).json();
     const mail = st.gsent.filter((m) => m.subject.startsWith("Tu parte del día")).at(-1);
-    check(r3.digests >= 1 && mail?.to === "jesus@empresa-google.example" && mail.body.includes("Enfoque del día (IA):") && mail.body.includes("Deals que piden atención"),
+    check(r3.digests >= 1 && mail?.to === "jesus@empresa-google.example" && mail.body.includes("Enfoque del día (IA):") && mail.body.includes("Pipeline abierto"),
           "parte del día: llega al correo de la persona con el enfoque de la IA", JSON.stringify({ digests: r3.digests, mail: mail?.body?.slice(0, 120) }));
     const r4 = await run();
     check(r4.digests === 0, "parte del día: solo uno al día", JSON.stringify(r4));
