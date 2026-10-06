@@ -621,7 +621,7 @@ await step("Customer Success: dirección por defecto y responsable por empresa",
   const [r] = await sql`SELECT params FROM automation_rules WHERE key = 'won_handoff_email'`;
   expect(r.params.cs_email === "cs@aikit.example", JSON.stringify(r.params));
   await page.goto("/organizations/60000000-0000-0000-0000-000000000001/edit");
-  await page.getByLabel("Responsable de CS").fill("Lucía CS");
+  await page.getByLabel("Responsable de CS", { exact: true }).fill("Lucía CS");
   await page.getByLabel("Email del responsable de CS").fill("lucia@aikit.example");
   await submit("Guardar cambios");
   await page.waitForURL(/\/organizations\/60000000-0000-0000-0000-000000000001$/);
@@ -636,7 +636,7 @@ await step("ganar un deal deja en la bandeja el correo de traspaso a su responsa
   await submit("Revisar ahora");
   const card = page.locator("article.proposal", { hasText: "Enviar el traspaso de «Paco — ampliación de servicio» a Customer Success" });
   await card.waitFor();
-  expect(await card.getByLabel("Para").inputValue() === "lucia@aikit.example", "destinatario incorrecto");
+  expect(await card.getByLabel("Para", { exact: true }).inputValue() === "lucia@aikit.example", "destinatario incorrecto");
   expect((await card.getByLabel("Texto").inputValue()).startsWith("Hola Lucía CS"), "saludo incorrecto");
   await shot("traspaso-cs");
 });
