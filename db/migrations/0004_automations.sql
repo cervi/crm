@@ -7,6 +7,10 @@
 --   automation_actions  Cada propuesta o acción de la IA: es a la vez la
 --                       bandeja de decisiones y el registro de lo que hizo,
 --                       con lo necesario para deshacerlo.
+--   ai_permissions      Qué puede hacer cada tipo de agente (el asistente
+--                       interno o un agente externo como Grok Bot) y con qué
+--                       autonomía. Es el techo: una regla en «auto» solo
+--                       actúa sola si el permiso de esa acción también es «auto».
 --   automation_settings Interruptor general.
 -- =====================================================================
 
@@ -24,6 +28,32 @@ CREATE TABLE automation_settings (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO automation_settings DEFAULT VALUES;
+
+-- Orden de los niveles: off < ask < auto. La autonomía efectiva de una
+-- acción es el menor entre la regla y el permiso del agente.
+CREATE TABLE ai_permissions (
+  actor        text NOT NULL CHECK (actor IN ('assistant', 'external')),
+  action_type  text NOT NULL CHECK (action_type IN
+                 ('create_task', 'add_note', 'draft_email', 'move_stage', 'update_deal')),
+  autonomy     text NOT NULL CHECK (autonomy IN ('off', 'ask', 'auto')),
+  allowed_autonomy text[] NOT NULL DEFAULT ARRAY['off', 'ask', 'auto'],
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (actor, action_type),
+  CHECK (autonomy = ANY (allowed_autonomy))
+);
+-- Enviar correos aún no es posible (llegará con el buzón conectado): un
+-- borrador siempre pasa por la bandeja.
+INSERT INTO ai_permissions (actor, action_type, autonomy, allowed_autonomy) VALUES
+  ('assistant', 'create_task', 'auto', ARRAY['off', 'ask', 'auto']),
+  ('assistant', 'add_note',    'auto', ARRAY['off', 'ask', 'auto']),
+  ('assistant', 'draft_email', 'ask',  ARRAY['off', 'ask']),
+  ('assistant', 'move_stage',  'ask',  ARRAY['off', 'ask', 'auto']),
+  ('assistant', 'update_deal', 'ask',  ARRAY['off', 'ask', 'auto']),
+  ('external',  'create_task', 'ask',  ARRAY['off', 'ask', 'auto']),
+  ('external',  'add_note',    'ask',  ARRAY['off', 'ask', 'auto']),
+  ('external',  'draft_email', 'ask',  ARRAY['off', 'ask']),
+  ('external',  'move_stage',  'ask',  ARRAY['off', 'ask', 'auto']),
+  ('external',  'update_deal', 'ask',  ARRAY['off', 'ask', 'auto']);
 
 CREATE TABLE automation_rules (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -45,12 +75,17 @@ CREATE TRIGGER automation_rules_updated_at BEFORE UPDATE ON automation_rules
 
 CREATE TABLE automation_actions (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  rule_id      uuid NOT NULL REFERENCES automation_rules(id) ON DELETE CASCADE,
+  -- Quién lo propone: una regla del asistente interno o un agente externo.
+  actor        text NOT NULL DEFAULT 'assistant' CHECK (actor IN ('assistant', 'external')),
+  agent_name   text,                             -- p. ej. «Grok Bot»
+  rule_id      uuid REFERENCES automation_rules(id) ON DELETE CASCADE,
   -- Sobre qué actúa (la deduplicación y el «enfriamiento» usan esta clave).
   subject_type text NOT NULL CHECK (subject_type IN ('deal', 'lead', 'person', 'organization')),
   subject_id   uuid NOT NULL,
   deal_id      uuid REFERENCES deals(id) ON DELETE CASCADE,
-  action_type  text NOT NULL CHECK (action_type IN ('create_task', 'draft_email', 'move_stage', 'notify')),
+  -- notify: pide una decisión a una persona; no ejecuta nada.
+  action_type  text NOT NULL CHECK (action_type IN
+                 ('create_task', 'add_note', 'draft_email', 'move_stage', 'update_deal', 'notify')),
   title        text NOT NULL,                    -- lo que propone, en una frase
   reason       text NOT NULL,                    -- por qué lo propone
   payload      jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -75,6 +110,11 @@ CREATE UNIQUE INDEX automation_actions_one_pending
 CREATE INDEX automation_actions_status_idx ON automation_actions (status, created_at DESC);
 CREATE INDEX automation_actions_deal_idx ON automation_actions (deal_id, created_at DESC);
 CREATE INDEX automation_actions_rule_idx ON automation_actions (rule_id, subject_id, created_at DESC);
+
+-- Las reglas que se disparan con un evento («deal ganado»…) leen los eventos
+-- con processed_at vacío (índice events_unprocessed_idx, en 0001).
+-- Lo ocurrido antes de activar el motor no dispara nada.
+UPDATE events SET processed_at = now() WHERE processed_at IS NULL;
 
 -- Reglas incluidas de serie (se pueden ajustar o desactivar en la aplicación).
 INSERT INTO automation_rules (key, name, description, autonomy, allowed_autonomy, params, position) VALUES

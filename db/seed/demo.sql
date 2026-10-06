@@ -209,4 +209,7 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Los datos de ejemplo son historia: no deben disparar automatizaciones.
+UPDATE events SET processed_at = now() WHERE processed_at IS NULL;
+
 COMMIT;

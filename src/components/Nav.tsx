@@ -6,6 +6,7 @@ import { Icon, type IconName } from "./Icon";
 
 export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: IconName }[] = [
   { href: "/pipelines", match: ["/pipelines", "/deals"], label: "Deals", icon: "deals" },
+  { href: "/inbox", match: ["/inbox"], label: "Bandeja de la IA", icon: "inbox" },
   { href: "/leads", match: ["/leads"], label: "Leads", icon: "leads" },
   { href: "/activities", match: ["/activities"], label: "Actividades", icon: "activities" },
   { href: "/organizations", match: ["/organizations"], label: "Empresas", icon: "organizations" },
@@ -15,7 +16,7 @@ export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: Ic
 ];
 
 /** Menú lateral colapsado: solo iconos, con el nombre al pasar el ratón. */
-export function Nav() {
+export function Nav({ inboxCount = 0 }: { inboxCount?: number }) {
   const path = usePathname();
   return (
     <aside className="rail">
@@ -24,10 +25,13 @@ export function Nav() {
         <ul>
           {NAV_ITEMS.map((item) => {
             const active = item.match.some((m) => path === m || path.startsWith(`${m}/`));
+            const count = item.href === "/inbox" ? inboxCount : 0;
+            const label = count > 0 ? `${item.label} (${count} pendiente${count === 1 ? "" : "s"})` : item.label;
             return (
               <li key={item.href}>
-                <Link href={item.href} aria-current={active ? "page" : undefined} aria-label={item.label} data-tip={item.label}>
+                <Link href={item.href} aria-current={active ? "page" : undefined} aria-label={label} data-tip={label}>
                   <Icon name={item.icon} />
+                  {count > 0 && <span className="rail-count" aria-hidden="true">{count > 99 ? "99+" : count}</span>}
                 </Link>
               </li>
             );

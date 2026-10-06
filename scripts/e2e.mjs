@@ -204,6 +204,102 @@ if (!KEY) {
   check(dealHtml.includes("Contactar: nueva solicitud de demo") && dealHtml.includes("Marta Ruiz"), "la ficha del deal muestra la tarea y el contacto");
 }
 
+// ------------------------------------------------------------- Automatizaciones
+{
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const AI = "00000000-0000-0000-0000-0000000000a1";
+  const run = async (secret = SECRET) => {
+    const res = await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: secret ? { authorization: `Bearer ${secret}` } : {} });
+    return { status: res.status, body: await res.json().catch(() => null) };
+  };
+  const actions = (key, extra = sql``) => sql`
+    SELECT x.* FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id WHERE r.key = ${key} ${extra}`;
+
+  check((await run("")).status === 401, "revisión sin clave → 401");
+  check((await run("clave-equivocada-0123456789")).status === 401, "revisión con clave incorrecta → 401");
+
+  const r1 = await run();
+  check(r1.status === 200 && r1.body?.status === "ok", "la revisión de automatizaciones responde", JSON.stringify(r1));
+  const tasks = await actions("missing_stage_session", sql`AND x.status = 'done' AND x.mode = 'auto'`);
+  const [{ n: aiTasks }] = await sql`SELECT count(*)::int AS n FROM activities WHERE created_by_id = ${AI} AND NOT done`;
+  check(tasks.length > 0 && aiTasks >= tasks.length, "fase sin sesión: la IA crea la tarea sola (autonomía «Sola»)", `${tasks.length} / ${aiTasks}`);
+  const emails = await actions("stale_deal_followup", sql`AND x.status = 'pending'`);
+  const paco = emails.find((e) => e.deal_id === DEAL_OPEN);
+  check(paco && paco.mode === "ask" && paco.payload.to === "ana@paco.example" && paco.payload.body.includes("Hola Ana"),
+        "deal parado: correo de seguimiento a la bandeja, con la plantilla rellenada", JSON.stringify(paco?.payload));
+  const asks = await actions("stale_deal_escalate", sql`AND x.status = 'pending'`);
+  check(asks.length > 0 && asks.every((a) => a.action_type === "notify"), "deal muy parado: pide una decisión", String(asks.length));
+
+  const r2 = await run();
+  check(r2.body?.proposed === 0 && r2.body?.executed === 0, "una segunda revisión no repite nada", JSON.stringify(r2.body));
+
+  // «No se presentó» en el deal de Paco → correo para reagendar.
+  const [act] = await sql`
+    INSERT INTO activities (type, subject, due_at, done, outcome, deal_id, person_id)
+    VALUES ('demo', 'Demo de prueba', now() - interval '1 hour', true, 'no_show', ${DEAL_OPEN}, ${PERSON}) RETURNING id`;
+  await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, payload)
+            VALUES ('deal', ${DEAL_OPEN}, 'activity.completed', 'user', ${sql.json({ activity_id: act.id, outcome: "no_show" })})`;
+  await run();
+  const [rebook] = await actions("no_show_rebook", sql`AND x.deal_id = ${DEAL_OPEN}`);
+  check(rebook?.status === "pending" && rebook.payload.to === "ana@paco.example" && rebook.payload.body.includes("demo"),
+        "ausencia: propone reagendar por correo", JSON.stringify(rebook?.payload));
+  // Si se agenda otra sesión, la propuesta caduca.
+  const [again] = await sql`INSERT INTO activities (type, subject, due_at, deal_id) VALUES ('demo', 'Demo reagendada', now() + interval '2 days', ${DEAL_OPEN}) RETURNING id`;
+  await run();
+  const [rebook2] = await sql`SELECT status FROM automation_actions WHERE id = ${rebook.id}`;
+  check(rebook2.status === "expired", "al agendar otra sesión, la propuesta de reagendar caduca", rebook2.status);
+  // (Se borra para que el deal vuelva a estar parado y sin nada agendado.)
+  await sql`DELETE FROM activities WHERE id = ${again.id}`;
+
+  // Deal ganado → tarea de traspaso a Customer Success con el resumen (sola).
+  const [won] = await sql`SELECT id, title FROM open_deals_status WHERE id <> ${DEAL_OPEN} ORDER BY id LIMIT 1`;
+  await sql`UPDATE deals SET status = 'won' WHERE id = ${won.id}`;
+  await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type) VALUES ('deal', ${won.id}, 'deal.won', 'user')`;
+  await run();
+  const [handoff] = await actions("won_handoff", sql`AND x.deal_id = ${won.id}`);
+  const [task] = handoff?.result ? await sql`SELECT subject, note, created_by_id FROM activities WHERE id = ${handoff.result.activity_id}` : [];
+  check(handoff?.status === "done" && task?.note?.includes("Cliente:") && task.created_by_id === AI,
+        "deal ganado: tarea de traspaso con el resumen, creada por la IA", JSON.stringify({ st: handoff?.status, task }));
+
+  // El permiso es el techo: con «Crear tareas» en «Preguntar», el traspaso espera decisión.
+  await sql`UPDATE ai_permissions SET autonomy = 'ask' WHERE actor = 'assistant' AND action_type = 'create_task'`;
+  const [won2] = await sql`SELECT id FROM open_deals_status WHERE id NOT IN (${DEAL_OPEN}, ${won.id}) ORDER BY id LIMIT 1`;
+  await sql`UPDATE deals SET status = 'won' WHERE id = ${won2.id}`;
+  await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type) VALUES ('deal', ${won2.id}, 'deal.won', 'user')`;
+  await run();
+  const [handoff2] = await actions("won_handoff", sql`AND x.deal_id = ${won2.id}`);
+  check(handoff2?.status === "pending" && handoff2.mode === "ask", "con el permiso en «Preguntar», la regla automática pregunta", handoff2?.status);
+  await sql`UPDATE ai_permissions SET autonomy = 'auto' WHERE actor = 'assistant' AND action_type = 'create_task'`;
+
+  // Desactivar una regla retira sus propuestas pendientes.
+  await sql`UPDATE automation_rules SET autonomy = 'off' WHERE key = 'stale_deal_escalate'`;
+  await run();
+  const left = await actions("stale_deal_escalate", sql`AND x.status = 'pending'`);
+  check(left.length === 0, "al desactivar una regla, sus propuestas pendientes caducan", String(left.length));
+  await sql`UPDATE automation_rules SET autonomy = 'ask' WHERE key = 'stale_deal_escalate'`;
+
+  // Pausa general.
+  await sql`UPDATE automation_settings SET paused = true`;
+  const rp = await run();
+  check(rp.body?.status === "paused", "con la IA en pausa no se revisa nada", JSON.stringify(rp.body));
+  await sql`UPDATE automation_settings SET paused = false`;
+  await run();
+
+  // Pantallas.
+  const inbox = await (await get("/inbox")).text();
+  check(inbox.includes("Bandeja de la IA") && inbox.includes("retomar «Paco — ampliación de servicio»") && inbox.includes("Marcar como enviado"),
+        "/inbox muestra las propuestas pendientes");
+  const log = await (await get("/inbox?view=log")).text();
+  check(log.includes("Hecha sola") && log.includes("Caducada") && log.includes("Deshacer"), "/inbox?view=log muestra el registro con «Deshacer»");
+  const conf = await (await get("/settings/automations")).text();
+  check(conf.includes("Qué puede hacer la IA") && conf.includes("Fase sin su sesión agendada") && conf.includes("Agentes externos"),
+        "/settings/automations muestra permisos y reglas");
+  const dealHtml = await (await get(`/deals/${DEAL_OPEN}`)).text();
+  check(dealHtml.includes("Propuestas de la IA") && dealHtml.includes("Hola Ana"), "la ficha del deal muestra sus propuestas pendientes");
+  const nav = await (await get("/activities")).text();
+  check(/Bandeja de la IA \(\d+ pendientes?\)/.test(nav), "el menú lateral avisa de las propuestas pendientes");
+}
+
 await sql.end();
 console.log(`\n${failed === 0 ? "✓" : "✗"} ${passed} correctas, ${failed} fallidas`);
 process.exit(failed === 0 ? 0 : 1);

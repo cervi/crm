@@ -7,6 +7,9 @@ export type Actor = { type: "user" | "ai_agent" | "system" | "integration"; id: 
 // atribuyen a "usuario" sin identificar.
 export const UI_ACTOR: Actor = { type: "user", id: null };
 export const INTEGRATION_ACTOR: Actor = { type: "integration", id: null };
+/** Usuario con el que actúa el asistente de IA interno (migración 0004). */
+export const AI_USER_ID = "00000000-0000-0000-0000-0000000000a1";
+export const AI_ACTOR: Actor = { type: "ai_agent", id: AI_USER_ID };
 
 /**
  * Registra un evento. Es el historial de cada ficha, la auditoría de lo que
@@ -71,6 +74,7 @@ const LABELS: Record<string, string> = {
   "activity.created": "Actividad creada",
   "activity.completed": "Actividad completada",
   "note.created": "Nota añadida",
+  "ai.action_undone": "Acción de la IA deshecha",
 };
 
 export const eventLabel = (type: string) => LABELS[type] ?? type;

@@ -319,9 +319,110 @@ await step("selector de pipeline en la barra del tablero", async () => {
   await page.locator(".stage-head", { hasText: "Necesidad detectada" }).waitFor();
 });
 
+// ------------------------------------------------------------- IA: bandeja y autonomía
+const PACO_OPEN = "90000000-0000-0000-0000-000000000002";
+
+await step("bandeja: «Revisar ahora» trae las propuestas de la IA", async () => {
+  await page.goto("/inbox");
+  await submit("Revisar ahora");
+  await page.locator("article.proposal", { hasText: "retomar «Paco — ampliación de servicio»" }).waitFor();
+  await page.goto("/inbox");
+  await page.locator(".rail-count").waitFor();
+});
+
+await step("bandeja: editar el borrador y marcarlo como enviado", async () => {
+  await page.goto("/inbox");
+  const card = page.locator("article.proposal", { hasText: "retomar «Paco — ampliación de servicio»" });
+  await card.getByLabel("Asunto").fill(`Seguimiento ${stamp}`);
+  expect((await card.getByRole("link", { name: "Abrir en el correo" }).getAttribute("href")).includes(`Seguimiento%20${stamp}`), "el enlace mailto no lleva el asunto editado");
+  await card.getByRole("button", { name: "Marcar como enviado" }).click();
+  await card.waitFor({ state: "detached" });
+  const [a] = await sql`SELECT done, note FROM activities WHERE deal_id = ${PACO_OPEN} AND type = 'email' AND subject = ${`Seguimiento ${stamp}`}`;
+  expect(a?.done && a.note.includes("ana@paco.example"), "no se registró el correo enviado en el deal");
+});
+
+await step("bandeja: descartar una propuesta", async () => {
+  await page.goto("/inbox");
+  const card = page.locator("article.proposal", { hasText: "Decide qué hacer" }).first();
+  const title = (await card.locator("h3").textContent()).trim();
+  await card.getByRole("button", { name: "Descartar" }).click();
+  await page.locator("article.proposal", { has: page.getByRole("heading", { name: title, exact: true }) }).waitFor({ state: "detached" });
+  const [x] = await sql`SELECT status FROM automation_actions WHERE title = ${title} ORDER BY created_at DESC LIMIT 1`;
+  expect(x?.status === "dismissed", `estado ${x?.status}`);
+});
+
+await step("registro: deshacer una tarea que la IA creó sola", async () => {
+  const [x] = await sql`SELECT id, title, result FROM automation_actions WHERE status = 'done' AND mode = 'auto' AND action_type = 'create_task'
+                        ORDER BY executed_at DESC LIMIT 1`;
+  expect(x, "no hay tareas hechas solas");
+  await page.goto("/inbox?view=log");
+  const row = page.locator("tr", { hasText: x.title }).first();
+  await row.getByRole("button", { name: "Deshacer" }).click();
+  await row.getByText("Deshecha").waitFor();
+  const [after] = await sql`SELECT status FROM automation_actions WHERE id = ${x.id}`;
+  const [{ n }] = await sql`SELECT count(*)::int AS n FROM activities WHERE id = ${x.result.activity_id}`;
+  expect(after.status === "undone" && n === 0, `estado ${after.status}, tarea ${n}`);
+});
+
+await step("panel del deal: muestra y resuelve sus propuestas", async () => {
+  const [x] = await sql`SELECT deal_id, title FROM automation_actions WHERE status = 'pending' AND action_type = 'notify' LIMIT 1`;
+  expect(x, "no hay propuestas pendientes");
+  await page.goto(`/deals/${x.deal_id}`);
+  const section = page.getByRole("region", { name: "Propuestas de la IA" });
+  await section.getByRole("heading", { name: x.title }).waitFor();
+  await section.getByRole("button", { name: "Entendido" }).click();
+  await section.waitFor({ state: "detached" });
+});
+
+await step("autonomía: limitar un permiso se refleja en las reglas", async () => {
+  await page.goto("/settings/automations");
+  const group = page.getByRole("group", { name: "Crear tareas — Asistente del CRM" });
+  await group.getByRole("button", { name: "Preguntar" }).click();
+  await group.locator('button[aria-pressed="true"]', { hasText: "Preguntar" }).waitFor();
+  await page.getByRole("article", { name: "Fase sin su sesión agendada" }).getByText("Limitada a «Preguntar»").waitFor();
+  await shot("autonomia");
+  await group.getByRole("button", { name: "Sola" }).click();
+  await group.locator('button[aria-pressed="true"]', { hasText: "Sola" }).waitFor();
+  const [p] = await sql`SELECT autonomy FROM ai_permissions WHERE actor = 'assistant' AND action_type = 'create_task'`;
+  expect(p.autonomy === "auto", p.autonomy);
+});
+
+await step("autonomía: un correo no puede enviarse solo todavía", async () => {
+  await page.goto("/settings/automations");
+  const btn = page.getByRole("group", { name: "Preparar correos — Asistente del CRM" }).getByRole("button", { name: "Sola" });
+  expect(await btn.isDisabled(), "el botón «Sola» de correos debería estar desactivado");
+});
+
+await step("reglas: cambiar la autonomía y la plantilla del correo", async () => {
+  await page.goto("/settings/automations");
+  const group = page.getByRole("group", { name: "Autonomía: Deal muy parado: pedir una decisión" });
+  await group.getByRole("button", { name: "No", exact: true }).click();
+  await group.locator('button[aria-pressed="true"]', { hasText: "No" }).waitFor();
+  const rule = page.getByRole("article", { name: "Deal parado: escribir al contacto" });
+  await rule.getByText("Ajustes de la regla").click();
+  await rule.getByLabel("Asunto").fill(`Retomamos {deal} ${stamp}`);
+  await rule.getByRole("button", { name: "Guardar" }).click();
+  await page.waitForTimeout(400);
+  const rows = await sql`SELECT key, autonomy, params FROM automation_rules WHERE key IN ('stale_deal_escalate', 'stale_deal_followup')`;
+  const esc = rows.find((r) => r.key === "stale_deal_escalate"), fol = rows.find((r) => r.key === "stale_deal_followup");
+  expect(esc.autonomy === "off" && fol.params.subject === `Retomamos {deal} ${stamp}`, JSON.stringify(rows.map((r) => [r.key, r.autonomy, r.params.subject])));
+  await sql`UPDATE automation_rules SET autonomy = 'ask' WHERE key = 'stale_deal_escalate'`;
+});
+
+await step("pausar y reanudar la IA", async () => {
+  await page.goto("/settings/automations");
+  await submit("Pausar todo");
+  await page.getByRole("heading", { name: "La IA está en pausa" }).waitFor();
+  await page.goto("/inbox");
+  await page.getByText("La IA está en pausa").waitFor();
+  await page.getByRole("button", { name: "Reanudar" }).click();
+  await page.getByText("La IA está en pausa").waitFor({ state: "detached" });
+});
+
 await step("capturas de las pantallas principales", async () => {
   for (const [name, path] of [["tablero", "/pipelines/10000000-0000-0000-0000-000000000001"], ["empresa", "/organizations/60000000-0000-0000-0000-000000000001"],
-                              ["leads", "/leads?status=all"], ["actividades", "/activities"], ["contacto", "/persons/70000000-0000-0000-0000-000000000001"]]) {
+                              ["leads", "/leads?status=all"], ["actividades", "/activities"], ["contacto", "/persons/70000000-0000-0000-0000-000000000001"],
+                              ["bandeja", "/inbox"], ["registro", "/inbox?view=log"], ["ia", "/settings/automations"]]) {
     await page.goto(path);
     await shot(name);
   }

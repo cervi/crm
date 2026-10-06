@@ -7,6 +7,7 @@ import { listFieldDefinitions } from "@/lib/custom-fields";
 import { eventLabel, timeline } from "@/lib/events";
 import { listUsers } from "@/lib/users";
 import { sql } from "@/lib/db";
+import { listActions } from "@/lib/automations";
 import { ACTIVITY_TYPES, OUTCOMES, activityLabel, date, dateTime, money, outcomeLabel, STATUS_LABELS } from "@/lib/format";
 import {
   addParticipantAction, loseDealAction, moveDealFormAction, removeParticipantAction, reopenDealAction, winDealAction,
@@ -16,6 +17,8 @@ import { ActionForm } from "../ActionForm";
 import { Avatar } from "../Avatar";
 import { CustomFieldValues } from "../CustomFieldValues";
 import { EntityPicker } from "../EntityPicker";
+import { ProposalCard } from "../ai/ProposalCard";
+import { Icon } from "../Icon";
 import { ComposerTabs, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
 
 type PanelNav = { closeHref: string; fullHref: string; prevHref: string | null; nextHref: string | null };
@@ -29,7 +32,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   const deal = await getDeal(dealId);
   if (!deal) return <div className="empty">Este deal ya no existe.</div>;
 
-  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead]] = await Promise.all([
+  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals] = await Promise.all([
     listStages(deal.pipeline_id), dealParticipants(dealId), stageHistory(dealId), listActivitiesFor({ dealId }),
     listNotesFor({ dealId }), listFieldDefinitions("deal", true), listUsers(), listLostReasons(),
     timeline(sql, [{ type: "deal", id: dealId }], 100),
@@ -39,6 +42,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
       ? sql<{ id: string; source: string | null; source_detail: string | null }[]>`
           SELECT id, source, source_detail FROM leads WHERE id = ${deal.lead_id}`
       : Promise.resolve([]),
+    listActions({ view: "pending", dealId, limit: 10 }),
   ]);
 
   const isOpen = deal.status === "open";
@@ -222,6 +226,13 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               </ActionForm>
             }
           />
+
+          {proposals.length > 0 && (
+            <section className="deal-proposals" aria-label="Propuestas de la IA">
+              <h2 className="section-title"><Icon name="spark" />Propuestas de la IA <span className="muted">{proposals.length}</span></h2>
+              <div className="proposals">{proposals.map((p) => <ProposalCard key={p.id} item={p} showDeal={false} />)}</div>
+            </section>
+          )}
 
           <section>
             <h2 className="section-title">Enfoque <span className="muted">{pending.length}</span></h2>

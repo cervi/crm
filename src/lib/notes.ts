@@ -40,13 +40,13 @@ const noteSchema = z.object({
   organization_id: optId,
 });
 
-export async function createNote(actor: Actor, data: unknown) {
+export async function createNote(actor: Actor, data: unknown): Promise<string> {
   const v = parse(noteSchema, data);
   const target: [EntityType, string] | null =
     v.deal_id ? ["deal", v.deal_id] : v.lead_id ? ["lead", v.lead_id]
     : v.person_id ? ["person", v.person_id] : v.organization_id ? ["organization", v.organization_id] : null;
   if (!target) throw new UserError("La nota debe estar asociada a algo.");
-  await transaction(async (tx) => {
+  return transaction(async (tx) => {
     const [row] = await tx<{ id: string }[]>`
       INSERT INTO notes (content, deal_id, lead_id, person_id, organization_id, author_id)
       VALUES (${v.content}, ${v.deal_id ?? null}, ${v.lead_id ?? null}, ${v.person_id ?? null},
@@ -55,5 +55,6 @@ export async function createNote(actor: Actor, data: unknown) {
     await recordEvent(tx, actor, target[0], target[1], "note.created", {
       note_id: row.id, excerpt: v.content.slice(0, 140),
     });
+    return row.id;
   });
 }

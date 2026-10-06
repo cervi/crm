@@ -14,6 +14,8 @@ export DATABASE_URL="postgres://crm:crm@127.0.0.1:${DB_PORT}/crm"
 export INBOUND_API_KEYS="clave-de-pruebas-0123456789"
 export BASIC_AUTH_USER="pruebas" BASIC_AUTH_PASSWORD="contraseña-de-pruebas"
 export TZ="${TZ:-Europe/Madrid}" NEXT_TELEMETRY_DISABLED=1
+# Las pruebas lanzan el motor de automatizaciones a mano, no con el temporizador.
+export AUTOMATIONS_INTERVAL_MINUTES=0 CRON_SECRET="secreto-de-pruebas-0123456789"
 
 pids=()
 cleanup() { for p in "${pids[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$DATA_DIR"; }
