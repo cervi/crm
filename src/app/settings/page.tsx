@@ -18,6 +18,7 @@ const SECTIONS: { href: string; title: string; text: string; icon: IconName; eve
   { href: "/settings/lost-reasons", icon: "x", title: "Motivos de pérdida", text: "Motivos al perder un deal y en cuántos días volver a contactar." },
   { href: "/settings/import", icon: "download", title: "Importar desde Pipedrive", text: "Trae todo el histórico de Pipedrive; repetible y con sincronización horaria mientras convivís." },
   { href: "/settings/export", icon: "download", title: "Exportar datos", text: "Descarga en CSV deals, leads, empresas, contactos, actividades y el registro de la IA." },
+  { href: "/settings/forms", icon: "leads", title: "Formularios web y chat", text: "Formularios alojados en el CRM para vuestra web, con chat con IA opcional." },
   { href: "/settings/api", icon: "plug", title: "Conectar formularios", text: "Cómo enviar leads desde la web, webinars, Zapier o Make." },
 ];
 

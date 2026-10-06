@@ -874,6 +874,33 @@ await step("secuencias: crear una, añadir un paso y meter al contacto de un dea
   await side.locator("li", { hasText: `Reactivar ${stamp}` }).getByText("Parada a mano").waitFor();
 });
 
+await step("formulario web: crearlo en Ajustes y que un visitante lo envíe", async () => {
+  await page.goto("/settings/forms");
+  await page.getByLabel("Nombre interno").fill(`Precios ${stamp}`);
+  await page.getByLabel("Dirección").fill(`precios-${stamp}`);
+  await page.getByLabel("Título visible").fill("Pide precio");
+  await page.locator("input[name=field_phone]").check();
+  await submit("Crear formulario");
+  await page.waitForURL(/\/settings\/forms\/[0-9a-f-]{36}$/);
+  await page.getByText(`/f/precios-${stamp}`).first().waitFor();
+  const visitor = await browser.newContext({ baseURL: BASE, locale: "es-ES" });
+  const v = await visitor.newPage();
+  v.on("pageerror", (e) => errors.push(e.message));
+  await v.goto(`/f/precios-${stamp}`);
+  await v.getByRole("heading", { name: "Pide precio" }).waitFor();
+  await v.getByLabel("Nombre *").fill(`Visitante ${stamp}`);
+  await v.getByLabel("Email *").fill(`visitante.${stamp}@web-precios.example`);
+  await v.getByLabel("Teléfono").fill("600000000");
+  await v.waitForTimeout(2100); // el tiempo mínimo del antispam
+  await v.getByRole("button", { name: "Enviar" }).click();
+  await v.getByText("¡Gracias! Te escribimos muy pronto.").waitFor();
+  if (SHOTS) await v.screenshot({ path: `${SHOTS}/formulario-web.png`, fullPage: true });
+  await visitor.close();
+  const [l] = await sql`SELECT l.source, l.score FROM leads l JOIN person_emails pe ON pe.person_id = l.person_id
+                        WHERE pe.email = ${`visitante.${stamp}@web-precios.example`}`;
+  expect(l?.source === "formulario web" && l.score !== null, `lead: ${JSON.stringify(l)}`);
+});
+
 await step("dar acceso a un comercial, que entra, cambia su contraseña temporal y no ve los ajustes de admin", async () => {
   await page.goto("/settings/users");
   const card = page.getByRole("article", { name: "Usuario Customer Success" });

@@ -20,13 +20,14 @@ export const AI_PROVIDERS: { value: AiProvider; label: string; baseUrl: string; 
   { value: "compatible", label: "Otro compatible con la API de OpenAI", baseUrl: "", kind: "openai", modelHint: "nombre del modelo" },
 ];
 
-export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff";
+export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff" | "lead_chat";
 
 export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "deal_brief", label: "Resumen del deal", help: "Arriba de cada ficha: cómo va, riesgos y siguiente paso." },
   { value: "meeting_recap", label: "Resumen tras una reunión", help: "El correo de seguimiento al contacto después de una demo o llamada." },
   { value: "daily_digest", label: "Parte del día", help: "El enfoque del día que encabeza tu parte diario." },
   { value: "handoff", label: "Traspaso a Customer Success", help: "El resumen de un deal ganado para el equipo de CS." },
+  { value: "lead_chat", label: "Chat de la web", help: "El asistente de los formularios web: responde, cualifica al visitante y recoge sus datos." },
 ];
 
 const COMMON = "Escribes en español de España, con tono profesional y cercano, sin relleno. Usa solo los datos que se te dan; si falta algo, no lo inventes.";
@@ -40,6 +41,9 @@ Con las notas o la transcripción de la reunión, responde SOLO con un JSON: {"r
 Con el parte del día, escribe un párrafo breve (máximo 5 frases) con las 3 prioridades del día y por qué, empezando por lo más urgente. Sin saludos ni despedidas.`,
   handoff: `Eres el asistente comercial del CRM. ${COMMON}
 Redacta el resumen de traspaso a Customer Success de un deal ganado: cliente y contexto, qué compra, personas clave, cómo fue la venta, compromisos y riesgos a vigilar, y primeros pasos recomendados. Texto plano con apartados cortos.`,
+  lead_chat: `Eres el asistente de la web de la empresa y hablas con un visitante. ${COMMON}
+Con el contexto (qué vende la empresa y qué conviene preguntar), la conversación y los datos ya recogidos: responde con amabilidad y en pocas frases, resuelve dudas generales sin inventar precios ni condiciones, entiende qué necesita y pide, de forma natural y de uno en uno, su nombre, su email y su empresa. Nunca pidas contraseñas ni datos de pago.
+Responde SOLO con un JSON: {"respuesta": "tu mensaje al visitante", "datos": {"nombre": "", "email": "", "empresa": "", "telefono": "", "necesidad": "resumen breve de lo que busca"}, "listo": true cuando tengas al menos email y necesidad}`,
 };
 
 export type AiSettings = {

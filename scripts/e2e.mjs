@@ -665,6 +665,31 @@ if (process.env.MOCK_URL) {
     check(hoy.includes("(IA) Hoy, primero responde a Ana") && hoy.includes("Redactado por la IA"), "Hoy: muestra el enfoque del día de la IA");
     check(st.llm.every((c) => c.model === "modelo-de-pruebas") && st.llm.some((c) => c.task === "daily_digest"), "se usa el modelo configurado", JSON.stringify(st.llm.slice(0, 3)));
 
+    // Formulario web con chat de IA: público, cualifica y crea el lead con la conversación.
+    await sql`INSERT INTO web_forms (slug, name, title, chat_enabled, chat_context, source)
+              VALUES ('contacto-e2e', 'Contacto e2e', 'Hablemos e2e', true, 'Vendemos un CRM.', 'web e2e') ON CONFLICT (slug) DO NOTHING`;
+    const fpage = await fetch(`${BASE}/f/contacto-e2e`);
+    const fhtml = await fpage.text();
+    check(fpage.status === 200 && fhtml.includes("Hablemos e2e") && fhtml.includes("Chatear") && !fhtml.includes('aria-label="Principal"'),
+          "formulario web: página pública con chat (sin sesión ni menú)", `HTTP ${fpage.status}`);
+    const say = (messages) => fetch(`${BASE}/api/public/chat/contacto-e2e`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages }),
+    }).then((r) => r.json());
+    const c1 = await say([{ rol: "visitante", texto: "Hola, queremos un CRM para 20 comerciales" }]);
+    check(c1.reply?.includes("email") && c1.done === false, "chat: la IA responde y pide el email", JSON.stringify(c1));
+    const c2 = await say([
+      { rol: "visitante", texto: "Hola, queremos un CRM para 20 comerciales" }, { rol: "asistente", texto: c1.reply },
+      { rol: "visitante", texto: "Claro: chat.e2e@chat-sl.example" },
+    ]);
+    const [cl] = await sql`SELECT l.source, (SELECT content FROM notes n WHERE n.lead_id = l.id ORDER BY created_at DESC LIMIT 1) AS note
+                           FROM leads l JOIN person_emails pe ON pe.person_id = l.person_id WHERE pe.email = 'chat.e2e@chat-sl.example'`;
+    check(c2.done === true && cl?.source === "web e2e" && cl.note?.includes("Conversación:") && cl.note.includes("20 comerciales"),
+          "chat: con el email, crea el lead con el resumen y la conversación", JSON.stringify({ c2, cl }));
+    const [fc] = await sql`SELECT submissions FROM web_forms WHERE slug = 'contacto-e2e'`;
+    check(fc.submissions === 1, "formulario web: cuenta lo recibido");
+    const fset = await (await get("/settings/forms")).text();
+    check(fset.includes("Formularios web") && fset.includes("/f/contacto-e2e"), "/settings/forms lista los formularios");
+
     // Si el modelo falla, se sigue con reglas y el error queda visible.
     await sql`UPDATE ai_settings SET api_key = ${enc("clave-mala")}`;
     await sql`DELETE FROM deal_briefs`;

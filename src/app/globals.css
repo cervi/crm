@@ -901,3 +901,24 @@ a.btn.small svg { width: 14px; height: 14px; }
 .score-reasons { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .score-reasons span { display: inline-block; min-width: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .check-grid { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+
+/* Formularios web públicos y chat */
+.webform { width: min(560px, 100%); background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-pop); padding: 26px 24px; display: grid; gap: 16px; }
+.webform.embed { box-shadow: none; border: 0; padding: 8px; background: transparent; }
+.webform h1 { margin: 0 0 4px; font-size: 22px; }
+.webform header p { margin: 0; }
+.webform .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.webform-done { font-size: 16px; font-weight: 600; color: var(--good); }
+.webform-modes { justify-self: start; }
+.webform-modes button { width: auto; padding: 0 14px; }
+.chat { display: grid; gap: 10px; }
+.chat-log { display: grid; gap: 8px; max-height: 360px; overflow-y: auto; padding: 4px; }
+.chat-msg { margin: 0; padding: 9px 12px; border-radius: 14px; max-width: 85%; white-space: pre-wrap; }
+.chat-msg.asistente { background: var(--sunken); justify-self: start; border-bottom-left-radius: 4px; }
+.chat-msg.visitante { background: var(--accent); color: #fff; justify-self: end; border-bottom-right-radius: 4px; }
+.chat-msg.typing { color: var(--muted); font-style: italic; }
+.chat-input { display: flex; gap: 8px; }
+.chat-input input { flex: 1; }
+.form-fields-grid { display: grid; gap: 6px; }
+.form-field-row { display: grid; grid-template-columns: 140px 1fr auto; gap: 10px; align-items: center; }
+@media (max-width: 640px) { .form-field-row { grid-template-columns: 1fr; } }

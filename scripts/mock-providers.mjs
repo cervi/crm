@@ -187,6 +187,15 @@ createServer(async (req, res) => {
         daily_digest: "(IA) Hoy, primero responde a Ana y luego revisa la bandeja.",
         handoff: "(IA) Traspaso: cliente con buena relación; vigilar plazos.",
       };
+      if (task === "lead_chat") {
+        // Chat de la web: pide el email hasta que aparece en la conversación.
+        const conv = JSON.parse(user).datos?.conversacion ?? [];
+        const said = conv.filter((m) => m.rol === "visitante").map((m) => m.texto).join(" ");
+        const email = /[\w.+-]+@[\w-]+\.[\w.-]+/.exec(said)?.[0] ?? "";
+        replies.lead_chat = JSON.stringify(email
+          ? { respuesta: "(IA) ¡Gracias! Te escribimos hoy mismo.", datos: { nombre: "Visitante Chat", email, empresa: "Chat S.L.", telefono: "", necesidad: said.slice(0, 120) }, listo: true }
+          : { respuesta: "(IA) ¡Hola! ¿Me dejas tu email para enviarte la información?", datos: { nombre: "", email: "", empresa: "", telefono: "", necesidad: said.slice(0, 120) }, listo: false });
+      }
       const text = replies[task] ?? "(IA) respuesta";
       return anthropic
         ? send(res, 200, { content: [{ type: "text", text }], stop_reason: "end_turn" })
