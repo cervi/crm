@@ -111,7 +111,7 @@ export const widgetConfigSchema = z.object({
     source: optStr,
     funnel_stage: optStr,
     type: optStr,
-  }).default({}),
+  }).prefault({}),
 });
 export type WidgetConfig = z.infer<typeof widgetConfigSchema>;
 
