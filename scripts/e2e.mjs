@@ -419,7 +419,10 @@ if (process.env.MOCK_URL) {
   // Huecos: lo rechazado y lo marcado «disponible» no ocupa.
   const madrid = (d) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(d));
   const gs = await (await get(`/api/calendar/slots?user=${G_USER}`)).json();
-  check(gs.slots?.length === 3 && gs.slots.every((x) => madrid(x.start) === "13:30"),
+  // (Lo ocupado acaba a las 13:00 + 15 min de margen; lo rechazado de 14:00 a 17:00 no debe contar. La
+  //  antelación de 24 h puede retrasar el primero según la hora a la que se ejecute la prueba.)
+  check(gs.slots?.length === 3 && gs.slots.every((x) => madrid(x.start) >= "13:30" && madrid(x.start) <= "16:30")
+        && gs.slots.filter((x) => madrid(x.start) === "13:30").length >= 2,
         "Google: huecos tras lo ocupado, sin contar lo rechazado ni lo «disponible»", JSON.stringify(gs.slots?.map((x) => madrid(x.start)) ?? gs));
 
   // Sincronización (Gmail paginado, sin borradores; calendario sin cancelados).
