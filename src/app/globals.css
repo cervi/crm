@@ -839,3 +839,17 @@ a.btn.small svg { width: 14px; height: 14px; }
   .list-filters input[type="search"] { min-width: 0; max-width: none; }
   .list-filters .num-input { width: calc(50% - 4px); }
 }
+
+/* Conversación de correos del deal */
+.deal-emails { margin-top: 18px; }
+.email-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.email-item { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); }
+.email-item.in { border-left: 3px solid var(--accent); }
+.email-item.scheduled { border-style: dashed; }
+.email-item summary { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; cursor: pointer; list-style: none; }
+.email-item summary::-webkit-details-marker { display: none; }
+.email-dir { color: var(--muted); font-weight: 700; width: 14px; }
+.email-main { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.email-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.email-item details > :not(summary) { margin: 0 12px 12px 36px; }

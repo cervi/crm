@@ -31,7 +31,12 @@ import { CustomFieldValues } from "../CustomFieldValues";
 import { EntityPicker } from "../EntityPicker";
 import { ProposalCard } from "../ai/ProposalCard";
 import { Icon } from "../Icon";
-import { ComposerTabs, EmailBodyWithSlots, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
+import { ComposerTabs, EmailComposerFields, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
+import { listEmails, listTemplates, templateVars } from "@/lib/emails";
+import { renderTemplate } from "@/lib/automations";
+import { publicBase } from "@/lib/email-track";
+import { requireUser } from "@/lib/auth";
+import { cancelScheduledEmailAction } from "@/app/actions/mailbox";
 
 type PanelNav = { closeHref: string; fullHref: string; prevHref: string | null; nextHref: string | null };
 
@@ -61,6 +66,14 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     getAiSettings(),
     activeActivityTypes(),
   ]);
+  const me = await requireUser();
+  const [emails, templates, vars, [appSettings]] = await Promise.all([
+    listEmails({ dealId }), listTemplates(me.id), templateVars(dealId),
+    sql<{ email_tracking: boolean }[]>`SELECT email_tracking FROM app_settings LIMIT 1`,
+  ]);
+  const composerTemplates = templates.map((t) => ({
+    id: t.id, name: t.name, subject: renderTemplate(t.subject, vars), body: renderTemplate(t.body, vars),
+  }));
   const canSend = sender !== null;
   const provider = sender ? PROVIDERS[sender.provider] : null;
   const reachable = participants.filter((p) => p.email);
@@ -86,7 +99,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
       body: a.note, meta: `${dateTime(a.done_at)}${a.owner_name ? ` · ${a.owner_name}` : ""}`,
       tone: a.outcome === "no_show" ? "bad" as const : null,
     })),
-    ...events.filter((e) => !e.event_type.startsWith("activity.") && e.event_type !== "note.created").map((e) => {
+    ...events.filter((e) => !e.event_type.startsWith("activity.") && e.event_type !== "note.created" && e.event_type !== "email.received" && e.event_type !== "email.scheduled").map((e) => {
       const p = e.payload as Record<string, unknown>;
       const detail = e.event_type === "deal.stage_changed" && p.from_stage ? `${p.from_stage} → ${p.to_stage}`
         : e.event_type === "deal.lost" ? [p.reason, p.note].filter(Boolean).join(" · ")
@@ -331,9 +344,9 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                           {reachable.map((p) => <option key={p.person_id} value={p.person_id}>{p.full_name} · {p.email}</option>)}
                         </select>
                       </label>
-                      <label className="field"><span className="label">Asunto</span><input name="subject" required /></label>
                     </div>
-                    <EmailBodyWithSlots dealId={dealId} />
+                    <EmailComposerFields dealId={dealId} templates={composerTemplates}
+                                         trackDefault={appSettings?.email_tracking ?? true} trackAvailable={publicBase() !== null} />
                   </ActionForm>
                 )
               ) : (
@@ -341,6 +354,52 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               )
             }
           />
+
+          {emails.length > 0 && (
+            <section className="deal-emails" aria-label="Correos">
+              <h2 className="section-title"><Icon name="inbox" />Correos <span className="muted">{emails.length}</span></h2>
+              <ol className="email-thread">
+                {emails.map((e) => (
+                  <li key={e.id} className={`email-item ${e.direction}${e.status === "scheduled" ? " scheduled" : ""}`}>
+                    <details>
+                      <summary>
+                        <span className="email-dir" aria-hidden="true">{e.direction === "in" ? "←" : "→"}</span>
+                        <span className="email-main">
+                          <strong>{e.subject || "(sin asunto)"}</strong>
+                          <span className="meta">
+                            {e.direction === "in" ? `De ${e.person_name ?? e.from_email}` : `Para ${e.to_name ?? e.person_name ?? e.to_email}`}
+                            {" · "}{e.status === "scheduled" ? `se enviará el ${dateTime(e.scheduled_at)}` : dateTime(e.at)}
+                            {e.direction === "out" && e.user_name && ` · desde el correo de ${e.user_name}`}
+                          </span>
+                        </span>
+                        <span className="email-badges">
+                          {e.status === "scheduled" && <span className="badge">Programado</span>}
+                          {e.status === "failed" && <span className="badge lost" title={e.error ?? undefined}>No se envió</span>}
+                          {e.status === "sending" && <span className="badge">Enviando…</span>}
+                          {e.direction === "out" && e.status === "sent" && e.track && (
+                            e.open_count > 0
+                              ? <span className="badge won" title={`Primera apertura: ${dateTime(e.first_opened_at)} · última: ${dateTime(e.last_opened_at)}`}>
+                                  Abierto{e.open_count > 1 ? ` ×${e.open_count}` : ""}
+                                </span>
+                              : <span className="badge">Sin abrir</span>
+                          )}
+                          {e.click_count > 0 && <span className="badge won">{e.click_count} clic{e.click_count === 1 ? "" : "s"}</span>}
+                        </span>
+                      </summary>
+                      <p className="note-body">{e.body}</p>
+                      {e.status === "failed" && e.error && <p className="meta tone-bad">{e.error}</p>}
+                      {e.status === "scheduled" && (
+                        <form action={cancelScheduledEmailAction.bind(null, e.id, back)}>
+                          <button type="submit" className="btn secondary small">Cancelar el envío</button>
+                        </form>
+                      )}
+                    </details>
+                  </li>
+                ))}
+              </ol>
+              {emails.some((e) => e.track) && <p className="meta">Las aperturas son orientativas: algunos programas de correo abren las imágenes solos o las bloquean.</p>}
+            </section>
+          )}
 
           {proposals.length > 0 && (
             <section className="deal-proposals" aria-label="Propuestas de la IA">

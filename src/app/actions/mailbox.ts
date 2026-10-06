@@ -1,12 +1,11 @@
 "use server";
 
-import { guard } from "@/lib/auth";
+import { adminOnly, currentUser, guard } from "@/lib/auth";
+import { cancelScheduledEmail, composeDealEmail, deleteTemplate, saveTemplate } from "@/lib/emails";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { sql } from "@/lib/db";
 import { attempt, UserError, type ActionState } from "@/lib/errors";
-import { connectionOf, disconnect, listConnections, senderFor, sendEmail, syncMailbox, updateConnectionSettings } from "@/lib/mailbox";
-import { id, parse, text } from "@/lib/validation";
+import { disconnect, listConnections, syncMailbox, updateConnectionSettings } from "@/lib/mailbox";
 
 const refresh = () => revalidatePath("/", "layout");
 
@@ -38,28 +37,40 @@ export async function updateMailboxSettingsAction(userId: string, _: ActionState
   return res;
 }
 
-/** Correo escrito desde la ficha del deal. */
+/** Correo escrito desde la ficha del deal: se envía ya o queda programado. */
 export async function sendDealEmailAction(dealId: string, back: string, _: ActionState, form: FormData): Promise<ActionState> {
   const g = await guard("write");
   if ("error" in g) return g;
-  const me = g.actor;
-  const res = await attempt(async () => {
-    const v = parse(z.object({ person_id: id, subject: text("El asunto", 300), body: text("El texto", 20000) }), Object.fromEntries(form));
-    const [p] = await sql<{ full_name: string; email: string | null; owner_id: string | null; organization_id: string | null }[]>`
-      SELECT p.full_name,
-             (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email,
-             d.owner_id, d.organization_id
-      FROM persons p, deals d WHERE p.id = ${v.person_id} AND d.id = ${dealId}`;
-    if (!p?.email) throw new UserError("Ese contacto no tiene email.");
-    // Sale de tu buzón si lo tienes conectado; si no, del responsable del deal.
-    const mine = me.id ? await connectionOf(me.id) : null;
-    const conn = mine?.status === "active" ? mine : await senderFor(p.owner_id);
-    if (!conn) throw new UserError("Conecta tu cuenta en Ajustes → Correo, calendario y documentos para enviar desde aquí.");
-    await sendEmail(conn, me, {
-      to: { email: p.email, name: p.full_name }, subject: v.subject, body: v.body,
-      dealId, personId: v.person_id, organizationId: p.organization_id,
-    });
-  });
+  const res = await attempt(() => composeDealEmail(g.actor, dealId, Object.fromEntries(form)));
   revalidatePath(back);
   return res;
+}
+
+export async function cancelScheduledEmailAction(emailId: string, back: string): Promise<void> {
+  const me = await currentUser();
+  if (!me || me.role === "viewer") return;
+  await cancelScheduledEmail(me, emailId);
+  revalidatePath(back);
+}
+
+export async function saveTemplateAction(templateId: string | null, _: ActionState, form: FormData): Promise<ActionState> {
+  const me = await currentUser();
+  if (!me || me.role === "viewer") return { error: "No tienes permiso para esto." };
+  const res = await attempt(() => saveTemplate(me, templateId, Object.fromEntries(form)));
+  revalidatePath("/settings/templates");
+  return res;
+}
+
+export async function deleteTemplateAction(templateId: string, _: ActionState): Promise<ActionState> {
+  const me = await currentUser();
+  if (!me || me.role === "viewer") return { error: "No tienes permiso para esto." };
+  const res = await attempt(() => deleteTemplate(me, templateId));
+  revalidatePath("/settings/templates");
+  return res;
+}
+
+export async function setEmailTrackingAction(on: boolean): Promise<void> {
+  await adminOnly();
+  await sql`UPDATE app_settings SET email_tracking = ${on}`;
+  revalidatePath("/settings/templates");
 }

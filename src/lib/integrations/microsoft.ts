@@ -101,7 +101,7 @@ export const microsoft: Provider = {
       method: "POST",
       json: {
         subject: v.subject,
-        body: { contentType: "Text", content: v.body },
+        body: v.html ? { contentType: "HTML", content: v.html } : { contentType: "Text", content: v.body },
         toRecipients: [{ emailAddress: { address: v.to.email, name: v.to.name ?? undefined } }],
       },
     });

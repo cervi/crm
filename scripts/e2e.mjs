@@ -392,6 +392,49 @@ if (process.env.MOCK_URL) {
   const r3 = await run();
   const [{ n: refs }] = await sql`SELECT count(*)::int AS n FROM activities WHERE external_ref = ${`msg:${mail.internetMessageId}`}`;
   check(refs === 1 && r3.sync.emails === 0, "el correo enviado no se duplica al sincronizar «Enviados»", String(refs));
+
+  // ---- Correo completo: conversación, seguimiento y envío programado.
+  {
+    const [out] = await sql`SELECT id, token, track, status, external_ref FROM emails WHERE external_ref = ${`msg:${mail.internetMessageId}`}`;
+    check(out?.status === "sent" && out.track && out.token && mail.body?.contentType === "HTML" && mail.body.content.includes(`/t/o/${out.token}.gif`),
+          "correo: el enviado queda en la conversación, en HTML y con píxel de apertura", JSON.stringify({ out, ct: mail.body?.contentType }));
+    const pix = await fetch(`${BASE}/t/o/${out.token}.gif`);
+    const [o1] = await sql`SELECT open_count FROM emails WHERE id = ${out.id}`;
+    const [ev] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'email.opened' AND payload->>'email_id' = ${out.id}`;
+    check(pix.status === 200 && pix.headers.get("content-type") === "image/gif" && o1.open_count === 1 && ev.n === 1,
+          "correo: la apertura se cuenta (sin iniciar sesión) y queda en la historia", JSON.stringify({ st: pix.status, o1, ev }));
+    await fetch(`${BASE}/t/o/${out.token}.gif`);
+    const [ev2] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'email.opened' AND payload->>'email_id' = ${out.id}`;
+    check(ev2.n === 1, "correo: abrirlo otra vez suma pero no repite el aviso");
+    // Clics: solo enlaces que estaban en el correo.
+    const tok = "tok-de-prueba-0123456789abcd";
+    const [ce] = await sql`INSERT INTO emails (direction, status, deal_id, subject, body, track, token, sent_at)
+                           VALUES ('out', 'sent', ${DEAL_OPEN}, 'Con enlace', 'Mira https://aikit.example/propuesta?x=1 y dime.', true, ${tok}, now()) RETURNING id`;
+    const evil = await fetch(`${BASE}/t/c/${tok}?u=${encodeURIComponent("https://malo.example/")}`, { redirect: "manual" });
+    const good = await fetch(`${BASE}/t/c/${tok}?u=${encodeURIComponent("https://aikit.example/propuesta?x=1")}`, { redirect: "manual" });
+    const [c1] = await sql`SELECT click_count FROM emails WHERE id = ${ce.id}`;
+    check(evil.status === 404 && good.status === 302 && good.headers.get("location") === "https://aikit.example/propuesta?x=1" && c1.click_count === 1,
+          "correo: el clic se cuenta y redirige; no sirve para redirigir a otros sitios", JSON.stringify({ evil: evil.status, good: good.status, c1 }));
+    // Recibidos: entran en la conversación y avisan al deal.
+    const [inb] = await sql`SELECT count(*)::int AS n FROM emails WHERE direction = 'in' AND deal_id = ${DEAL_OPEN}`;
+    const [rec] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'email.received' AND entity_id = ${DEAL_OPEN}`;
+    check(inb.n >= 1 && rec.n >= 1, "correo: los recibidos del contacto entran en la conversación del deal", JSON.stringify({ inb, rec }));
+    // Programado: sale en la revisión cuando llega su hora.
+    const [pe] = await sql`INSERT INTO emails (direction, status, deal_id, person_id, user_id, to_email, to_name, subject, body, scheduled_at, track)
+                           VALUES ('out', 'scheduled', ${DEAL_OPEN}, ${PERSON}, ${OWNER}, 'ana@paco.example', 'Ana García', 'Programado de prueba',
+                                   'Hola Ana, te escribo a la hora prevista.', now() - interval '1 minute', true) RETURNING id`;
+    const nBefore = (await mock("/__state")).sent.length;
+    const rs = await run();
+    const [pe2] = await sql`SELECT status, sent_at, external_ref FROM emails WHERE id = ${pe.id}`;
+    check(rs.scheduled?.sent === 1 && pe2.status === "sent" && pe2.external_ref && (await mock("/__state")).sent.length === nBefore + 1,
+          "correo: el programado se envía cuando llega su hora", JSON.stringify({ sch: rs.scheduled, pe2 }));
+    const page = await (await get(`/deals/${DEAL_OPEN}`)).text();
+    check(page.includes("Correos") && page.includes("Programado de prueba") && page.includes("Abierto") && page.includes("Seguir aperturas y clics")
+          && page.includes("Seguimiento tras la demo"), "correo: la ficha muestra la conversación, las aperturas y las plantillas");
+    const tpl = await (await get("/settings/templates")).text();
+    check(tpl.includes("Plantillas de correo") && tpl.includes("Retomar el contacto") && tpl.includes("Seguimiento de aperturas y clics"),
+          "/settings/templates lista las plantillas");
+  }
   await sql`UPDATE ai_permissions SET autonomy = 'ask' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
   await sql`UPDATE automation_rules SET autonomy = 'ask' WHERE key = 'offer_session_slots'`;
 

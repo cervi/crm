@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { isValidTimeZone, zonedToUtc } from "../slots";
 import { parseAddresses, tokenRequest, type ApiClient } from "./http";
 import type { CalendarEvent, MailMessage, Provider } from "./types";
@@ -39,17 +39,20 @@ const mimeWord = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${Buf
 const wrap76 = (s: string) => s.replace(/.{1,76}/g, (l) => `${l}\r\n`);
 
 /** Mensaje RFC 822 en texto plano, en base64url como lo pide la API de Gmail. */
-export function rawEmail(v: { to: { email: string; name?: string | null }; subject: string; body: string }) {
+export function rawEmail(v: { to: { email: string; name?: string | null }; subject: string; body: string; html?: string }) {
   const to = v.to.name ? `"${mimeWord(v.to.name.replace(/"/g, ""))}" <${v.to.email}>` : v.to.email;
-  const msg = [
-    `To: ${to}`,
-    `Subject: ${mimeWord(v.subject)}`,
-    "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
-    "",
-    wrap76(Buffer.from(v.body, "utf8").toString("base64")),
-  ].join("\r\n");
+  const b64 = (s: string) => wrap76(Buffer.from(s, "utf8").toString("base64"));
+  const head = [`To: ${to}`, `Subject: ${mimeWord(v.subject)}`, "MIME-Version: 1.0"];
+  if (!v.html) {
+    head.push('Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64", "", b64(v.body));
+    return Buffer.from(head.join("\r\n"), "utf8").toString("base64url");
+  }
+  // Texto y HTML (el HTML lleva el seguimiento de aperturas y clics).
+  const boundary = `crm_${randomBytes(12).toString("hex")}`;
+  const part = (type: string, content: string) =>
+    [`--${boundary}`, `Content-Type: ${type}; charset="UTF-8"`, "Content-Transfer-Encoding: base64", "", b64(content)].join("\r\n");
+  const msg = [...head, `Content-Type: multipart/alternative; boundary="${boundary}"`, "",
+               part("text/plain", v.body), part("text/html", v.html), `--${boundary}--`, ""].join("\r\n");
   return Buffer.from(msg, "utf8").toString("base64url");
 }
 

@@ -22,36 +22,105 @@ export function ComposerTabs({ note, activity, email }: { note: React.ReactNode;
   );
 }
 
+export type ComposerTemplate = { id: string; name: string; subject: string; body: string };
+
 /**
- * Texto del correo con el botón «Insertar mis huecos»: pide al calendario los
- * próximos huecos libres y los pega donde esté el cursor.
+ * Campos del correo de la ficha: plantilla, asunto, texto con «Insertar mis
+ * huecos», seguimiento de aperturas y envío programado. Las plantillas llegan
+ * ya con los datos del deal; {huecos} se rellena aquí, leyendo el calendario.
  */
-export function EmailBodyWithSlots({ dealId }: { dealId: string }) {
+export function EmailComposerFields({ dealId, templates, trackDefault, trackAvailable }: {
+  dealId: string; templates: ComposerTemplate[]; trackDefault: boolean; trackAvailable: boolean;
+}) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const [later, setLater] = useState(false);
+  const [sendAt, setSendAt] = useState("");
   const [state, setState] = useState<{ loading?: boolean; error?: string }>({});
+
+  // Tras enviar, el formulario se vacía (también lo que controla este componente).
+  useEffect(() => {
+    const form = ref.current?.form;
+    if (!form) return;
+    const clear = () => { setSubject(""); setBody(""); setTemplateId(""); setLater(false); setSendAt(""); setState({}); };
+    form.addEventListener("reset", clear);
+    return () => form.removeEventListener("reset", clear);
+  }, []);
+
+  async function slots(): Promise<string> {
+    const res = await fetch(`/api/calendar/slots?deal=${dealId}`);
+    const j = await res.json();
+    if (!res.ok || !j.text) throw new Error(j.error ?? "No hay huecos libres con tus preferencias.");
+    return j.text as string;
+  }
   async function insert() {
     setState({ loading: true });
     try {
-      const res = await fetch(`/api/calendar/slots?deal=${dealId}`);
-      const j = await res.json();
-      if (!res.ok || !j.text) throw new Error(j.error ?? "No hay huecos libres con tus preferencias.");
+      const text = await slots();
       const el = ref.current!;
       el.focus();
-      el.setRangeText(`${j.text}\n`, el.selectionStart, el.selectionEnd, "end");
+      el.setRangeText(`${text}\n`, el.selectionStart, el.selectionEnd, "end");
+      setBody(el.value);
       setState({});
     } catch (err) {
       setState({ error: err instanceof Error ? err.message : "No se pudo leer el calendario." });
     }
   }
+  async function applyTemplate(id: string) {
+    setTemplateId(id);
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setSubject(t.subject);
+    if (!t.body.includes("{huecos}")) { setBody(t.body); return; }
+    setBody(t.body);
+    setState({ loading: true });
+    try {
+      const text = await slots();
+      setBody(t.body.replace("{huecos}", text));
+      setState({});
+    } catch (err) {
+      setBody(t.body.replace("{huecos}", ""));
+      setState({ error: err instanceof Error ? err.message : "No se pudo leer el calendario." });
+    }
+  }
+
   return (
     <>
+      {templates.length > 0 && (
+        <label className="field"><span className="label">Plantilla</span>
+          <select value={templateId} onChange={(e) => applyTemplate(e.target.value)} aria-label="Plantilla">
+            <option value="">Sin plantilla</option>
+            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+      )}
+      <input type="hidden" name="template_id" value={templateId} />
+      <label className="field"><span className="label">Asunto</span>
+        <input name="subject" required value={subject} onChange={(e) => setSubject(e.target.value)} />
+      </label>
       <label className="field"><span className="label">Texto</span>
-        <textarea ref={ref} name="body" rows={7} required />
+        <textarea ref={ref} name="body" rows={8} required value={body} onChange={(e) => setBody(e.target.value)} />
       </label>
       <div className="compose-tools">
         <button type="button" className="btn secondary small" onClick={insert} disabled={state.loading}>
           {state.loading ? "Leyendo el calendario…" : "Insertar mis huecos"}
         </button>
+        {trackAvailable && (
+          <label className="checkbox">
+            <input type="hidden" name="track_present" value="1" />
+            <input type="checkbox" name="track" defaultChecked={trackDefault} />Seguir aperturas y clics
+          </label>
+        )}
+        <label className="checkbox"><input type="checkbox" checked={later} onChange={(e) => setLater(e.target.checked)} />Programar el envío</label>
+        {later && (
+          <>
+            {/* Se envía en ISO (con la zona del navegador), no como hora «local» que el servidor interpretaría en la suya. */}
+            <input type="datetime-local" required aria-label="Enviar el" value={sendAt} onChange={(e) => setSendAt(e.target.value)} />
+            <input type="hidden" name="send_at" value={sendAt && !Number.isNaN(new Date(sendAt).getTime()) ? new Date(sendAt).toISOString() : ""} />
+          </>
+        )}
         {state.error && <span className="meta tone-bad" role="status">{state.error}</span>}
       </div>
     </>

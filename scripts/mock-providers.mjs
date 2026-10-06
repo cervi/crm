@@ -246,8 +246,18 @@ createServer(async (req, res) => {
         const headers = Object.fromEntries(head.split("\r\n").map((l) => [l.slice(0, l.indexOf(":")).toLowerCase(), l.slice(l.indexOf(":") + 1).trim()]));
         const decodeWord = (v) => v.replace(/=\?UTF-8\?B\?([^?]+)\?=/g, (_, b) => Buffer.from(b, "base64").toString("utf8"));
         const id = token("gm");
-        const sent = { id, to: decodeWord(headers.to ?? ""), subject: decodeWord(headers.subject ?? ""),
-                       body: Buffer.from(rest.join("\r\n\r\n").replace(/\s+/g, ""), "base64").toString("utf8") };
+        // Texto plano o multipart/alternative (texto + HTML con seguimiento).
+        const b64 = (t) => Buffer.from(t.replace(/\s+/g, ""), "base64").toString("utf8");
+        let plain = "", html = null;
+        const boundary = /boundary="([^"]+)"/.exec(headers["content-type"] ?? "")?.[1];
+        if (boundary) {
+          for (const part of rest.join("\r\n\r\n").split(`--${boundary}`)) {
+            const [ph, ...pb] = part.split("\r\n\r\n");
+            if (/text\/plain/.test(ph)) plain = b64(pb.join(""));
+            if (/text\/html/.test(ph)) html = b64(pb.join(""));
+          }
+        } else plain = b64(rest.join("\r\n\r\n"));
+        const sent = { id, to: decodeWord(headers.to ?? ""), subject: decodeWord(headers.subject ?? ""), body: plain, html };
         state.gsent.push(sent);
         state.gmessages.push(gmsg(id, 0, { From: GME.email, To: headers.to, Subject: headers.subject }, sent.body.slice(0, 100), ["SENT"]));
         return send(res, 200, { id, threadId: id, labelIds: ["SENT"] });
@@ -308,7 +318,7 @@ createServer(async (req, res) => {
       if (!d) return send(res, 404, { error: { code: "ErrorItemNotFound", message: "No existe" } });
       state.drafts.delete(d.id);
       const now = new Date().toISOString();
-      const sent = { ...d, isDraft: false, from: { emailAddress: { address: ME.mail } }, sentDateTime: now, receivedDateTime: now, bodyPreview: d.body?.content?.slice(0, 200) };
+      const sent = { ...d, isDraft: false, from: { emailAddress: { address: ME.mail } }, sentDateTime: now, receivedDateTime: now, bodyPreview: (d.body?.content ?? "").replace(/<[^>]+>/g, "").slice(0, 200) };
       state.sent.push(sent);
       state.messages.push(sent); // aparece en «Enviados»: la sincronización no debe duplicarlo
       return send(res, 202);

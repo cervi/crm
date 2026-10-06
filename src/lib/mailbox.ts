@@ -1,4 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { sql, json, transaction, type Db } from "./db";
+import { publicBase, trackedHtml } from "./email-track";
 import { decrypt, encrypt } from "./crypto";
 import { INTEGRATION_ACTOR, recordEvent, type Actor } from "./events";
 import { UserError } from "./errors";
@@ -124,18 +126,53 @@ type EmailInput = {
   dealId?: string | null;
   personId?: string | null;
   organizationId?: string | null;
+  /** Seguir aperturas y clics (por defecto, lo que diga Ajustes). */
+  track?: boolean;
+  templateId?: string | null;
+  /** Correo ya guardado (p. ej. uno programado que llega su hora). */
+  emailId?: string;
 };
 
-/** Envía desde el correo de la cuenta (queda en sus «Enviados») y lo registra en el deal. */
+async function trackingDefault(): Promise<boolean> {
+  const [r] = await sql<{ email_tracking: boolean }[]>`SELECT email_tracking FROM app_settings LIMIT 1`.catch(() => []);
+  return r?.email_tracking ?? true;
+}
+
+/**
+ * Envía un correo desde la cuenta conectada y lo deja registrado: como
+ * actividad del deal (historia) y en la conversación de correos, con
+ * seguimiento de aperturas y clics si está activado.
+ */
 export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
-  const sent = await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: v.to, subject: v.subject, body: v.body }));
+  const base = publicBase();
+  const track = Boolean(base) && (v.track ?? (await trackingDefault()));
+  const token = track ? randomBytes(18).toString("base64url") : null;
+  const html = token && base ? trackedHtml(v.body, token, base) : undefined;
+  const values = {
+    direction: "out", status: "sending", deal_id: v.dealId ?? null, person_id: v.personId ?? null,
+    organization_id: v.organizationId ?? null, user_id: conn.user_id, from_email: conn.email, to_email: v.to.email,
+    to_name: v.to.name ?? null, subject: v.subject.slice(0, 500), body: v.body, template_id: v.templateId ?? null,
+    track, token, created_by: actor.id, error: null,
+  };
+  const [row] = v.emailId
+    ? await sql<{ id: string }[]>`UPDATE emails SET ${sql(values as unknown as Record<string, never>)} WHERE id = ${v.emailId} RETURNING id`
+    : await sql<{ id: string }[]>`INSERT INTO emails ${sql(values as unknown as Record<string, never>)} RETURNING id`;
+
+  let sent: { ref: string };
+  try {
+    sent = await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: v.to, subject: v.subject, body: v.body, html }));
+  } catch (err) {
+    await sql`UPDATE emails SET status = 'failed', error = ${err instanceof Error ? err.message.slice(0, 500) : "Error al enviar"} WHERE id = ${row.id}`;
+    throw err;
+  }
   const activityId = await transaction((tx) => logActivity(tx, actor, {
     type: "email", subject: v.subject, note: `Para: ${v.to.email}\n\n${v.body}`.slice(0, 5000),
     due_at: new Date(), done: true, deal_id: v.dealId ?? null, person_id: v.personId ?? null,
     organization_id: v.organizationId ?? null, owner_id: conn.user_id, external_ref: sent.ref,
   }));
+  await sql`UPDATE emails SET status = 'sent', sent_at = now(), external_ref = ${sent.ref}, activity_id = ${activityId} WHERE id = ${row.id}`;
   await sql`UPDATE mailbox_connections SET last_error = NULL WHERE id = ${conn.id}`;
-  return { activityId: activityId!, from: conn.email };
+  return { activityId: activityId!, from: conn.email, emailId: row.id };
 }
 
 /** Envía un correo sin registrarlo en ningún deal (p. ej. el parte del día a uno mismo). */
@@ -278,7 +315,24 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
           due_at: m.date, done: true, deal_id: who.deal_id, person_id: who.person_id, organization_id: who.organization_id,
           owner_id: conn.user_id, external_ref: m.ref,
         }));
-        if (id) result.emails++;
+        if (id) {
+          result.emails++;
+          // También en la conversación de correos del deal (si no salió ya del CRM).
+          const [e] = await sql<{ id: string }[]>`
+            INSERT INTO emails (direction, status, deal_id, person_id, organization_id, user_id, from_email, to_email,
+                                subject, body, sent_at, activity_id, external_ref)
+            VALUES (${outgoing ? "out" : "in"}, 'sent', ${who.deal_id}, ${who.person_id}, ${who.organization_id}, ${conn.user_id},
+                    ${m.from}, ${outgoing ? others[0] ?? null : own}, ${(m.subject || "(sin asunto)").slice(0, 500)},
+                    ${m.preview ?? ""}, ${m.date}, ${id}, ${m.ref})
+            ON CONFLICT (external_ref) WHERE external_ref IS NOT NULL DO NOTHING
+            RETURNING id`;
+          // Una respuesta del contacto es una señal para la IA y las secuencias.
+          if (e && !outgoing && who.deal_id) {
+            await recordEvent(sql, INTEGRATION_ACTOR, "deal", who.deal_id, "email.received", {
+              email_id: e.id, person_id: who.person_id, subject: m.subject ?? null,
+            });
+          }
+        }
       }
       await sql`UPDATE mailbox_connections SET mail_synced_at = ${started} WHERE id = ${conn.id}`;
     }

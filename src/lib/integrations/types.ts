@@ -50,7 +50,8 @@ export type Provider = {
   exchangeCode(code: string, verifier: string, redirectUri: string): Promise<Tokens>;
   refresh(refreshToken: string): Promise<Tokens>;
   profile(c: ApiClient): Promise<{ email: string; displayName: string | null; scheduling: Partial<Scheduling> }>;
-  send(c: ApiClient, v: { from: string; to: { email: string; name?: string | null }; subject: string; body: string }): Promise<{ ref: string }>;
+  /** Envía un correo; con `html`, va también en HTML (con el texto como alternativa donde se pueda). */
+  send(c: ApiClient, v: { from: string; to: { email: string; name?: string | null }; subject: string; body: string; html?: string }): Promise<{ ref: string }>;
   messages(c: ApiClient, since: Date, own: string): Promise<MailMessage[]>;
   events(c: ApiClient, from: Date, to: Date, own: string, timezone: string): Promise<CalendarEvent[]>;
   createEvent(c: ApiClient, v: {

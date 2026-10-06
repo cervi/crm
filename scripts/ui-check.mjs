@@ -476,6 +476,29 @@ if (MOCK) {
     expect(m && m.body.content.includes("(hora de Madrid)") && m.toRecipients[0].emailAddress.address === "ana@paco.example", "no salió por Outlook");
   });
 
+  await step("correo con plantilla, programado para mañana y cancelado", async () => {
+    await page.goto(`/deals/${PACO_OPEN}`);
+    await page.getByRole("tab", { name: "Correo", exact: true }).click();
+    const form = page.locator(".composer form", { has: page.getByRole("button", { name: "Insertar mis huecos" }) });
+    await form.getByLabel("Plantilla").selectOption({ label: "Envío de propuesta" });
+    expect((await form.getByLabel("Asunto").inputValue()) === "Propuesta para Paco S.L.", `asunto: ${await form.getByLabel("Asunto").inputValue()}`);
+    expect((await form.locator("textarea[name=body]").inputValue()).startsWith("Hola Ana,"), "la plantilla no rellenó el nombre");
+    await form.getByLabel("Programar el envío").check();
+    const tomorrow = new Date(Date.now() + 86400000);
+    const local = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 11) + "10:00";
+    await form.getByLabel("Enviar el").fill(local);
+    await form.getByRole("button", { name: "Enviar desde Outlook" }).click();
+    const item = page.locator(".email-item", { hasText: "Propuesta para Paco S.L." });
+    await item.getByText("Programado").waitFor();
+    expect((await form.getByLabel("Asunto").inputValue()) === "", "el formulario no se vació");
+    await shot("correo-programado");
+    await item.locator("summary").click();
+    await item.getByRole("button", { name: "Cancelar el envío" }).click();
+    await item.waitFor({ state: "detached" });
+    const [e] = await sql`SELECT status FROM emails WHERE subject = 'Propuesta para Paco S.L.' ORDER BY created_at DESC LIMIT 1`;
+    expect(e?.status === "cancelled", `estado: ${e?.status}`);
+  });
+
   await step("bandeja: la IA ofrece huecos y se envía desde Outlook", async () => {
     await page.goto("/inbox");
     await submit("Revisar ahora");
