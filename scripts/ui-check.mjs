@@ -1066,6 +1066,52 @@ await step("descuento por encima del límite: queda pendiente y el administrador
   await sql`UPDATE app_settings SET max_discount_pct = NULL`;
 });
 
+await step("baja de las comunicaciones: un clic desde el enlace del correo", async () => {
+  const { createHmac } = await import("node:crypto");
+  const [p] = await sql`SELECT id FROM persons WHERE unsubscribed_at IS NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`;
+  const sig = createHmac("sha256", process.env.TOKEN_ENCRYPTION_KEY || process.env.CRON_SECRET || "crm").update(`baja:${p.id}`).digest("base64url").slice(0, 22);
+  const other = await context.newPage();
+  await other.goto(`/u/${p.id}.${sig}`);
+  await other.getByRole("button", { name: "Darme de baja" }).click();
+  await other.getByText("Hecho: no volverás a recibir").waitFor();
+  await other.close();
+  const [after] = await sql`SELECT unsubscribed_at FROM persons WHERE id = ${p.id}`;
+  expect(after.unsubscribed_at, "no quedó dado de baja");
+  await sql`UPDATE persons SET unsubscribed_at = NULL WHERE id = ${p.id}`;
+});
+
+await step("encuesta: el cliente puntúa del 0 al 10 sin iniciar sesión", async () => {
+  const token = `encuesta-ui-${stamp}-abcdef`.slice(0, 28);
+  await sql`INSERT INTO surveys (token, kind, organization_id) VALUES (${token}, 'onboarding', '60000000-0000-0000-0000-000000000001')`;
+  const other = await context.newPage();
+  await other.goto(`/s/${token}`);
+  await other.locator(".nps label", { hasText: /^9$/ }).click();
+  await other.getByLabel("¿Algo que debamos mejorar? (opcional)").fill("Todo muy claro");
+  await other.getByRole("button", { name: "Enviar" }).click();
+  await other.getByText("¡Gracias! Nos ayuda mucho.").waitFor();
+  await other.close();
+  const [s] = await sql`SELECT score FROM surveys WHERE token = ${token}`;
+  expect(s.score === 9, `puntuación ${s.score}`);
+});
+
+await step("renovación ganada: el contrato renueva un año más", async () => {
+  const [c] = await sql`SELECT id, renewal_date FROM contracts WHERE status = 'active' ORDER BY created_at LIMIT 1`;
+  let [d] = await sql`SELECT id FROM deals WHERE contract_id = ${c.id} AND deal_type = 'renewal' AND status = 'open' AND deleted_at IS NULL`;
+  if (!d) {
+    await page.goto(`/organizations/${(await sql`SELECT organization_id FROM contracts WHERE id = ${c.id}`)[0].organization_id}`);
+    await page.locator("section.account").getByText("Editar").first().click();
+    await page.getByRole("button", { name: "Preparar la renovación ahora" }).click();
+    await page.locator("section.account").getByText(/Renovación —/).waitFor();
+    [d] = await sql`SELECT id FROM deals WHERE contract_id = ${c.id} AND deal_type = 'renewal' AND status = 'open' AND deleted_at IS NULL`;
+  }
+  await page.goto(`/deals/${d.id}`);
+  await page.getByRole("button", { name: "Ganado", exact: true }).click();
+  await page.getByText(/Ganado el/).first().waitFor();
+  const [after] = await sql`SELECT renewal_date FROM contracts WHERE id = ${c.id}`;
+  expect(new Date(after.renewal_date) > new Date(c.renewal_date), "la fecha de renovación no avanzó");
+  await shot("renovacion-ganada");
+});
+
 await step("sin errores de JavaScript en el navegador", async () => {
   expect(errors.length === 0, errors.slice(0, 3).join(" | "));
 });

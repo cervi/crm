@@ -412,7 +412,7 @@ const SCANNERS: Record<string, Scanner> = {
       SELECT c.id, c.organization_id, o.name AS organization, c.renewal_date::text, c.annual_value::text, h.score AS health
       FROM contracts c JOIN organizations o ON o.id = c.organization_id AND o.deleted_at IS NULL
       LEFT JOIN account_health h ON h.organization_id = c.organization_id
-      WHERE c.status = 'active' AND c.renewal_date IS NOT NULL AND c.renewal_date <= current_date + ${days}
+      WHERE c.status = 'active' AND c.renewal_date IS NOT NULL AND c.renewal_date <= current_date + ${days}::int
         AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.contract_id = c.id AND d.deal_type = 'renewal' AND d.status = 'open' AND d.deleted_at IS NULL)
       LIMIT 200`;
     return rows.map((c) => ({
@@ -1304,7 +1304,15 @@ async function runLocked(result: RunResult) {
                                  WHERE rule_id = ${rule.id} AND status = 'pending' AND created_at < now() - interval '2 days'`;
         result.expired += stale.count;
       }
-      const candidates = await scan(rule, ctx);
+      // Una regla que falla no para las demás.
+      let candidates: Candidate[];
+      try {
+        candidates = await scan(rule, ctx);
+      } catch (err) {
+        console.error(`[automatizaciones] ${rule.key}`, err);
+        result.failed++;
+        continue;
+      }
       // Las propuestas pendientes que ya no se cumplen caducan (p. ej. ya se agendó la demo).
       const keys = candidates.map((c) => `${c.dealId}:${c.payload.stage_id ?? ""}`);
       const expired = await sql`

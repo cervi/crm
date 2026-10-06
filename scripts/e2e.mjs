@@ -1470,6 +1470,81 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   await sql`UPDATE ai_settings SET api_key = ${enc("clave-mala")}`;
 }
 
+// ------------------------------------------------------------- Fase 4: clientes y Customer Success
+{
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  const CONTRACT = "c0000000-0000-0000-0000-000000000001";
+  await run();
+  // Renovación: el contrato de Paco vence en ~100 días → deal de renovación.
+  const [ren] = await sql`SELECT d.id, d.deal_type, d.origin, d.value::float8 AS value, d.expected_close_date::text AS close, p.kind
+                          FROM deals d JOIN pipelines p ON p.id = d.pipeline_id WHERE d.contract_id = ${CONTRACT} AND d.deal_type = 'renewal'`;
+  const [ct] = await sql`SELECT renewal_date::text FROM contracts WHERE id = ${CONTRACT}`;
+  check(ren && ren.kind === "renewal" && ren.origin === "cs" && ren.value === 12000 && ren.close === ct.renewal_date,
+        "renovaciones: deal de renovación 120 días antes, con el importe y la fecha del contrato", JSON.stringify(ren));
+  // QBR: tarea con el resumen de la cuenta.
+  const [qbr] = await sql`SELECT subject, note, type FROM activities WHERE organization_id = ${ORG} AND subject LIKE 'QBR con %' ORDER BY created_at DESC LIMIT 1`;
+  check(qbr?.note?.includes("licencias en uso") || qbr?.note?.includes("licencias_en_uso"), "QBR: tarea trimestral con el resumen de uso, salud y renovación", JSON.stringify(qbr));
+  // Salud de la cuenta con los datos de uso.
+  const [ah] = await sql`SELECT score, signals FROM account_health WHERE organization_id = ${ORG}`;
+  const keys = (ah?.signals ?? []).map((x) => x.key);
+  check(ah && keys.includes("seats_full") && keys.includes("usage_up"), "salud de la cuenta: licencias casi llenas y uso al alza", JSON.stringify(ah?.signals));
+  // Datos de uso por la API.
+  const up = await fetch(`${BASE}/api/v1/accounts/usage`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${KEY}` },
+    body: JSON.stringify([{ domain: "paco.example", metric: "tickets_abiertos", value: 7 }, { domain: "no-existe.example", metric: "x", value: 1 }]) });
+  const upj = await up.json();
+  check(up.status === 201 && upj.saved === 1 && upj.results[1].ok === false, "uso: la API guarda los datos y avisa de los que no encajan", JSON.stringify(upj));
+  check((await fetch(`${BASE}/api/v1/accounts/usage`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status === 401, "uso: la API pide clave");
+  await run();
+  const [ah2] = await sql`SELECT signals FROM account_health WHERE organization_id = ${ORG}`;
+  check(ah2.signals.some((x) => x.key === "tickets"), "salud de la cuenta: muchos tickets abiertos es un riesgo");
+  const accounts = await (await get("/accounts")).text();
+  check(accounts.includes("Clientes") && accounts.includes("Paco S.L.") && accounts.includes("12.000") && accounts.includes("Renuevan en 120 días"),
+        "/accounts: cartera de clientes con importe, salud y renovaciones");
+  const orgPage = await (await get(`/organizations/${ORG}`)).text();
+  check(orgPage.includes("Uso del producto") && orgPage.includes("licencias en uso") && orgPage.includes("Contratos") && orgPage.includes("Renovación — Paco S.L."),
+        "ficha de la empresa: cliente con contrato, uso, renovación y expansión");
+
+  // Deal de venta ganado → contrato, onboarding con su plan y ficha del kick-off.
+  const NEWORG = "60000000-0000-0000-0000-0000000000c1", WON = "90000000-0000-0000-0000-0000000000c1";
+  await sql`INSERT INTO organizations (id, name, domain) VALUES (${NEWORG}, 'Cliente Nuevo E2E', 'cliente-nuevo-e2e.example') ON CONFLICT DO NOTHING`;
+  await sql`INSERT INTO deals (id, title, organization_id, pipeline_id, stage_id, owner_id, value)
+            VALUES (${WON}, 'Cliente Nuevo — licencias', ${NEWORG}, ${P.inbound}, '20000000-0000-0000-0000-000000000014', ${ADMIN_ID}, 18000) ON CONFLICT DO NOTHING`;
+  await sql`INSERT INTO deal_participants (deal_id, person_id, is_primary) VALUES (${WON}, ${PERSON}, true) ON CONFLICT DO NOTHING`;
+  await sql`INSERT INTO deal_products (deal_id, product_id, quantity, unit_price) VALUES (${WON}, '40000000-0000-0000-0000-000000000003', 2, 9000)`;
+  await sql`INSERT INTO deal_insights (deal_id, needs, timeline) VALUES (${WON}, ARRAY['Unificar la facturación'], 'Arrancar en enero') ON CONFLICT DO NOTHING`;
+  await sql`UPDATE deals SET status = 'won' WHERE id = ${WON}`;
+  await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, payload) VALUES ('deal', ${WON}, 'deal.won', 'user', '{}')`;
+  await run();
+  const [c2] = await sql`SELECT c.id, c.annual_value::float8 AS annual, c.seats, c.renewal_date - c.start_date AS days,
+                                (SELECT count(*)::int FROM contract_items i WHERE i.contract_id = c.id) AS items FROM contracts c WHERE c.deal_id = ${WON}`;
+  check(c2 && c2.annual === 18000 && c2.seats === 2 && c2.items === 1 && c2.days >= 365, "cliente nuevo: contrato con sus productos, importe anual y renovación a un año", JSON.stringify(c2));
+  const [ob] = await sql`SELECT d.id, d.deal_type, d.origin, p.kind, (SELECT count(*)::int FROM close_plan_steps s WHERE s.deal_id = d.id) AS steps,
+                                (SELECT count(*)::int FROM deal_participants dp WHERE dp.deal_id = d.id) AS people,
+                                (SELECT content FROM notes n WHERE n.deal_id = d.id LIMIT 1) AS note
+                         FROM deals d JOIN pipelines p ON p.id = d.pipeline_id WHERE d.contract_id = ${c2?.id ?? null} AND d.deal_type = 'onboarding'`;
+  check(ob?.kind === "onboarding" && ob.origin === "cs" && ob.steps === 5 && ob.people === 1 && ob.note?.includes("Unificar la facturación") && ob.note.includes("Arrancar en enero"),
+        "cliente nuevo: onboarding con su plan de hitos, los contactos y lo prometido en la venta", JSON.stringify(ob));
+  const obPage = await (await get(`/deals/${ob?.id}`)).text();
+  check(obPage.includes("Plan de onboarding") && obPage.includes("Formación del equipo") && obPage.includes("Onboarding"), "ficha del onboarding: plan de hitos");
+  // Onboarding terminado → encuesta de satisfacción.
+  await sql`UPDATE deals SET status = 'won' WHERE id = ${ob.id}`;
+  await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, payload) VALUES ('deal', ${ob.id}, 'deal.won', 'user', '{}')`;
+  await run();
+  const [sv] = await sql`SELECT x.status, x.payload FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id WHERE r.key = 'onboarding_survey' AND x.deal_id = ${ob.id}`;
+  const link = /\/s\/[A-Za-z0-9_-]+/.exec(sv?.payload?.body ?? "")?.[0];
+  check(sv?.status === "pending" && link, "onboarding terminado: propone la encuesta de satisfacción", JSON.stringify(sv?.payload));
+  const sp = await fetch(`${BASE}${link}`);
+  check(sp.status === 200 && (await sp.text()).includes("¿Qué tal ha ido la puesta en marcha?"), "encuesta: se abre sin iniciar sesión");
+  await sql`UPDATE surveys SET score = 4, comment = 'Lento al principio', answered_at = now() WHERE token = ${link.slice(3)}`;
+  await run();
+  const [ah3] = await sql`SELECT signals FROM account_health WHERE organization_id = ${NEWORG}`;
+  check(ah3?.signals.some((x) => x.key === "nps_low"), "salud de la cuenta: una mala nota en la encuesta es un riesgo", JSON.stringify(ah3));
+  // Un deal ganado sin empresa no crea cliente (no hay a quién).
+  await sql`DELETE FROM deals WHERE id IN (${WON}, ${ob.id})`;
+  await sql`DELETE FROM organizations WHERE id = ${NEWORG}`;
+}
+
 // ------------------------------------------------------------- Avisos, importar CSV, duplicados
 {
   // Abrir una propuesta avisa al responsable del deal.
