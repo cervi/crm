@@ -1,6 +1,6 @@
 # CRM
 
-CRM propio para sustituir Pipedrive y Apollo: empresas, contactos, leads, deals en varios pipelines, actividades, campos personalizados, una API para conectar formularios y una IA que sigue los deals con la autonomía que tú le des. En siguientes fases: agentes externos (Grok Bot) por MCP, IA integrada para redactar y decidir, secuencias de email e importación desde Pipedrive.
+CRM propio para sustituir Pipedrive y Apollo: empresas, contactos, leads, deals en varios pipelines, actividades, campos personalizados, una API para conectar formularios y una IA que sigue los deals con la autonomía que tú le des. Incluye correo, calendario y documentos (Microsoft 365 o Google Workspace), secuencias, reservas, propuestas, formularios web con chat de IA, informes con previsión y objetivos, importación desde Pipedrive y conexión por MCP para agentes externos como Grok Bot.
 
 Tecnología: **Next.js 16 + TypeScript + PostgreSQL**, empaquetado con Docker para desplegarlo igual en AWS, en Vercel o en cualquier otro proveedor.
 
@@ -23,6 +23,18 @@ Tecnología: **Next.js 16 + TypeScript + PostgreSQL**, empaquetado con Docker pa
 | **IA con autonomía configurable** | Para cada tipo de acción (crear tareas, escribir notas, preparar correos, mover de fase, editar deals) y cada agente (el asistente del CRM o agentes externos), eliges: **No**, **Preguntar** (lo deja en la bandeja de decisiones) o **Sola** (lo hace y queda en el registro, con «Deshacer»). Reglas incluidas: fase sin su sesión agendada → tarea; deal parado → correo de seguimiento; «no se presentó» → correo para reagendar; deal muy parado → te pide decidir; deal ganado → tarea de traspaso a Customer Success con el resumen. Cada regla tiene sus días y plantillas, estadísticas de aprobación y sugerencias para subir o bajar su autonomía. Pausa general y «Revisar ahora». |
 | **Correo, calendario y documentos** | Cada usuario puede conectar su cuenta de **Microsoft 365** (Outlook, calendario, OneDrive/SharePoint) o de **Google Workspace** (Gmail, Google Calendar, Drive). Los correos del CRM (los que escribes en la ficha del deal y los que propone o envía la IA) salen desde su correo y quedan en «Enviados». Los correos y reuniones con contactos del CRM se registran solos en sus deals (sin duplicar). La IA ofrece tus huecos libres (`{huecos}`) según tu horario, duración, margen y antelación; al programar una actividad puedes invitar al contacto desde tu calendario con Teams o Meet. En cada deal, «Documentos» enlaza presentaciones y propuestas buscándolas en tu Drive/OneDrive o pegando un enlace. Accesos cifrados en la base de datos. Todo es opcional: sin configurar nada, el CRM funciona igual. |
 | **Exportar a CSV** | Botón «Exportar CSV» en deals (tablero y lista, con sus filtros), leads, empresas, contactos, actividades, historia de cada deal, registro de la IA y cada widget de los dashboards; exportación completa en Ajustes → Exportar datos. UTF-8 con BOM para Excel, separador configurable (punto y coma por defecto), campos personalizados como columnas y protección contra fórmulas. |
+| **Usuarios y permisos** | Inicio de sesión por persona (administrador, comercial o solo lectura), contraseñas temporales, bloqueo tras intentos fallidos y sesiones revocables. Todo queda a nombre de quien lo hizo. |
+| **Lista de deals** | Filtros (texto, fase, importe, parados, sin actividad, vencidos, cierran este mes), vistas guardadas personales o compartidas, columnas a elegir (también campos personalizados) y acciones en bloque: responsable, fase, ganar/perder, actividad o secuencia. |
+| **Correo completo** | Conversación de correos en cada deal (enviados y recibidos), plantillas con variables, envío programado y seguimiento de aperturas y clics. |
+| **Secuencias** | Varios correos y tareas espaciados en días, desde el buzón del responsable; se paran solas si el contacto responde, agenda una reunión o el deal se cierra. |
+| **Enlace de reserva** | Página pública con tus huecos libres: el contacto elige, recibe la invitación y la reunión queda en su deal (o se crea uno si es nuevo). `{enlace_reserva}` en las plantillas. Vista semanal de actividades. |
+| **Automatizaciones generales** | Disparadores por fase (al entrar o tras N días), alta, ganado/perdido, inactividad, correo abierto o respondido, reserva y propuesta abierta o aceptada; condiciones por pipeline, importe o responsable; acciones: actividad, correo, mover de fase, nota, asignar responsable, webhook o pedir decisión. |
+| **Puntuación y reparto** | Puntuación 0–100 de cada lead con sus motivos (encaje e interés) y reparto automático de leads y deals por reglas y por turnos. |
+| **Formularios web y chat** | Formularios alojados (página propia o incrustados en vuestra web) y un chat con IA que responde, cualifica y crea el lead con la conversación. |
+| **Informes** | Previsión ponderada por probabilidad de fase, velocidad de ventas, objetivos por persona o equipo con ritmo, embudo con conversión y días por fase, y preguntas en lenguaje natural que se convierten en informes guardables. |
+| **Productos y propuestas** | Productos en los deals (el importe es su suma) y propuestas redactadas por la IA que el cliente abre y acepta en una página; sabemos cuándo las abre. |
+| **Avisos, papelera, duplicados e importación** | Campana de avisos (menciones con @Nombre, deals asignados, respuestas, reservas, propuestas); papelera de 30 días; fusión de contactos y empresas duplicados; importación de CSV; importación completa y repetible desde Pipedrive. |
+| **Agentes externos (MCP)** | Servidor MCP en `/api/v1/mcp` con claves por agente: Grok Bot u otros consultan el CRM y proponen acciones que respetan los permisos de «Agentes externos». |
 | **Historial** | Todo queda registrado como evento (quién, qué y cuándo): es el historial de cada ficha y será la base de las automatizaciones y de la auditoría de la IA. |
 
 ## Probarlo en local (un comando)
@@ -118,13 +130,14 @@ Las tablas principales tienen `pipedrive_id` para que la importación desde Pipe
 
 ## Pendiente
 
-- [ ] Inicio de sesión por usuario (sustituye al usuario y contraseña común) y asignar las acciones a cada persona
-- [ ] Importación desde Pipedrive
+- [x] Inicio de sesión por usuario y permisos por rol
+- [x] Importación desde Pipedrive (repetible, con sincronización horaria)
 - [x] Motor de automatizaciones con autonomía configurable, bandeja de decisiones y registro con deshacer
 - [x] Seguimiento automático de deals (sesiones por fase, ausencias, deals parados)
 - [x] Traspaso a Customer Success al ganar un deal (resumen con plantilla)
-- [ ] Conexión de agentes externos (Grok Bot…) por MCP, con los mismos permisos
+- [x] Conexión de agentes externos (Grok Bot…) por MCP, con los mismos permisos
 - [x] IA integrada configurable (proveedor, modelo, clave y prompts) para resúmenes, parte del día y seguimiento tras reuniones
 - [ ] Agente de IA que decide (proponer acciones libres más allá de las reglas)
 - [x] Correo, calendario y documentos de Microsoft 365 y Google Workspace (opcional)
-- [ ] Secuencias de email y enriquecimiento
+- [x] Secuencias de email
+- [ ] Enriquecimiento de contactos y empresas
