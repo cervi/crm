@@ -17,7 +17,9 @@ services:
 
   # Aplica las migraciones pendientes y termina.
   migrate:
-    image: postgres:16
+    build:
+      context: .
+      target: deps          # reutiliza la etapa con node_modules del Dockerfile
     depends_on:
       db:
         condition: service_healthy
@@ -26,8 +28,7 @@ services:
     volumes:
       - ./db:/app/db:ro
       - ./scripts:/app/scripts:ro
-    working_dir: /app
-    entrypoint: ["bash", "scripts/db.sh", "migrate"]
+    command: ["node", "scripts/db.mjs", "migrate"]
 
   app:
     build: .

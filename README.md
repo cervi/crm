@@ -2,32 +2,35 @@
 
 CRM propio para sustituir Pipedrive y Apollo: empresas, contactos, deals en varios pipelines, campos personalizados y, en siguientes fases, automatizaciones, agentes de IA y secuencias de email.
 
-Tecnología: **Next.js + TypeScript + PostgreSQL**, empaquetado con Docker para poder desplegarlo igual en AWS, en Vercel o en cualquier otro proveedor.
+Tecnología: **Next.js 16 + TypeScript + PostgreSQL**, empaquetado con Docker para poder desplegarlo igual en AWS, en Vercel o en cualquier otro proveedor.
 
 ## Arrancar en local
 
-Requisitos: Docker y Node.js 22.
+Requisito: Node.js 22 o superior. No hace falta Docker ni instalar PostgreSQL.
 
 ```bash
-docker compose up -d db migrate       # base de datos + migraciones
-DATABASE_URL=postgres://crm:crm@localhost:5432/crm ./scripts/db.sh seed   # datos de ejemplo (opcional)
-cp .env.example .env
 npm install
-npm run dev                            # http://localhost:3000
+cp .env.example .env
+npm run db:dev          # terminal 1: PostgreSQL de desarrollo (PGlite), déjala abierta
+npm run db:migrate      # terminal 2
+npm run db:seed         # datos de ejemplo (opcional)
+npm run dev             # http://localhost:3000
 ```
 
-Todo con Docker (sin Node en local): `docker compose up --build`.
+`npm run db:dev` arranca un PostgreSQL que corre dentro de Node (PGlite) y guarda los datos en `.pgdata/`. Es solo para desarrollo; en producción se usa un PostgreSQL normal.
+
+Con Docker (PostgreSQL real + app): `docker compose up --build`.
 
 ## Base de datos
 
-Las migraciones son SQL puro en `db/migrations/` y se aplican con `scripts/db.sh` (solo necesita `psql`).
+Las migraciones son SQL puro en `db/migrations/` y se aplican con `scripts/db.mjs` (usa `DATABASE_URL`).
 
 | Comando | Qué hace |
 | --- | --- |
-| `./scripts/db.sh migrate` | Aplica las migraciones pendientes |
-| `./scripts/db.sh seed` | Carga los datos de ejemplo (solo desarrollo) |
-| `./scripts/db.sh test` | Ejecuta las comprobaciones del modelo (`db/tests`) |
-| `./scripts/db.sh reset` | Borra todo, migra, carga ejemplos y comprueba (solo desarrollo) |
+| `npm run db:migrate` | Aplica las migraciones pendientes |
+| `npm run db:seed` | Carga los datos de ejemplo (solo desarrollo) |
+| `npm run db:test` | Ejecuta las comprobaciones del modelo (`db/tests`) |
+| `npm run db:reset` | Borra todo, migra, carga ejemplos y comprueba (solo desarrollo) |
 
 ### Modelo de datos
 
@@ -49,8 +52,8 @@ Las tablas principales tienen `pipedrive_id` para que la importación desde Pipe
 
 ## Estado
 
-- [x] Modelo de datos con migración, datos de ejemplo y 13 comprobaciones automáticas
-- [x] Esqueleto de la app: conexión a la base de datos y tablero de deals por pipeline (solo lectura)
+- [x] Modelo de datos con migración, datos de ejemplo y 13 comprobaciones automáticas (probadas en PostgreSQL 16 y en PGlite)
+- [x] App Next.js: tablero de deals por pipeline (solo lectura) con aviso de deals parados y sin sesión agendada
 - [ ] Fichas y formularios de empresas, contactos y deals
 - [ ] Arrastrar deals entre fases, ganar/perder
 - [ ] Configuración de pipelines y campos personalizados
