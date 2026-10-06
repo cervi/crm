@@ -330,7 +330,7 @@ type Match = { person_id: string; email: string; full_name: string; organization
                required_activity_type: string | null };
 
 /** Contactos del CRM con esos emails, con su empresa actual y su deal abierto más reciente. */
-async function matchContacts(emails: string[]): Promise<Match[]> {
+async function matchContacts(emails: string[], ownerId: string | null = null): Promise<Match[]> {
   if (emails.length === 0) return [];
   return sql<Match[]>`
     SELECT DISTINCT ON (lower(pe.email)) p.id AS person_id, lower(pe.email) AS email, p.full_name,
@@ -344,7 +344,10 @@ async function matchContacts(emails: string[]): Promise<Match[]> {
       SELECT d.id, s.required_activity_type FROM deal_participants dp
       JOIN deals d ON d.id = dp.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
       JOIN stages s ON s.id = d.stage_id
-      WHERE dp.person_id = p.id ORDER BY d.updated_at DESC LIMIT 1
+      -- Si el contacto está en varios deals: primero los del dueño del buzón, luego los de venta
+      -- (antes que onboarding o renovación) y, entre ellos, el más reciente.
+      WHERE dp.person_id = p.id
+      ORDER BY (d.owner_id IS NOT DISTINCT FROM ${ownerId}::uuid) DESC, (d.deal_type IN ('onboarding', 'renewal')) ASC, d.updated_at DESC LIMIT 1
     ) dl ON true
     WHERE lower(pe.email) = ANY(${emails}::text[])
     ORDER BY lower(pe.email), pe.is_primary DESC`;
@@ -363,7 +366,7 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
       for (const m of await p.messages(c, since, own)) {
         const outgoing = m.from === own;
         const others = [...new Set(outgoing ? m.to : [m.from])].filter((e) => e && e !== own);
-        const matches = await matchContacts(others);
+        const matches = await matchContacts(others, conn.user_id);
         const who = others.map((e) => matches.find((x) => x.email === e)).find(Boolean);
         // Rebotes: el aviso del servidor de correo no viene de un contacto.
         if (!outgoing && /mailer-daemon|postmaster|mail delivery|maildelivery/i.test(m.from)) {
@@ -420,7 +423,7 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
           continue;
         }
         if (e.cancelled) continue;
-        const matches = await matchContacts([...new Set(e.emails.filter((x) => x !== own))]);
+        const matches = await matchContacts([...new Set(e.emails.filter((x) => x !== own))], conn.user_id);
         const who = matches.find((m) => m.deal_id) ?? matches[0];
         if (!who) continue;
         // Una reunión futura con el contacto de un deal cuenta como la sesión que pide su fase.
