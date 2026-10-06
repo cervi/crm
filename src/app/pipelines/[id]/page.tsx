@@ -113,7 +113,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
             <nav className="chips views" aria-label="Vistas guardadas">
               <Link href={`/pipelines/${id}?view=list`} aria-current={currentQuery === "" ? "page" : undefined}>Todos</Link>
               {views.map((v) => (
-                <span key={v.id} className="view-chip">
+                <span key={v.id} className={v.mine || (v.shared && me.role === "admin") ? "view-chip deletable" : "view-chip"}>
                   <Link href={`/pipelines/${id}?view=list${v.query ? `&${v.query}` : ""}`} aria-current={currentQuery === v.query ? "page" : undefined}
                         title={v.shared ? "Vista compartida con el equipo" : "Vista personal"}>
                     {v.name}{!v.shared && <span className="meta"> · mía</span>}

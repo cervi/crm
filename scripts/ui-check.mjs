@@ -773,7 +773,7 @@ await step("lista de deals: filtrar, guardar la vista y cambiar el responsable d
   await page.getByRole("dialog", { name: "Columnas" }).getByLabel("Creado").check();
   await page.getByRole("button", { name: "Aplicar", exact: true }).click();
   await page.waitForURL(/cols=/);
-  await page.getByRole("columnheader", { name: "Creado" }).waitFor();
+  await page.locator("thead th", { hasText: "Creado" }).waitFor();
   // Acción en bloque.
   await page.getByLabel("Seleccionar Paco — contrato anual").check();
   await page.getByLabel("Seleccionar Paco — otra plataforma").check();
