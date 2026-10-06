@@ -146,6 +146,26 @@ export type PipelineDealRow = {
   next_activity_at: Date | null;
   expected_close_date: string | null;
   created_at: Date;
+  source: string | null;
+  owner_id: string | null;
+  stage_id: string;
+  custom: Record<string, unknown>;
+};
+
+/** Filtros rápidos de la lista de deals. */
+export const DEAL_FLAGS = {
+  rotten: "Parados",
+  no_activity: "Sin próxima actividad",
+  overdue: "Con actividad vencida",
+  closing_month: "Cierran este mes",
+  no_close_date: "Sin fecha de cierre",
+} as const;
+export type DealFlag = keyof typeof DEAL_FLAGS;
+export const isDealFlag = (v: unknown): v is DealFlag => typeof v === "string" && v in DEAL_FLAGS;
+
+export type DealListFilters = {
+  ownerId?: string | null; status?: "open" | "all" | "won" | "lost"; sort?: ListSort; dir?: "asc" | "desc";
+  q?: string | null; stageId?: string | null; min?: number | null; max?: number | null; flag?: DealFlag | null;
 };
 
 const LIST_ORDER = {
@@ -162,21 +182,22 @@ const LIST_ORDER = {
 export type ListSort = keyof typeof LIST_ORDER;
 export const isListSort = (v: unknown): v is ListSort => typeof v === "string" && v in LIST_ORDER;
 
-/** Vista de lista de un pipeline, con deals cerrados opcionalmente. */
-export async function listPipelineDeals(pipelineId: string, opts: {
-  ownerId?: string | null; status?: "open" | "all" | "won" | "lost"; sort?: ListSort; dir?: "asc" | "desc";
-}) {
+/** Vista de lista de un pipeline, con deals cerrados opcionalmente y filtros. */
+export async function listPipelineDeals(pipelineId: string, opts: DealListFilters) {
   const status = opts.status ?? "open";
   const sort = LIST_ORDER[opts.sort ?? "stage"];
   // "días en la fase" crece cuanto más antigua es la fecha de entrada: se invierte.
   const asc = (opts.dir ?? "asc") === "asc" ? opts.sort !== "days" : opts.sort === "days";
+  const q = opts.q?.trim() ? `%${opts.q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+  const flag = opts.flag ?? null;
   return sql<PipelineDealRow[]>`
     SELECT d.id, d.title, d.status, d.value::text, d.currency, s.name AS stage_name, s.position AS stage_position,
            d.organization_id, o.name AS organization_name, pp.full_name AS person_name, u.name AS owner_name,
            floor(extract(epoch FROM now() - d.stage_entered_at) / 86400)::int AS days_in_stage,
            (d.status = 'open' AND s.rotten_after_days IS NOT NULL
              AND now() - d.stage_entered_at > make_interval(days => s.rotten_after_days)) AS is_rotten,
-           na.due_at AS next_activity_at, d.expected_close_date::text, d.created_at
+           na.due_at AS next_activity_at, d.expected_close_date::text, d.created_at,
+           d.source, d.owner_id, d.stage_id, d.custom
     FROM deals d
     JOIN stages s ON s.id = d.stage_id
     LEFT JOIN organizations o ON o.id = d.organization_id
@@ -191,6 +212,18 @@ export async function listPipelineDeals(pipelineId: string, opts: {
     WHERE d.pipeline_id = ${pipelineId} AND d.deleted_at IS NULL
       AND (${status} = 'all' OR d.status = ${status})
       AND (${opts.ownerId ?? null}::uuid IS NULL OR d.owner_id = ${opts.ownerId ?? null}::uuid)
+      AND (${opts.stageId ?? null}::uuid IS NULL OR d.stage_id = ${opts.stageId ?? null}::uuid)
+      AND (${opts.min ?? null}::numeric IS NULL OR d.value >= ${opts.min ?? null}::numeric)
+      AND (${opts.max ?? null}::numeric IS NULL OR d.value <= ${opts.max ?? null}::numeric)
+      AND (${q}::text IS NULL OR d.title ILIKE ${q}::text OR o.name ILIKE ${q}::text OR pp.full_name ILIKE ${q}::text)
+      AND (${flag}::text IS NULL
+        OR (${flag}::text = 'rotten' AND d.status = 'open' AND s.rotten_after_days IS NOT NULL
+              AND now() - d.stage_entered_at > make_interval(days => s.rotten_after_days))
+        OR (${flag}::text = 'no_activity' AND d.status = 'open' AND na.due_at IS NULL)
+        OR (${flag}::text = 'overdue' AND d.status = 'open' AND na.due_at < now())
+        OR (${flag}::text = 'closing_month' AND d.status = 'open'
+              AND date_trunc('month', d.expected_close_date) = date_trunc('month', now()))
+        OR (${flag}::text = 'no_close_date' AND d.status = 'open' AND d.expected_close_date IS NULL))
     ORDER BY ${sort} ${asc ? sql`ASC` : sql`DESC`} NULLS LAST, d.created_at DESC
     LIMIT 1000`;
 }

@@ -758,6 +758,41 @@ await step("capturas de las pantallas principales", async () => {
   }
 });
 
+await step("lista de deals: filtrar, guardar la vista y cambiar el responsable de varios a la vez", async () => {
+  const inbound = "10000000-0000-0000-0000-000000000001";
+  await page.goto(`/pipelines/${inbound}?view=list`);
+  await page.getByLabel("Buscar en la lista").fill("Paco");
+  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
+  await page.waitForURL(/q=Paco/);
+  await page.getByText("+ Guardar esta vista").click();
+  await page.getByLabel("Nombre", { exact: true }).fill(`Deals de Paco ${stamp}`);
+  await page.getByRole("button", { name: "Guardar vista" }).click();
+  await page.getByRole("link", { name: new RegExp(`Deals de Paco ${stamp}`) }).waitFor();
+  // Columnas: se añade «Creado».
+  await page.getByRole("button", { name: "Columnas" }).click();
+  await page.getByRole("dialog", { name: "Columnas" }).getByLabel("Creado").check();
+  await page.getByRole("button", { name: "Aplicar", exact: true }).click();
+  await page.waitForURL(/cols=/);
+  await page.getByRole("columnheader", { name: "Creado" }).waitFor();
+  // Acción en bloque.
+  await page.getByLabel("Seleccionar Paco — contrato anual").check();
+  await page.getByLabel("Seleccionar Paco — otra plataforma").check();
+  const bar = page.getByRole("region", { name: "Acciones en bloque" });
+  await bar.getByText("2 seleccionados").waitFor();
+  await bar.getByLabel("Acción").selectOption("owner");
+  await bar.getByLabel("Nuevo responsable").selectOption({ label: "Customer Success" });
+  await bar.getByRole("button", { name: "Aplicar" }).click();
+  await bar.getByText("2 deals actualizados").waitFor();
+  const owners = await sql`SELECT DISTINCT u.name FROM deals d JOIN users u ON u.id = d.owner_id
+                           WHERE d.id IN ('90000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000003')`;
+  expect(owners.length === 1 && owners[0].name === "Customer Success", `responsables: ${owners.map((o) => o.name)}`);
+  const [ev] = await sql`SELECT count(*)::int AS n FROM events WHERE event_type = 'deal.owner_changed'`;
+  expect(ev.n >= 2, "no queda en la historia");
+  await shot("lista-acciones-en-bloque");
+  await sql`UPDATE deals SET owner_id = '00000000-0000-0000-0000-000000000001'
+            WHERE id IN ('90000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000003')`;
+});
+
 await step("dar acceso a un comercial, que entra, cambia su contraseña temporal y no ve los ajustes de admin", async () => {
   await page.goto("/settings/users");
   const card = page.getByRole("article", { name: "Usuario Customer Success" });

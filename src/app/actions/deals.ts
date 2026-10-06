@@ -9,6 +9,7 @@ import {
   addParticipant, createDeal, getDeal, loseDeal, moveDealToStage, removeParticipant, reopenDeal, updateDeal, winDeal,
 } from "@/lib/deals";
 import { archiveLead, convertLead, ingestLead, updateLeadFunnel } from "@/lib/leads";
+import { bulkDeals, bulkSummary } from "@/lib/bulk";
 
 const fields = (form: FormData) => Object.fromEntries(form);
 
@@ -161,4 +162,17 @@ export async function updateLeadAction(leadId: string, _: ActionState, form: For
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);
   return res;
+}
+
+/** Acción en bloque sobre los deals marcados en la lista. */
+export async function bulkDealsAction(ids: string[], data: Record<string, string>): Promise<{ error?: string; message?: string }> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  try {
+    const r = await bulkDeals(g.actor, ids, data);
+    revalidatePath("/pipelines", "layout");
+    return { message: bulkSummary(r) };
+  } catch (err) {
+    return { error: toUserMessage(err) };
+  }
 }

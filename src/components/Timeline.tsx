@@ -9,6 +9,7 @@ function detail(e: TimelineEvent): string | null {
     case "deal.stage_changed": return p.from_stage && p.to_stage ? `${p.from_stage} → ${p.to_stage}` : null;
     case "deal.lost": return [p.reason, p.note].filter(Boolean).join(" · ") +
       (p.follow_up_days ? ` · seguimiento en ${p.follow_up_days} días` : "");
+    case "deal.owner_changed": return `${p.from_name ?? "sin responsable"} → ${p.to_name ?? "sin responsable"}`;
     case "lead.form_submitted": return [p.source, p.source_detail].filter(Boolean).join(" · ");
     case "lead.created": return [p.source, p.source_detail].filter(Boolean).join(" · ");
     case "activity.created":

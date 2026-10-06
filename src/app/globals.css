@@ -802,3 +802,34 @@ a.btn.small svg { width: 14px; height: 14px; }
 .plain-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
 .user-table td form { margin: 0; }
 .user-row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+
+/* Lista de deals: vistas guardadas, filtros, columnas y acciones en bloque */
+.chips.views { align-items: center; }
+.view-chip { display: inline-flex; align-items: center; }
+.view-chip form { display: inline-flex; }
+.view-del { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px; display: inline-grid; border-radius: 999px; }
+.view-del svg { width: 12px; height: 12px; stroke: currentColor; }
+.view-del:hover { color: var(--bad); background: var(--bad-soft); }
+.save-view summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--accent-ink); padding: 4px 6px; list-style: none; }
+.save-view[open] { flex-basis: 100%; }
+.save-view .form { margin-top: 6px; }
+.list-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.list-filters input[type="search"] { min-width: 240px; flex: 1 1 240px; max-width: 360px; }
+.list-filters .num-input { width: 120px; }
+.list-filters .spacer, .board-toolbar .spacer { flex: 1; }
+.column-picker { min-width: 230px; gap: 2px; max-height: 420px; overflow: auto; }
+.column-picker label.checkbox { padding: 5px 10px; }
+.column-picker-actions { display: flex; gap: 6px; padding: 4px 6px; }
+.check-col { width: 34px; text-align: center; }
+.bulk-bar {
+  position: sticky; top: 8px; z-index: 20; margin-bottom: 10px; padding: 8px 12px; border-radius: var(--r);
+  background: var(--accent-soft); border: 1px solid var(--border); display: grid; gap: 6px;
+}
+.bulk-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bulk-form strong { color: var(--accent-ink); margin-right: 4px; }
+.bulk-result { margin: 0; color: var(--good); font-weight: 600; }
+.link-btn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent-ink); cursor: pointer; text-decoration: underline; }
+@media (max-width: 720px) {
+  .list-filters input[type="search"] { min-width: 0; max-width: none; }
+  .list-filters .num-input { width: calc(50% - 4px); }
+}

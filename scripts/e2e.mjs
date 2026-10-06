@@ -609,6 +609,28 @@ if (process.env.MOCK_URL) {
   }
 }
 
+// ------------------------------------------------------------- Lista de deals: filtros, vistas y columnas
+{
+  const has = (html, title) => html.includes(`<strong>${title}</strong>`);
+  const big = await (await get(`/pipelines/${P.inbound}?view=list&min=10000`)).text();
+  check(has(big, "Paco — contrato anual") && !has(big, "Paco — otra plataforma"), "lista: filtro por importe mínimo");
+  const byText = await (await get(`/pipelines/${P.inbound}?view=list&q=otra%20plat`)).text();
+  check(has(byText, "Paco — otra plataforma") && !has(byText, "Paco — contrato anual"), "lista: búsqueda por texto");
+  const none = await (await get(`/pipelines/${P.inbound}?view=list&q=${encodeURIComponent("100%_")}`)).text();
+  check(none.includes("No hay deals con estos filtros"), "lista: los comodines de la búsqueda se tratan como texto");
+  const rotten = await (await get(`/pipelines/${P.ampl}?view=list&flag=rotten`)).text();
+  check(has(rotten, "Paco — ampliación de servicio") && rotten.includes("Quitar filtros"), "lista: filtro «parados»");
+  const views = await (await get(`/pipelines/${P.inbound}?view=list`)).text();
+  check(views.includes("Sin próxima actividad") && views.includes("Cierran este mes") && views.includes("Vistas guardadas"),
+        "lista: vistas guardadas de serie");
+  const cols = await (await get(`/pipelines/${P.inbound}?view=list&cols=value,cf:competidor`)).text();
+  check(cols.includes("<th>Competidor principal</th>") && !cols.includes('class="th-sort">Cierre previsto') && cols.includes('class="th-sort">Importe'),
+        "lista: columnas elegidas, también campos personalizados");
+  check(cols.includes("+ Guardar esta vista"), "lista: se puede guardar la vista actual");
+  const exp = await (await get(`/api/export/deals?pipeline=${P.inbound}&status=all&q=otra%20plat`)).text();
+  check(exp.includes("Paco — otra plataforma") && !exp.includes("Paco — contrato anual"), "exportar desde la lista respeta sus filtros");
+}
+
 // ------------------------------------------------------------- Exportar a CSV
 {
   const csv = async (path) => {

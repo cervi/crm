@@ -64,6 +64,7 @@ const LABELS: Record<string, string> = {
   "lead.updated": "Lead actualizado",
   "deal.created": "Deal creado",
   "deal.updated": "Deal actualizado",
+  "deal.owner_changed": "Cambio de responsable",
   "deal.stage_changed": "Cambio de fase",
   "deal.pipeline_changed": "Cambio de pipeline",
   "deal.won": "Deal ganado",

@@ -1,3 +1,4 @@
+import { isDealFlag, listPipelineDeals, type DealFlag } from "./pipelines";
 import { sql } from "./db";
 import { num, type Cell, type Separator } from "./csv";
 import { listFieldDefinitions, type CustomEntity, type FieldDefinition } from "./custom-fields";
@@ -56,6 +57,15 @@ const optId = (p: URLSearchParams, k: string) => (isId(p.get(k)) ? p.get(k)! : n
 async function deals(p: URLSearchParams): Promise<Table> {
   const pipeline = optId(p, "pipeline"), owner = optId(p, "owner"), org = optId(p, "organization");
   const status = ["open", "won", "lost"].includes(p.get("status") ?? "") ? p.get("status")! : "all";
+  // Con los filtros de la lista (búsqueda, fase, situación, importe), lo mismo que se ve en pantalla.
+  const listFilters = ["q", "stage", "flag", "min", "max"].some((k) => p.get(k));
+  const only = pipeline && listFilters
+    ? (await listPipelineDeals(pipeline, {
+        ownerId: owner, status: status as "all" | "open" | "won" | "lost", q: p.get("q"),
+        stageId: optId(p, "stage"), flag: isDealFlag(p.get("flag")) ? (p.get("flag") as DealFlag) : null,
+        min: p.get("min") ? Number(p.get("min")) || null : null, max: p.get("max") ? Number(p.get("max")) || null : null,
+      })).map((r) => r.id)
+    : null;
   const [cf, rows] = await Promise.all([customColumns("deal"), sql<{
     id: string; title: string; organization: string | null; contact: string | null; email: string | null; pipeline: string; stage: string;
     status: string; value: string | null; currency: string; expected_close_date: string | null; owner: string | null; source: string | null;
@@ -83,6 +93,7 @@ async function deals(p: URLSearchParams): Promise<Table> {
       AND (${owner}::uuid IS NULL OR d.owner_id = ${owner}::uuid)
       AND (${org}::uuid IS NULL OR d.organization_id = ${org}::uuid)
       AND (${status} = 'all' OR d.status = ${status})
+      AND (${only === null} OR d.id = ANY(${only ?? []}::uuid[]))
     ORDER BY pl.name, s.position, d.title`]);
   return {
     name: "deals",
