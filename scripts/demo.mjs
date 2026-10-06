@@ -159,7 +159,10 @@ try {
    · Ajustes → Correo, calendario y documentos → «Conectar Microsoft 365» o «Conectar Google Workspace»
      (simulados: no se envía nada de verdad).
    · Un deal → «Correo» → «Insertar mis huecos», y «Documentos» → buscar «paco».
-   · Bandeja de la IA → «Revisar ahora».
+   · Bandeja de la IA → «Revisar ahora». Y «Agentes» para ver qué hace cada uno.
+   · Clientes: Paco S.L. con su contrato, uso, salud, renovación y QBR; «Matriz de productos».
+   · Campañas de outbound: crea una y pega contactos en CSV.
+   · Correos enviados: cada apertura con su fecha y dispositivo.
    · Ajustes → Modelo de IA: pon tu clave real para ver resúmenes de verdad.
    · Ajustes → Importar desde Pipedrive (simulado): token «token-pipedrive-de-pruebas-0123456789».
 
