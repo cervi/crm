@@ -92,7 +92,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </dl>
             )}
             {Object.keys(lead.utm ?? {}).length > 0 && (
-              <p className="meta">Atribución: {Object.entries(lead.utm).map(([k, v]) => `${k} = ${v}`).join(" · ")}</p>
+              <p className="meta">Atribución: {Object.entries(lead.utm).map(([k, v]) => `${({ source: "fuente", medium: "medio", campaign: "campaña", term: "término", content: "contenido" } as Record<string, string>)[k] ?? k}: ${v}`).join(" · ")}</p>
             )}
           </section>
 

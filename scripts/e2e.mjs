@@ -1356,10 +1356,11 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   const inbox = await (await get("/inbox")).text();
   check(inbox.includes("Responder a Laura Logística") && inbox.includes(`/leads/${l1.lead_id}`), "bandeja: la propuesta enlaza al lead");
   const leadPage = await (await get(`/leads/${l1.lead_id}`)).text();
-  check(leadPage.includes("Encaje con vuestro perfil") && leadPage.includes("Encaja") && leadPage.includes("utm_campaign = otono-e2e"),
+  check(leadPage.includes("Encaje con vuestro perfil") && leadPage.includes("Encaja") && leadPage.includes("campaña: otono-e2e"),
         "ficha del lead: encaje, datos de la empresa y atribución");
   const fitList = await (await get("/leads?fit=fit")).text();
-  check(fitList.includes("Laura Logística") && !fitList.includes("Rosa Sin Perfil"), "leads: filtro por encaje");
+  const noFitList = await (await get("/leads?fit=no_fit")).text();
+  check(fitList.includes("Laura Logística") && !noFitList.includes("Laura Logística"), "leads: filtro por encaje");
   // Exclusión: deja de encajar.
   await sql`UPDATE icp_profile SET exclusions = ARRAY['logistica-e2e'], updated_at = now()`;
   await run();
@@ -1406,13 +1407,12 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   const cpage = await (await get(`/campaigns/${camp.id}`)).text();
   check(cpage.includes("Para aprobar") && cpage.includes("(IA) He visto que estáis ampliando") && cpage.includes("Aprobar todos (2)"), "campañas: lista para aprobar por lotes");
   await sql`UPDATE campaign_contacts SET status = 'approved' WHERE campaign_id = ${camp.id} AND status = 'ready'`;
+  const before = (await mock("/__state")).sent.length;
   await run();
   const enrolled = await sql`SELECT cc.email, cc.status, cc.mailbox_id, e.status AS enr FROM campaign_contacts cc LEFT JOIN sequence_enrollments e ON e.id = cc.enrollment_id
                              WHERE cc.campaign_id = ${camp.id} AND cc.status = 'enrolled'`;
   check(enrolled.length === 2 && enrolled.every((x) => x.mailbox_id === ob.id && x.enr === "active"), "campañas: los aprobados entran en la secuencia desde el buzón de outbound", JSON.stringify(enrolled));
-  const before = (await mock("/__state")).sent.length;
-  await sql`UPDATE sequence_enrollments SET next_run_at = now() - interval '1 minute' WHERE campaign_contact_id IN (SELECT id FROM campaign_contacts WHERE campaign_id = ${camp.id})`;
-  await run();
+  // El primer paso no tiene espera: sale en la misma revisión (dentro del horario y del cupo del buzón).
   const st = await mock("/__state");
   const out = await sql`SELECT to_email, body, mailbox_id, campaign_id FROM emails WHERE campaign_id = ${camp.id} AND direction = 'out' ORDER BY to_email`;
   check(st.sent.length === before + 2 && out.length === 2 && out.every((e) => e.mailbox_id === ob.id && e.body.includes("/u/") && e.body.includes("darte de baja")),
