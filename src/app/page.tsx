@@ -165,6 +165,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           </section>
           <section className="panel" aria-label="Lo que hizo la IA">
             <h2>Lo que hizo la IA <span className="muted">últimas 24 h</span></h2>
+            {d.agents.length > 0 && <p className="meta" style={{ marginTop: 0 }}>{d.agents.map((a) => `${a.name}: ${a.done}${a.pending ? ` (+${a.pending} por decidir)` : ""}`).join(" · ")} · <Link href="/agents">Ver agentes</Link></p>}
             <List items={d.aiDone.items} empty="Nada en las últimas 24 horas." />
             {d.aiDone.count > d.aiDone.items.length && <Link href="/inbox?view=log" className="meta">Ver las {d.aiDone.count}</Link>}
           </section>

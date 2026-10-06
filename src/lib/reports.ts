@@ -215,3 +215,19 @@ export async function attribution(days = 365): Promise<AttributionRow[]> {
     ORDER BY sum(won_value) DESC, sum(deals) DESC, sum(leads) DESC
     LIMIT 50`;
 }
+
+// ---------------------------------------------------------------------------
+// Nuevo negocio frente a expansión y renovaciones (lo ganado, por tipo y origen).
+
+export type MixRow = { deal_type: string; origin: string; won: number; won_value: number; open: number; open_value: number };
+
+export async function revenueMix(days = 365): Promise<MixRow[]> {
+  return sql<MixRow[]>`
+    SELECT d.deal_type, d.origin,
+           count(*) FILTER (WHERE d.status = 'won' AND d.won_at > now() - make_interval(days => ${days}))::int AS won,
+           coalesce(sum(d.value) FILTER (WHERE d.status = 'won' AND d.won_at > now() - make_interval(days => ${days})), 0)::float8 AS won_value,
+           count(*) FILTER (WHERE d.status = 'open')::int AS open,
+           coalesce(sum(d.value) FILTER (WHERE d.status = 'open'), 0)::float8 AS open_value
+    FROM deals d WHERE d.deleted_at IS NULL AND d.deal_type <> 'onboarding'
+    GROUP BY d.deal_type, d.origin ORDER BY won_value DESC`;
+}

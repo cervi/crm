@@ -118,6 +118,70 @@ export async function saveAiSettings(data: Record<string, unknown>) {
 
 export const promptFor = (s: AiSettings, task: AiTask) => s.prompts[task] ?? DEFAULT_PROMPTS[task];
 
+// ---------------------------------------------------------------------------
+// Consumo y presupuesto
+
+/** Qué agente usa cada tarea (para el presupuesto por agente). */
+export const TASK_AGENT: Record<AiTask, string> = {
+  enrich_company: "captacion", qualify_lead: "captacion", lead_chat: "captacion",
+  icebreaker: "prospeccion", classify_reply: "prospeccion",
+  deal_brief: "ejecutivo", meeting_recap: "ejecutivo", meeting_prep: "ejecutivo", call_extraction: "ejecutivo", proposal: "ejecutivo",
+  daily_digest: "riesgo", report_question: "riesgo",
+  handoff: "onboarding",
+};
+/** Lo que una persona está esperando en ese momento: no se corta por presupuesto. */
+const URGENT = new Set<AiTask | "test">(["test", "lead_chat", "report_question", "proposal"]);
+
+export type AiSpend = { month: number; byAgent: Record<string, number>; budget: number | null; agentBudgets: Record<string, number>; calls: number };
+
+export async function aiSpend(): Promise<AiSpend> {
+  const [cfg] = await sql<{ monthly_budget: string | null; agent_budgets: Record<string, number> }[]>`SELECT monthly_budget::text, agent_budgets FROM ai_settings`;
+  const rows = await sql<{ agent: string | null; cost: number; calls: number }[]>`
+    SELECT agent, sum(cost)::float8 AS cost, count(*)::int AS calls FROM ai_usage WHERE at >= date_trunc('month', now()) GROUP BY agent`;
+  const byAgent: Record<string, number> = {};
+  for (const r of rows) byAgent[r.agent ?? "otros"] = r.cost;
+  return {
+    month: rows.reduce((n, r) => n + r.cost, 0), byAgent, calls: rows.reduce((n, r) => n + r.calls, 0),
+    budget: cfg?.monthly_budget === null || cfg?.monthly_budget === undefined ? null : Number(cfg.monthly_budget), agentBudgets: cfg?.agent_budgets ?? {},
+  };
+}
+
+/** ¿Hay presupuesto para esta tarea? (las urgentes siempre pasan). */
+async function withinBudget(task: AiTask | "test"): Promise<string | null> {
+  if (URGENT.has(task)) return null;
+  const s = await aiSpend();
+  if (s.budget !== null && s.month >= s.budget) return `Presupuesto de IA del mes agotado (${s.month.toFixed(2)} € de ${s.budget} €): solo se usa en lo urgente.`;
+  const agent = TASK_AGENT[task as AiTask];
+  const cap = agent ? Number(s.agentBudgets[agent]) : NaN;
+  if (agent && Number.isFinite(cap) && cap >= 0 && (s.byAgent[agent] ?? 0) >= cap) return `Presupuesto de IA del agente «${agent}» agotado este mes.`;
+  return null;
+}
+
+async function recordUsage(task: AiTask | "test", input: number, output: number) {
+  const [cfg] = await sql<{ price_in: string; price_out: string }[]>`SELECT price_in::text, price_out::text FROM ai_settings`;
+  const cost = (input * Number(cfg?.price_in ?? 3) + output * Number(cfg?.price_out ?? 15)) / 1e6;
+  await sql`INSERT INTO ai_usage (task, agent, input_tokens, output_tokens, cost)
+            VALUES (${task}, ${TASK_AGENT[task as AiTask] ?? null}, ${input}, ${output}, ${cost})`;
+  // Avisos a los administradores al 80 % y al 100 % del presupuesto (una vez al mes cada uno).
+  const s = await aiSpend();
+  if (s.budget === null || s.budget <= 0) return;
+  const month = new Date().toISOString().slice(0, 7);
+  for (const pct of [100, 80]) {
+    if (s.month < (s.budget * pct) / 100) continue;
+    const key = `${month}:${pct}`;
+    const [fresh] = await sql`UPDATE ai_settings SET budget_alerts = array_append(budget_alerts, ${key}) WHERE NOT (${key} = ANY(budget_alerts)) RETURNING 1`;
+    if (fresh) {
+      const admins = await sql<{ id: string }[]>`SELECT id FROM users WHERE role = 'admin' AND is_active AND kind = 'human'`;
+      for (const a of admins) {
+        await sql`INSERT INTO notifications (user_id, kind, title, body, link) VALUES (${a.id}, 'ai_budget',
+                  ${pct === 100 ? "Presupuesto de IA del mes agotado" : "Llevas el 80 % del presupuesto de IA del mes"},
+                  ${`${s.month.toFixed(2)} € de ${s.budget} €.${pct === 100 ? " Hasta fin de mes, la IA solo se usa en lo urgente (chat de la web, propuestas y preguntas); lo demás sigue con reglas." : ""}`}, '/agents')`;
+      }
+    }
+    break;
+  }
+}
+
 /**
  * Pide un texto al modelo configurado. Devuelve null si no hay IA
  * configurada o si falla (el error queda en Ajustes).
@@ -126,6 +190,11 @@ export async function generate(task: AiTask | "test", facts: unknown, opts: { ma
   const [row] = await sql<{ provider: AiProvider; base_url: string | null; model: string | null; api_key: string | null;
                            prompts: Partial<Record<AiTask, string>> }[]>`SELECT provider, base_url, model, api_key, prompts FROM ai_settings`;
   if (!row || row.provider === "none" || !row.model || !row.api_key) return null;
+  const blocked = await withinBudget(task);
+  if (blocked) {
+    await sql`UPDATE ai_settings SET last_error = ${blocked}`;
+    return null;
+  }
   const p = preset(row.provider);
   const base = (row.base_url || p.baseUrl).replace(/\/$/, "");
   const system = task === "test" ? "Responde solo «ok»." : (row.prompts[task] ?? DEFAULT_PROMPTS[task]);
@@ -133,6 +202,8 @@ export async function generate(task: AiTask | "test", facts: unknown, opts: { ma
   try {
     const key = decrypt(row.api_key);
     let text: string | undefined;
+    // Tokens usados; si el proveedor no los da, se estiman (unos 4 caracteres por token).
+    let usage: [number, number] = [0, 0];
     if (p.kind === "anthropic") {
       const res = await fetch(`${base}/v1/messages`, {
         method: "POST",
@@ -143,6 +214,7 @@ export async function generate(task: AiTask | "test", facts: unknown, opts: { ma
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error?.message ?? `HTTP ${res.status}`);
       text = (j.content ?? []).filter((c: { type: string }) => c.type === "text").map((c: { text: string }) => c.text).join("\n");
+      usage = [Number(j.usage?.input_tokens) || 0, Number(j.usage?.output_tokens) || 0];
     } else {
       const res = await fetch(`${base}/chat/completions`, {
         method: "POST",
@@ -153,8 +225,11 @@ export async function generate(task: AiTask | "test", facts: unknown, opts: { ma
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error?.message ?? `HTTP ${res.status}`);
       text = j.choices?.[0]?.message?.content;
+      usage = [Number(j.usage?.prompt_tokens) || 0, Number(j.usage?.completion_tokens) || 0];
     }
     if (!text?.trim()) throw new Error("El modelo no devolvió texto.");
+    if (!usage[0] && !usage[1]) usage = [Math.ceil((system.length + user.length) / 4), Math.ceil(text.length / 4)];
+    await recordUsage(task, usage[0], usage[1]).catch((err) => console.error("[consumo de IA]", err));
     await sql`UPDATE ai_settings SET last_ok_at = now(), last_error = NULL`;
     return text.trim();
   } catch (err) {

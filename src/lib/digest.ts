@@ -6,6 +6,7 @@ import { UserError } from "./errors";
 import { activityLabel, isSessionType, money } from "./format";
 import { activityTypes } from "./activity-types";
 import { healthMovers } from "./health";
+import { AGENT_INFO, AGENT_KEYS } from "./agent-jobs";
 
 // ===========================================================================
 // Parte del día: lo que hay que decidir, la agenda, lo vencido, los deals que
@@ -63,6 +64,8 @@ export type Digest = {
   movers: { id: string; title: string; score: number; before: number; why: string | null }[];
   /** Correos abiertos recientemente sin respuesta: buen momento para llamar. */
   hotOpens: DigestItem[];
+  /** Lo hecho por cada agente en 24 h (el resumen del jefe de agentes). */
+  agents: { name: string; done: number; pending: number }[];
 };
 
 /**
@@ -112,6 +115,12 @@ export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" 
       SELECT count(*)::int AS count, coalesce(sum(value), 0)::text AS value FROM open_deals_status ods WHERE ${byOwner(sql.unsafe("ods.owner_id"))}`,
   ]);
 
+  const agentRows = await sql<{ agent: string; done: number; pending: number }[]>`
+    SELECT r.agent, count(*) FILTER (WHERE x.status = 'done' AND x.executed_at > now() - interval '24 hours')::int AS done,
+           count(*) FILTER (WHERE x.status = 'pending')::int AS pending
+    FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id LEFT JOIN deals d ON d.id = x.deal_id
+    WHERE r.agent IS NOT NULL AND (${ownerId}::uuid IS NULL OR d.owner_id = ${ownerId}::uuid OR x.deal_id IS NULL)
+    GROUP BY r.agent`;
   const [movers, hotOpens] = await Promise.all([
     healthMovers(ownerId).catch(() => []),
     sql<{ id: string; subject: string; who: string | null; deal_title: string | null; opens: number; last: Date }[]>`
@@ -151,6 +160,8 @@ export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" 
       id: m.id, title: m.title, score: m.score, before: m.before,
       why: m.signals.find((x) => (m.score < m.before ? x.tone === "risk" : x.tone === "good"))?.label ?? null,
     })),
+    agents: AGENT_KEYS.map((k) => ({ name: AGENT_INFO[k].name, done: agentRows.find((r) => r.agent === k)?.done ?? 0, pending: agentRows.find((r) => r.agent === k)?.pending ?? 0 }))
+      .filter((a) => a.done || a.pending),
     hotOpens: hotOpens.map((e) => ({
       title: `${e.who ?? "Alguien"} ha abierto «${e.subject || "(sin asunto)"}» ${e.opens} ${e.opens === 1 ? "vez" : "veces"}`,
       detail: e.deal_title ? `${e.deal_title} · sin responder` : "sin responder", href: `/emails/${e.id}`, at: e.last, tone: "good" as const,
@@ -223,6 +234,7 @@ export function digestEmail(d: Digest, appUrl: string) {
     ...section("Abiertos sin responder (48 h): buen momento para llamar", d.hotOpens.map((x) => `- ${x.title} (${x.detail})`)),
     ...section("Deals que piden atención", d.attention.map((a) => `- ${a.deal.title} (${money(a.deal.value, a.deal.currency)}): ${a.step.text}. ${a.step.why} ${url(`/deals/${a.deal.id}`)}`)),
     ...section(`Lo que hizo la IA en las últimas 24 h (${d.aiDone.count})`, d.aiDone.items.map((x) => `- ${x.title} — ${x.detail}`)),
+    ...section("Agentes (24 h)", d.agents.map((a) => `- ${a.name}: ${a.done} hecho${a.done === 1 ? "" : "s"}${a.pending ? `, ${a.pending} esperando tu decisión` : ""}`)),
     ...section(`Leads nuevos en las últimas 24 h (${d.leads.count})`, d.leads.items.map((x) => `- ${x.title}${x.detail ? ` (${x.detail})` : ""}`)),
     ...section("Cerrados en las últimas 24 h", d.closed.map((x) => `- ${x.title}: ${x.detail}`)),
     `Pipeline abierto: ${d.pipeline.count} deals · ${money(d.pipeline.value)}`,

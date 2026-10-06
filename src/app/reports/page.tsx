@@ -7,7 +7,8 @@ import { listDashboards } from "@/lib/analytics";
 import { requireUser } from "@/lib/auth";
 import { money } from "@/lib/format";
 import { listPipelines } from "@/lib/pipelines";
-import { ask, attribution, forecast, funnel, GOAL_METRICS, goalsProgress, velocity, type Answer } from "@/lib/reports";
+import { DEAL_TYPE_LABEL, ORIGIN_LABEL } from "@/lib/deal-types";
+import { ask, attribution, revenueMix, forecast, funnel, GOAL_METRICS, goalsProgress, velocity, type Answer } from "@/lib/reports";
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
 import { toUserMessage } from "@/lib/errors";
@@ -32,8 +33,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const pipelineId = isId(sp.pipeline) ? sp.pipeline : null;
   const ownerId = isId(sp.owner) ? sp.owner : null;
   const funnelPipeline = pipelineId ?? active[0]?.id ?? null;
-  const [fc, vel, goals, fun, attr] = await Promise.all([
-    forecast({ pipelineId, ownerId }), velocity(pipelineId), goalsProgress(), funnelPipeline ? funnel(funnelPipeline) : null, attribution(365),
+  const [fc, vel, goals, fun, attr, mix] = await Promise.all([
+    forecast({ pipelineId, ownerId }), velocity(pipelineId), goalsProgress(), funnelPipeline ? funnel(funnelPipeline) : null, attribution(365), revenueMix(365),
   ]);
   let answer: Answer | null = null, askError: string | null = null;
   if (sp.q) {
@@ -190,6 +191,25 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </ol>
         </section>
       )}
+
+      <section className="panel" aria-label="Nuevo negocio y expansión">
+        <h2>Nuevo negocio, expansión y renovaciones <span className="muted">ganado en 12 meses · abierto ahora</span></h2>
+        {mix.length === 0 ? <p className="muted">Todavía no hay datos.</p> : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Tipo</th><th>Lo trajo</th><th className="num">Ganados</th><th className="num">Importe ganado</th><th className="num">Abiertos</th><th className="num">Importe abierto</th></tr></thead>
+              <tbody>
+                {mix.map((r) => (
+                  <tr key={`${r.deal_type}|${r.origin}`}>
+                    <td>{DEAL_TYPE_LABEL[r.deal_type as keyof typeof DEAL_TYPE_LABEL] ?? r.deal_type}</td><td>{ORIGIN_LABEL[r.origin as keyof typeof ORIGIN_LABEL] ?? r.origin}</td>
+                    <td className="num">{r.won}</td><td className="num">{money(r.won_value)}</td><td className="num">{r.open}</td><td className="num">{money(r.open_value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="panel" aria-label="Atribución">
         <h2>Atribución <span className="muted">últimos 12 meses · qué canal trae deals ganados, no solo leads</span></h2>

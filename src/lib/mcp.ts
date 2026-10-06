@@ -11,6 +11,7 @@ import { isId } from "./validation";
 import { getHealth } from "./health";
 import { getInsights } from "./deal-agent";
 import { addContacts, CAMPAIGN_STATUS, listCampaigns } from "./campaigns";
+import { listAccounts, recordUsage } from "./accounts";
 
 // ===========================================================================
 // Servidor MCP para agentes externos (Grok Bot u otros): consultan el CRM y
@@ -293,6 +294,65 @@ const TOOLS: Tool[] = [
         email: str(c?.email), full_name: str(c?.nombre) || undefined, company: str(c?.empresa) || undefined, job_title: str(c?.cargo) || undefined, domain: str(c?.dominio) || undefined,
       })), `mcp:${agent.name}`.slice(0, 60));
       return { anadidos: r.added, ya_estaban: r.existing, descartados: r.skipped, siguiente: "Se verifican y personalizan en la próxima revisión; una persona los aprueba antes de enviar.", enlace: appUrl(`/campaigns/${id}`) };
+    },
+  },
+  {
+    name: "cuentas",
+    description: "Clientes (cuentas con contrato) con importe anual, salud 0-100 y sus señales, renovación, satisfacción y oportunidades de expansión abiertas.",
+    inputSchema: { type: "object", properties: { filtro: { type: "string", enum: ["riesgo", "renuevan", "onboarding"], description: "Opcional" } } },
+    run: async (a) => {
+      const f = ({ riesgo: "risk", renuevan: "renewing", onboarding: "onboarding" } as Record<string, string>)[str(a.filtro)] ?? null;
+      return (await listAccounts({ filter: f })).slice(0, 100).map((r) => ({
+        id: r.id, cliente: r.name, importe_anual: r.arr, salud: r.health, senales: r.health_signals.map((x) => x.label), renovacion: r.renewal_date,
+        dias_para_renovar: r.days_to_renewal, satisfaccion: r.nps, expansion_abierta: r.open_expansion, customer_success: r.cs_owner_name,
+        enlace: appUrl(`/organizations/${r.id}`),
+      }));
+    },
+  },
+  {
+    name: "registrar_uso",
+    description: "Guarda un dato de uso del producto de un cliente (p. ej. usuarios_activos, licencias_en_uso, tickets_abiertos). Alimenta la salud de la cuenta y la detección de upselling.",
+    write: true,
+    inputSchema: { type: "object", properties: { dominio: { type: "string" }, organization_id: { type: "string" }, metrica: { type: "string" }, valor: { type: "number" } }, required: ["metrica", "valor"] },
+    run: async (a, agent) => {
+      if (!agent.can_write) throw new UserError("Esta clave es de solo lectura.");
+      return recordUsage({ domain: str(a.dominio) || undefined, organization_id: str(a.organization_id) || undefined, metric: str(a.metrica), value: num(a.valor), source: `mcp:${agent.name}` });
+    },
+  },
+  {
+    name: "proponer_expansion",
+    description: "Propone una oportunidad de upsell o cross-sell para un cliente (con su porqué). Según los permisos, se crea al momento o queda para aprobar.",
+    write: true,
+    inputSchema: {
+      type: "object",
+      properties: {
+        organization_id: { type: "string" }, tipo: { type: "string", enum: ["upsell", "cross_sell"] }, titulo: { type: "string" },
+        importe: { type: "number" }, motivo: { type: "string" },
+      },
+      required: ["organization_id", "tipo", "titulo", "motivo"],
+    },
+    run: async (a, agent) => {
+      if (!agent.can_write) throw new UserError("Esta clave es de solo lectura.");
+      const orgId = str(a.organization_id);
+      if (!isId(orgId)) throw new UserError("organization_id no válido (usa «cuentas»).");
+      const [o] = await sql<{ name: string }[]>`SELECT name FROM organizations WHERE id = ${orgId} AND deleted_at IS NULL`;
+      if (!o) throw new UserError("Esa empresa no existe.");
+      const [perms, mailbox] = await Promise.all([listPermissions(), hasActiveMailbox()]);
+      const level = capForMailbox("create_deal", perms.find((p) => p.actor === "external" && p.action_type === "create_deal")?.autonomy ?? "off", mailbox);
+      if (level === "off") throw new UserError("Los agentes externos no tienen permiso para crear deals (Ajustes → Automatizaciones).");
+      const type = str(a.tipo) === "cross_sell" ? "cross_sell" : "upsell";
+      const value = num(a.importe);
+      const [row] = await sql<{ id: string }[]>`
+        INSERT INTO automation_actions ${sql({
+          actor: "external", agent_name: agent.name, subject_type: "organization", subject_id: orgId, deal_id: null, action_type: "create_deal",
+          title: `Oportunidad de ${type === "upsell" ? "upsell" : "cross-sell"}: ${str(a.titulo)}`.slice(0, 300), reason: str(a.motivo).slice(0, 1000) || `Propuesto por ${agent.name}`,
+          payload: sql.json({ kind: "expansion", organization_id: orgId, type, title: str(a.titulo).slice(0, 300), value: Number.isFinite(value) ? value : null, note: str(a.motivo) } as never),
+          mode: level,
+        } as unknown as Record<string, never>)} RETURNING id`;
+      if (level === "ask") return { estado: "pendiente", mensaje: "Queda en la bandeja para que una persona lo apruebe.", propuesta_id: row.id, enlace: appUrl("/inbox") };
+      await executeAction(row.id, { actor: { type: "integration", id: null } });
+      const [done] = await sql<{ result: unknown }[]>`SELECT result FROM automation_actions WHERE id = ${row.id}`;
+      return { estado: "hecho", propuesta_id: row.id, resultado: done?.result ?? null };
     },
   },
 ];

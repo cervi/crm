@@ -79,6 +79,8 @@ export type Rule = {
   trigger: CustomTrigger | null;
   action: CustomAction | null;
   created_at: Date;
+  /** Agente al que pertenece (captación, prospección, ejecutivo, riesgo, onboarding, cuenta). */
+  agent: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -137,6 +139,7 @@ export const RULE_ACTION: Record<string, ActionType> = {
   onboarding_survey: "draft_email",
   renewal_deal: "create_deal",
   qbr_prepare: "create_task",
+  expansion_opportunity: "create_deal",
   call_next_steps: "create_task",
   call_deal_update: "update_deal",
   multithread: "create_task",
@@ -190,6 +193,10 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
   ],
   renewal_deal: [{ key: "days_before", label: "Días antes del vencimiento", kind: "days" }],
   qbr_prepare: [{ key: "every_days", label: "Cada (días)", kind: "days" }],
+  expansion_opportunity: [
+    { key: "seats_ratio", label: "Licencias en uso para proponer ampliarlas (0,85 = 85 %)", kind: "number" },
+    { key: "growth", label: "Crecimiento de uso en 30 días (0,3 = 30 %)", kind: "number" },
+  ],
   inbound_first_reply: [
     { key: "max_age_hours", label: "Solo leads de las últimas (horas)", kind: "number" },
     { key: "subject", label: "Asunto", kind: "text" },
@@ -207,7 +214,7 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
 
 export async function listRules(): Promise<Rule[]> {
   return sql<Rule[]>`
-    SELECT id, key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action, created_at
+    SELECT id, key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action, created_at, agent
     FROM automation_rules ORDER BY is_custom, position, name`;
 }
 
@@ -405,6 +412,81 @@ const missingSession = (grace: number) => sql`
   ods.required_activity_type IS NOT NULL AND NOT ods.has_upcoming_session AND ods.days_in_stage >= ${grace}`;
 
 const SCANNERS: Record<string, Scanner> = {
+  // Clientes con señales de expansión: upsell (más de lo mismo) o cross-sell (otro producto).
+  async expansion_opportunity(rule) {
+    const ratioMin = num(rule.params.seats_ratio, 0.85), growthMin = num(rule.params.growth, 0.3);
+    const rows = await sql<{ id: string; name: string; seats: number | null; annual: number; seats_used: number | null; usage_now: number | null;
+                             usage_before: number | null; new_people: number; health: number | null; nps: number | null; renewal_days: number | null;
+                             owned: string[] }[]>`
+      SELECT o.id, o.name,
+        (SELECT sum(c.seats)::int FROM contracts c WHERE c.organization_id = o.id AND c.status = 'active') AS seats,
+        (SELECT coalesce(sum(c.annual_value), 0)::float8 FROM contracts c WHERE c.organization_id = o.id AND c.status = 'active') AS annual,
+        (SELECT u.value::float8 FROM account_usage u WHERE u.organization_id = o.id AND u.metric IN ('licencias_en_uso', 'seats_used', 'usuarios') ORDER BY u.at DESC LIMIT 1) AS seats_used,
+        (SELECT u.value::float8 FROM account_usage u WHERE u.organization_id = o.id AND u.metric = 'usuarios_activos' ORDER BY u.at DESC LIMIT 1) AS usage_now,
+        (SELECT u.value::float8 FROM account_usage u WHERE u.organization_id = o.id AND u.metric = 'usuarios_activos' AND u.at <= now() - interval '28 days' ORDER BY u.at DESC LIMIT 1) AS usage_before,
+        (SELECT count(*)::int FROM person_organizations po WHERE po.organization_id = o.id AND po.status = 'current' AND po.created_at > now() - interval '60 days') AS new_people,
+        h.score AS health,
+        (SELECT s.score FROM surveys s WHERE s.organization_id = o.id AND s.answered_at IS NOT NULL ORDER BY s.answered_at DESC LIMIT 1) AS nps,
+        (SELECT min(c.renewal_date - current_date) FROM contracts c WHERE c.organization_id = o.id AND c.status = 'active') AS renewal_days,
+        coalesce((SELECT array_agg(DISTINCT i.product_id::text) FROM contract_items i JOIN contracts c ON c.id = i.contract_id
+                  WHERE c.organization_id = o.id AND c.status = 'active'), '{}') AS owned
+      FROM organizations o LEFT JOIN account_health h ON h.organization_id = o.id
+      WHERE o.deleted_at IS NULL AND EXISTS (SELECT 1 FROM contracts c WHERE c.organization_id = o.id AND c.status = 'active')
+        AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.organization_id = o.id AND d.deal_type IN ('upsell', 'cross_sell', 'onboarding')
+                          AND d.status = 'open' AND d.deleted_at IS NULL)
+      LIMIT 300`;
+    const products = await sql<{ id: string; name: string; unit_price: number; billing: string }[]>`
+      SELECT id, name, coalesce(unit_price, 0)::float8 AS unit_price, billing FROM products WHERE is_active ORDER BY unit_price DESC NULLS LAST`;
+    const month = new Date().toISOString().slice(0, 7);
+    const out: Candidate[] = [];
+    for (const o of rows) {
+      const why: string[] = [];
+      let type: "upsell" | "cross_sell" | null = null, value: number | null = null, product: (typeof products)[number] | null = null, quantity: number | null = null;
+      // Upsell: licencias casi llenas, uso al alza o equipos nuevos.
+      if (o.seats && o.seats_used !== null && o.seats_used / o.seats >= ratioMin) {
+        type = "upsell"; quantity = Math.max(1, Math.ceil(o.seats * 0.25));
+        value = Math.round((o.annual / o.seats) * quantity);
+        why.push(`usa ${Math.round(o.seats_used)} de ${o.seats} licencias`);
+      }
+      if (o.usage_now !== null && o.usage_before && (o.usage_now - o.usage_before) / o.usage_before >= growthMin) {
+        type ??= "upsell";
+        why.push(`el uso sube un ${Math.round(((o.usage_now - o.usage_before) / o.usage_before) * 100)} % en 30 días`);
+      }
+      if (o.new_people >= 3) { type ??= "upsell"; why.push(`${o.new_people} personas nuevas en la empresa en 60 días (¿equipos o sedes nuevos?)`); }
+      // Cross-sell: preguntan por otro producto, o están muy contentos y les falta algo del catálogo.
+      const gaps = products.filter((p) => !o.owned.includes(p.id));
+      if (!type && gaps.length) {
+        const names = gaps.map((p) => p.name.toLowerCase()).filter((n) => n.length >= 4);
+        const [asked] = names.length ? await sql<{ txt: string }[]>`
+          SELECT lower(t.txt) AS txt FROM (
+            SELECT e.body AS txt FROM emails e WHERE e.direction = 'in' AND e.organization_id = ${o.id} AND e.sent_at > now() - interval '60 days'
+            UNION ALL SELECT n.content FROM notes n WHERE (n.organization_id = ${o.id} OR n.deal_id IN (SELECT id FROM deals WHERE organization_id = ${o.id}))
+              AND n.created_at > now() - interval '60 days') t
+          WHERE lower(t.txt) LIKE ANY(${names.map((n) => `%${n}%`)}::text[]) LIMIT 1` : [];
+        const mentioned = asked ? gaps.find((p) => asked.txt.includes(p.name.toLowerCase())) : undefined;
+        if (mentioned) { type = "cross_sell"; product = mentioned; why.push(`ha preguntado por «${mentioned.name}»`); }
+        else if ((o.health ?? 0) >= 70 && (o.nps === null || o.nps >= 9)) {
+          type = "cross_sell"; product = gaps[0];
+          why.push(`la cuenta está sana (${o.health}/100)${o.nps !== null ? ` y os puntúa con un ${o.nps}` : ""}, y aún no tiene «${gaps[0].name}»`);
+        }
+        if (product) { quantity = 1; value = Math.round(product.unit_price * (product.billing === "monthly" ? 12 : 1)) || null; }
+      }
+      if (!type) continue;
+      if (o.renewal_days !== null && o.renewal_days <= 90) why.push(`renueva en ${o.renewal_days} días: buen momento para incluirlo`);
+      const title = type === "upsell" ? `Ampliar ${o.seats ? "licencias" : "el servicio"} de ${o.name}` : `${product!.name} para ${o.name}`;
+      out.push({
+        dealId: o.id, subject: "organization",
+        title: `Oportunidad de ${type === "upsell" ? "upsell" : "cross-sell"}: ${title}`,
+        reason: `${why.join("; ").replace(/^./, (c) => c.toUpperCase())}.`,
+        payload: {
+          kind: "expansion", organization_id: o.id, type, title, value, product_id: product?.id ?? null, quantity,
+          note: `Detectado por el agente de cuenta: ${why.join("; ")}.`, once_key: `exp:${o.id}:${type}:${product?.id ?? ""}:${month}`,
+        },
+      });
+    }
+    return out;
+  },
+
   // Contratos que vencen pronto: deal de renovación.
   async renewal_deal(rule) {
     const days = num(rule.params.days_before, 120);
@@ -1218,6 +1300,17 @@ async function alreadyHandled(rule: Rule, c: Candidate) {
 
 /** Crea la propuesta; si la autonomía es «auto», la ejecuta. */
 async function propose(rule: Rule, mode: "ask" | "auto", c: Candidate): Promise<"proposed" | "executed" | "failed" | "exists"> {
+  // Jefe de agentes: como mucho N correos de los agentes al mismo contacto en 24 h. Si ya le escribió uno, no sale solo: queda para que decidas.
+  if (mode === "auto" && ruleAction(rule) === "draft_email" && typeof c.payload.to === "string" && c.payload.to) {
+    const [{ n, max }] = await sql<{ n: number; max: number }[]>`
+      SELECT (SELECT count(*)::int FROM emails e WHERE e.direction = 'out' AND lower(e.to_email) = ${c.payload.to.toLowerCase()}
+                AND e.sent_at > now() - interval '24 hours' AND e.campaign_id IS NULL AND e.created_by = ${AI_ACTOR.id}) AS n,
+             (SELECT agent_emails_per_contact_day FROM app_settings LIMIT 1) AS max`;
+    if (n >= (max ?? 1)) {
+      mode = "ask";
+      c = { ...c, reason: `${c.reason} (No sale sola: otro agente ya le ha escrito en las últimas 24 horas.)` };
+    }
+  }
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO automation_actions ${sql({
       actor: "assistant", rule_id: rule.id, subject_type: c.subject ?? "deal", subject_id: c.dealId, deal_id: c.subject ? null : c.dealId,
