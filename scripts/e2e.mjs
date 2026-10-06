@@ -19,7 +19,13 @@ const ok = (name) => { passed++; console.log(`OK   · ${name}`); };
 const fail = (name, detail) => { failed++; console.log(`FALLO · ${name}${detail ? ` — ${detail}` : ""}`); };
 const check = (cond, name, detail) => (cond ? ok(name) : fail(name, detail));
 
-const get = (path, opts = {}) => fetch(`${BASE}${path}`, { redirect: "manual", ...opts, headers: { ...auth, ...(opts.headers ?? {}) } });
+// React separa trozos de texto con marcadores <!-- --> en el HTML: se quitan para comparar texto.
+const get = async (path, opts = {}) => {
+  const res = await fetch(`${BASE}${path}`, { redirect: "manual", ...opts, headers: { ...auth, ...(opts.headers ?? {}) } });
+  const text = res.text.bind(res);
+  res.text = async () => (await text()).replace(/<!-- -->/g, "");
+  return res;
+};
 const api = (body, key = KEY, type = "application/json") => fetch(`${BASE}/api/v1/leads`, {
   method: "POST",
   headers: { "content-type": type, ...(key ? { authorization: `Bearer ${key}` } : {}) },
