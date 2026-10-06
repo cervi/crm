@@ -1,0 +1,84 @@
+import Link from "next/link";
+import { requireUser } from "@/lib/auth";
+import { dateTime } from "@/lib/format";
+import { SENT_FILTERS, isSentFilter, listSent, sentStats } from "@/lib/emails";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Correos enviados" };
+
+const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)} %` : "—");
+
+/** Bandeja de correos enviados desde el CRM: quién los abrió, cuántas veces, cuándo, clics y respuestas. */
+export default async function SentPage({ searchParams }: { searchParams: Promise<{ who?: string; f?: string; q?: string; page?: string }> }) {
+  const me = await requireUser();
+  const sp = await searchParams;
+  const who = sp.who === "all" ? "all" : "mine";
+  const filter = isSentFilter(sp.f) ? sp.f : "all";
+  const page = Math.max(0, Number(sp.page) || 0);
+  const userId = who === "mine" ? me.id : null;
+  const [rows, stats] = await Promise.all([listSent({ userId, filter, q: sp.q, page }), sentStats(userId)]);
+  const more = rows.length > 100;
+  const qs = (patch: Record<string, string | undefined>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ who, f: filter === "all" ? undefined : filter, q: sp.q, ...patch })) if (v) p.set(k, v);
+    return `/emails?${p}`;
+  };
+
+  return (
+    <main className="page">
+      <div className="page-head">
+        <h1>Correos enviados</h1>
+        <span className="muted">Últimos 30 días: {stats.sent} enviados</span>
+        <span className="spacer" />
+        <nav className="chips" aria-label="De quién">
+          <Link href={qs({ who: "mine", page: undefined })} aria-current={who === "mine" ? "page" : undefined}>Míos</Link>
+          <Link href={qs({ who: "all", page: undefined })} aria-current={who === "all" ? "page" : undefined}>De todo el equipo</Link>
+        </nav>
+      </div>
+
+      <section className="today-stats sent-stats" aria-label="Lectura en los últimos 30 días">
+        <Link href={qs({ f: "opened", page: undefined })} className="today-stat"><span className="label">Abiertos</span><strong>{pct(stats.opened, stats.tracked)}</strong><span className="meta">{stats.opened} de {stats.tracked} con seguimiento</span></Link>
+        <Link href={qs({ f: "clicked", page: undefined })} className="today-stat"><span className="label">Con clics</span><strong>{pct(stats.clicked, stats.tracked)}</strong><span className="meta">{stats.clicked} correos</span></Link>
+        <Link href={qs({ f: "replied", page: undefined })} className="today-stat"><span className="label">Respondidos</span><strong>{pct(stats.replied, stats.sent)}</strong><span className="meta">{stats.replied} correos</span></Link>
+        <Link href={qs({ f: "opened_no_reply", page: undefined })} className="today-stat warn"><span className="label">Abiertos sin responder</span><strong>{Math.max(0, stats.opened - stats.replied)}</strong><span className="meta">buen momento para llamar</span></Link>
+      </section>
+
+      <form className="toolbar">
+        <input type="hidden" name="who" value={who} />
+        <input name="q" defaultValue={sp.q ?? ""} placeholder="Asunto, contacto, email o deal" aria-label="Buscar" />
+        <select name="f" defaultValue={filter} aria-label="Lectura">
+          {Object.entries(SENT_FILTERS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <button className="btn secondary">Filtrar</button>
+      </form>
+
+      <div className="table-wrap">
+        <table className="sent-table">
+          <thead><tr><th>Correo</th><th>Para</th><th>Deal</th><th>Enviado</th><th>Abierto</th><th className="num">Veces</th><th>Última apertura</th><th className="num">Clics</th><th>Respondido</th></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={9} className="empty-row">No hay correos con estos filtros.</td></tr>}
+            {rows.slice(0, 100).map((e) => (
+              <tr key={e.id}>
+                <td><Link href={`/emails/${e.id}`}><strong>{e.subject || "(sin asunto)"}</strong></Link>
+                  {(e.sequence_name || (who === "all" && e.user_name)) && <div className="meta">{[e.sequence_name && `Secuencia: ${e.sequence_name}`, who === "all" && e.user_name].filter(Boolean).join(" · ")}</div>}</td>
+                <td>{e.person_id ? <Link href={`/persons/${e.person_id}`}>{e.to_name ?? e.to_email}</Link> : e.to_name ?? e.to_email}</td>
+                <td>{e.deal_id ? <Link href={`/deals/${e.deal_id}`}>{e.deal_title}</Link> : "—"}</td>
+                <td>{dateTime(e.sent_at)}</td>
+                <td>{!e.track ? <span className="meta">Sin seguimiento</span> : e.open_count > 0 ? <span className="badge won">Sí</span> : <span className="badge">No</span>}</td>
+                <td className="num">{e.track ? e.open_count : "—"}</td>
+                <td>{e.last_opened_at ? dateTime(e.last_opened_at) : "—"}</td>
+                <td className="num">{e.track ? e.click_count : "—"}</td>
+                <td>{e.replied_at ? <span className="badge won" title={dateTime(e.replied_at)}>Sí</span> : <span className="meta">No</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="pager">
+        {page > 0 && <Link href={qs({ page: String(page - 1) })} className="btn secondary">← Más recientes</Link>}
+        {more && <Link href={qs({ page: String(page + 1) })} className="btn secondary">Más antiguos →</Link>}
+      </div>
+      <p className="meta">Las aperturas son orientativas: algunos programas de correo abren las imágenes solos (no cuentan: se marcan como automáticas) o las bloquean (un clic cuenta como apertura).</p>
+    </main>
+  );
+}

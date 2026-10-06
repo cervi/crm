@@ -32,7 +32,10 @@ import { EntityPicker } from "../EntityPicker";
 import { ProposalCard } from "../ai/ProposalCard";
 import { Icon } from "../Icon";
 import { ComposerTabs, EmailComposerFields, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
-import { listEmails, listTemplates, templateVars } from "@/lib/emails";
+import { listEmails, listTemplates, opensFor, templateVars } from "@/lib/emails";
+import { getHealth, recomputeHealth } from "@/lib/health";
+import { HealthBadge } from "../HealthBadge";
+import { DEVICE_LABEL } from "@/lib/reader";
 import { renderTemplate } from "@/lib/automations";
 import { publicBase } from "@/lib/email-track";
 import { requireUser } from "@/lib/auth";
@@ -41,7 +44,7 @@ import { trashAction } from "@/app/actions/trash";
 import { listEnrollments, listSequences } from "@/lib/sequences";
 import { enrollAction, stopEnrollmentAction } from "@/app/actions/sequences";
 import { BILLING_LABELS, dealLines, listProducts } from "@/lib/products";
-import { listProposals, proposalUrl } from "@/lib/proposals";
+import { listProposals, proposalUrl, proposalViews } from "@/lib/proposals";
 import { addLineAction, createProposalAction, markSentAction, removeLineAction, updateProposalAction } from "@/app/actions/products";
 
 type PanelNav = { closeHref: string; fullHref: string; prevHref: string | null; nextHref: string | null };
@@ -79,6 +82,14 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     listEnrollments({ dealId }), listSequences(),
   ]);
   const [lines, catalog, proposals_] = await Promise.all([dealLines(dealId), listProducts(), listProposals(dealId)]);
+  const views = new Map(await Promise.all(proposals_.filter((p) => p.view_count > 0).map(async (p) => [p.id, await proposalViews(p.id)] as const)));
+  const opens = await opensFor(emails.filter((e) => e.direction === "out" && e.open_count > 0).map((e) => e.id));
+  // La salud se recalcula en cada revisión; si está vieja (o no existe), aquí mismo.
+  let health = deal.status === "open" ? await getHealth(dealId) : null;
+  if (deal.status === "open" && (!health || Date.now() - new Date(health.computed_at).getTime() > 15 * 60000)) {
+    await recomputeHealth(dealId).catch((err) => console.error("[salud]", err));
+    health = await getHealth(dealId);
+  }
   const linesTotal = lines.reduce((n, l) => n + l.subtotal, 0);
   const sequences = allSequences.filter((q) => q.is_active && q.steps > 0);
   const composerTemplates = templates.map((t) => ({
@@ -136,6 +147,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             <div className="deal-sub">
               <span className={`badge ${deal.status}`}>{STATUS_LABELS[deal.status]}</span>
               <strong>{money(deal.value, deal.currency)}</strong>
+              {health && <a href="#senales" className="health-link"><HealthBadge score={health.score} signals={health.signals} /></a>}
               {deal.organization_id && <Link href={`/organizations/${deal.organization_id}`}>{deal.organization_name}</Link>}
               {deal.owner_name && <span className="owner"><Avatar name={deal.owner_name} size="sm" />{deal.owner_name}</span>}
             </div>
@@ -351,6 +363,33 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             </section>
           )}
 
+          {health && health.signals.length > 0 && (
+            <section className="signals" id="senales" aria-label="Señales del deal">
+              <h2 className="section-title">Señales <HealthBadge score={health.score} signals={health.signals} />
+                <span className="meta" style={{ fontWeight: 400 }}>parte de 50: los riesgos restan y las señales positivas suman</span></h2>
+              <div className="signal-cols">
+                {(["risk", "good"] as const).map((tone) => {
+                  const list = health!.signals.filter((x) => x.tone === tone);
+                  return (
+                    <div key={tone}>
+                      <h3>{tone === "risk" ? "Riesgos" : "A favor"} <span className="muted">{list.length}</span></h3>
+                      {list.length === 0 ? <p className="meta">{tone === "risk" ? "Ninguno a la vista." : "Todavía ninguna."}</p> : (
+                        <ul className="signal-list">
+                          {list.map((x) => (
+                            <li key={x.key} className={`signal ${tone}`}>
+                              <span className="signal-points">{x.points > 0 ? "+" : ""}{x.points}</span>
+                              <span>{x.label}{x.detail && <span className="meta"> — {x.detail}</span>}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           <ComposerTabs
             note={
               <ActionForm action={createNoteAction.bind(null, back)} submitLabel="Guardar nota" resetOnSuccess>
@@ -460,6 +499,16 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                     {p.view_count > 0 ? <span className="badge won" title={`Primera vez: ${dateTime(p.first_viewed_at)} · última: ${dateTime(p.last_viewed_at)}`}>Abierta{p.view_count > 1 ? ` ×${p.view_count}` : ""}</span>
                       : <span className="badge">Sin abrir</span>}
                   </div>
+                  {(views.get(p.id)?.length ?? 0) > 0 && (
+                    <details className="open-log">
+                      <summary className="meta">Visitas del cliente ({views.get(p.id)!.length})</summary>
+                      <ol>
+                        {views.get(p.id)!.slice(0, 15).map((v, i) => (
+                          <li key={i}>{dateTime(v.at)}<span className="meta">{[v.device && v.device !== "unknown" ? ` · ${DEVICE_LABEL[v.device as keyof typeof DEVICE_LABEL]}` : "", v.place ? ` · ${v.place}` : ""].join("")}</span></li>
+                        ))}
+                      </ol>
+                    </details>
+                  )}
                   <p className="meta" style={{ margin: 0 }}>Enlace para el cliente: <code>{proposalUrl(p)}</code></p>
                   {(p.status === "draft" || p.status === "sent") && (
                     <details>
@@ -513,6 +562,17 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                           {e.click_count > 0 && <span className="badge won">{e.click_count} clic{e.click_count === 1 ? "" : "s"}</span>}
                         </span>
                       </summary>
+                      {(opens.get(e.id)?.length ?? 0) > 0 && (
+                        <div className="open-log">
+                          <strong>Aperturas</strong>
+                          <ol>
+                            {opens.get(e.id)!.slice(0, 12).map((o, i) => (
+                              <li key={i}>{dateTime(o.at)}<span className="meta"> · {[o.device && o.device !== "unknown" ? DEVICE_LABEL[o.device] : null, o.client, o.place].filter(Boolean).join(" · ") || "sin datos del dispositivo"}</span></li>
+                            ))}
+                          </ol>
+                          <Link href={`/emails/${e.id}`} className="meta">Ver el detalle completo</Link>
+                        </div>
+                      )}
                       <p className="note-body">{e.body}</p>
                       {e.status === "failed" && e.error && <p className="meta tone-bad">{e.error}</p>}
                       {e.status === "scheduled" && (

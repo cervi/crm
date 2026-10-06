@@ -35,6 +35,7 @@ const DEAL_EVENTS: Record<string, (p: Record<string, unknown>) => string> = {
   "email.received": (p) => `Te han respondido${p.subject ? `: «${p.subject}»` : ""}`,
   "deal.booked": (p) => `${p.name ?? "El contacto"} ha reservado una reunión`,
   "proposal.viewed": () => "El cliente ha abierto la propuesta",
+  "proposal.reviewed": (p) => `El cliente ha vuelto a abrir la propuesta (${p.count}.ª vez)`,
   "proposal.accepted": (p) => `¡Propuesta aceptada${p.name ? ` por ${p.name}` : ""}!`,
   "proposal.declined": (p) => `Propuesta rechazada${p.name ? ` por ${p.name}` : ""}`,
 };

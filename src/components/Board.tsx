@@ -7,6 +7,7 @@ import { moveDealAction } from "@/app/actions/deals";
 import type { BoardDeal, BoardStage } from "@/lib/pipelines";
 import { Icon } from "./Icon";
 import { Avatar } from "./Avatar";
+import { HealthBadge } from "./HealthBadge";
 import { formatValue } from "@/lib/chart-format";
 
 const money = (v: string | number | null, _currency = "EUR") =>
@@ -92,6 +93,7 @@ export function Board({ stages }: { stages: BoardStage[] }) {
                   </span>
                   <span className="foot">
                     <span className="amount">{money(deal.value, deal.currency)}</span>
+                    <HealthBadge score={deal.health} signals={deal.health_signals} compact />
                     <span className="age" title="Días en esta fase">{deal.days_in_stage === 0 ? "Hoy" : `${deal.days_in_stage} d`}</span>
                     {deal.owner_name && <span title={`Responsable: ${deal.owner_name}`}><Avatar name={deal.owner_name} size="sm" /></span>}
                   </span>

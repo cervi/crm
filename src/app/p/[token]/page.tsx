@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { money } from "@/lib/format";
 import { proposalByToken, recordView } from "@/lib/proposals";
 import { Decision } from "./Decision";
+import { cookies, headers } from "next/headers";
+import { SESSION_COOKIE, sessionUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +17,9 @@ export default async function ProposalPage({ params }: { params: Promise<{ token
   const { token } = await params;
   const p = await proposalByToken(token);
   if (!p) notFound();
-  await recordView(token).catch(() => null);
+  // Las visitas del propio equipo (con sesión iniciada) no cuentan.
+  const team = await sessionUser((await cookies()).get(SESSION_COOKIE)?.value).catch(() => null);
+  if (!team) await recordView(token, await headers()).catch((err) => console.error("[propuesta]", err));
   const expired = p.valid_until !== null && new Date(`${p.valid_until}T23:59:59`) < new Date();
   const until = p.valid_until ? new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${p.valid_until}T00:00:00Z`)) : null;
   return (

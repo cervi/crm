@@ -11,10 +11,11 @@ export const DEAL_COLUMNS = {
   status: "Estado",
   created: "Creado",
   source: "Origen",
+  health: "Salud",
 } as const;
 export type DealColumn = keyof typeof DEAL_COLUMNS;
 
-export const DEFAULT_DEAL_COLUMNS: DealColumn[] = ["organization", "stage", "value", "days", "next_activity", "close", "owner", "status"];
+export const DEFAULT_DEAL_COLUMNS: DealColumn[] = ["organization", "stage", "value", "health", "days", "next_activity", "close", "owner", "status"];
 
 /** «cols=organization,value,cf:competidor» → columnas válidas en orden canónico (las personalizadas al final). */
 export function parseDealColumns(param: string | null | undefined, customKeys: string[]): string[] {

@@ -981,3 +981,30 @@ a.btn.small svg { width: 14px; height: 14px; }
 .dup-table { width: 100%; margin-bottom: 8px; } .dup-table td:first-child, .dup-table td:nth-child(2) { width: 70px; text-align: center; }
 .csv-preview th select { margin-top: 4px; width: 100%; min-width: 120px; font-weight: 400; } .csv-preview td { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .key-box { padding: 6px 10px; background: var(--panel); border-radius: var(--r-sm); word-break: break-all; }
+
+/* ---- Salud de los deals y lectura de correos ---- */
+.health { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: help; }
+.health i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.health strong { font-variant-numeric: tabular-nums; }
+.health-good { background: var(--good-soft); color: var(--good); }
+.health-warn { background: var(--warn-soft); color: var(--warn); }
+.health-bad { background: var(--bad-soft); color: var(--bad); }
+.health-link:hover { text-decoration: none; }
+.deal-card .foot .health { padding: 0 6px 0 5px; font-size: 11.5px; }
+.signals { margin-bottom: 16px; }
+.signals .section-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.signal-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .signal-cols { grid-template-columns: 1fr; } }
+.signal-cols h3 { font-size: 13px; margin: 0 0 6px; color: var(--text-2); }
+.signal-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
+.signal { display: flex; gap: 8px; align-items: baseline; }
+.signal-points { min-width: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.signal.risk .signal-points { color: var(--bad); }
+.signal.good .signal-points { color: var(--good); }
+.open-log { margin: 6px 0 10px; font-size: 13px; }
+.open-log ol { margin: 4px 0 4px 18px; padding: 0; display: grid; gap: 2px; }
+.sent-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 960px) { .sent-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.muted-row td { color: var(--muted); }
+.pager { display: flex; gap: 8px; margin: 12px 0; }
+.movers li .health { margin-right: 6px; }

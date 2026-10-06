@@ -9,6 +9,7 @@ export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: Ic
   { href: "/pipelines", match: ["/pipelines", "/deals"], label: "Deals", icon: "deals" },
   { href: "/inbox", match: ["/inbox"], label: "Bandeja de la IA", icon: "inbox" },
   { href: "/sequences", match: ["/sequences"], label: "Secuencias", icon: "send" },
+  { href: "/emails", match: ["/emails"], label: "Correos enviados", icon: "mail" },
   { href: "/leads", match: ["/leads"], label: "Leads", icon: "leads" },
   { href: "/activities", match: ["/activities"], label: "Actividades", icon: "activities" },
   { href: "/organizations", match: ["/organizations"], label: "Empresas", icon: "organizations" },

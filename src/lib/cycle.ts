@@ -5,6 +5,7 @@ import { processSequences } from "./sequences";
 import { recomputeScores } from "./scoring";
 import { applyAssignment } from "./assignment";
 import { purgeTrash } from "./trash";
+import { recomputeHealth } from "./health";
 
 /**
  * Revisión periódica completa: primero la importación de Pipedrive (si hay
@@ -19,5 +20,8 @@ export async function runCycle() {
   const assigned = await applyAssignment().catch((err) => { console.error("[reparto]", err); return null; });
   await purgeTrash().catch((err) => console.error("[papelera]", err));
   const sequences = await processSequences().catch((err) => { console.error("[secuencias]", err); return null; });
-  return { ...(await runAutomations()), scheduled, sequences, scored, assigned };
+  const result = await runAutomations();
+  // Salud de los deals, con lo que acaba de entrar (correos, reuniones…).
+  const health = await recomputeHealth().catch((err) => { console.error("[salud]", err); return 0; });
+  return { ...result, scheduled, sequences, scored, assigned, health };
 }

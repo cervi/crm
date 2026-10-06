@@ -10,6 +10,7 @@ const SECTIONS: { href: string; title: string; text: string; icon: IconName; eve
   { href: "/settings/assignment", icon: "leads", title: "Reparto de leads y deals", text: "Asignar solos los leads y deals nuevos por origen, etapa, puntuación o importe, por turnos." },
   { href: "/settings/booking", icon: "activities", everyone: true, title: "Enlace de reserva", text: "Tu página pública para que los contactos elijan un hueco de tu calendario." },
   { href: "/settings/templates", icon: "pencil", everyone: true, title: "Plantillas de correo", text: "Textos para escribir más rápido desde los deals, y el seguimiento de aperturas y clics." },
+  { href: "/settings/signals", icon: "pulse", title: "Señales y avisos", text: "Avisos cuando abren tus correos y propuestas, competidores a vigilar y cómo se calcula la salud de los deals." },
   { href: "/settings/ai", icon: "spark", title: "Modelo de IA", text: "Proveedor, modelo, clave y prompts de los resúmenes (Claude, OpenAI, Grok u otro)." },
   { href: "/settings/automations", icon: "spark", title: "Automatizaciones e IA", text: "Qué puede hacer la IA sola, qué te pregunta antes y qué reglas sigue." },
   { href: "/settings/pipelines", icon: "deals", title: "Pipelines y fases", text: "Crea pipelines, ordena sus fases y define cuándo un deal se considera parado y qué sesión toca en cada fase." },

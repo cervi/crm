@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import {
   BOARD_SORTS, DEAL_FLAGS, getBoard, isBoardSort, isDealFlag, isListSort, listPipelineDeals, listPipelines, listStages, type ListSort,
 } from "@/lib/pipelines";
+import { HealthBadge } from "@/components/HealthBadge";
 import { DEAL_COLUMNS, DEFAULT_DEAL_COLUMNS, parseDealColumns, type DealColumn } from "@/lib/deal-columns";
 import { formatCustomValue, listFieldDefinitions } from "@/lib/custom-fields";
 import { listLostReasons } from "@/lib/deals";
@@ -213,6 +214,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
                           case "status": return <td key={c}><span className={`badge ${r.status}`}>{STATUS_LABELS[r.status]}</span></td>;
                           case "created": return <td key={c}>{date(r.created_at)}</td>;
                           case "source": return <td key={c}>{r.source ?? "—"}</td>;
+                          case "health": return <td key={c}>{r.status === "open" ? <HealthBadge score={r.health} compact /> : "—"}</td>;
                         }
                       })}
                     </tr>

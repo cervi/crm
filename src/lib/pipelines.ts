@@ -58,6 +58,9 @@ export type BoardDeal = {
   next_activity_at: Date | null;
   /** Propuestas de la IA esperando decisión. */
   pending_ai: number;
+  /** Salud 0–100 y sus señales principales (null si aún no se ha calculado). */
+  health: number | null;
+  health_signals: { label: string; tone: "risk" | "good" }[];
 };
 
 export type BoardStage = {
@@ -78,6 +81,7 @@ export const BOARD_SORTS = {
   created: "Fecha de alta",
   close: "Cierre previsto",
   title: "Título",
+  health: "Salud (peor primero)",
 } as const;
 export type BoardSort = keyof typeof BOARD_SORTS;
 export const isBoardSort = (v: unknown): v is BoardSort => typeof v === "string" && v in BOARD_SORTS;
@@ -91,6 +95,7 @@ function boardOrder(sort: BoardSort) {
     case "created": return sql`dd.created_at DESC`;
     case "close": return sql`dd.expected_close_date ASC NULLS LAST, o.title`;
     case "title": return sql`lower(o.title)`;
+    case "health": return sql`dh.score ASC NULLS LAST, o.title`;
     default: return sql`o.is_rotten DESC, o.has_upcoming_session ASC, o.days_in_stage DESC`;
   }
 }
@@ -108,13 +113,17 @@ export async function getBoard(pipelineId: string, ownerId?: string | null, sort
                'days_in_stage', o.days_in_stage, 'is_rotten', o.is_rotten,
                'has_upcoming_session', o.has_upcoming_session,
                'next_activity_at', na.due_at,
-               'pending_ai', (SELECT count(*) FROM automation_actions x WHERE x.deal_id = o.id AND x.status = 'pending')
+               'pending_ai', (SELECT count(*) FROM automation_actions x WHERE x.deal_id = o.id AND x.status = 'pending'),
+               'health', dh.score,
+               'health_signals', coalesce((SELECT jsonb_agg(jsonb_build_object('label', x->>'label', 'tone', x->>'tone'))
+                                           FROM (SELECT x FROM jsonb_array_elements(dh.signals) x LIMIT 4) y), '[]'::jsonb)
              ) ORDER BY ${boardOrder(sort)}) FILTER (WHERE o.id IS NOT NULL),
              '[]'
            ) AS deals
     FROM stages s
     LEFT JOIN open_deals_status o ON o.stage_id = s.id AND (${ownerId ?? null}::uuid IS NULL OR o.owner_id = ${ownerId ?? null}::uuid)
     LEFT JOIN deals dd ON dd.id = o.id
+    LEFT JOIN deal_health dh ON dh.deal_id = o.id
     LEFT JOIN organizations org ON org.id = o.organization_id
     LEFT JOIN users u ON u.id = o.owner_id
     LEFT JOIN LATERAL (
@@ -150,6 +159,7 @@ export type PipelineDealRow = {
   owner_id: string | null;
   stage_id: string;
   custom: Record<string, unknown>;
+  health: number | null;
 };
 
 /** Filtros rápidos de la lista de deals. */
@@ -159,6 +169,7 @@ export const DEAL_FLAGS = {
   overdue: "Con actividad vencida",
   closing_month: "Cierran este mes",
   no_close_date: "Sin fecha de cierre",
+  at_risk: "En riesgo (salud < 40)",
 } as const;
 export type DealFlag = keyof typeof DEAL_FLAGS;
 export const isDealFlag = (v: unknown): v is DealFlag => typeof v === "string" && v in DEAL_FLAGS;
@@ -178,6 +189,7 @@ const LIST_ORDER = {
   next_activity: sql`na.due_at`,
   close: sql`d.expected_close_date`,
   created: sql`d.created_at`,
+  health: sql`dh.score`,
 } as const;
 export type ListSort = keyof typeof LIST_ORDER;
 export const isListSort = (v: unknown): v is ListSort => typeof v === "string" && v in LIST_ORDER;
@@ -197,9 +209,10 @@ export async function listPipelineDeals(pipelineId: string, opts: DealListFilter
            (d.status = 'open' AND s.rotten_after_days IS NOT NULL
              AND now() - d.stage_entered_at > make_interval(days => s.rotten_after_days)) AS is_rotten,
            na.due_at AS next_activity_at, d.expected_close_date::text, d.created_at,
-           d.source, d.owner_id, d.stage_id, d.custom
+           d.source, d.owner_id, d.stage_id, d.custom, dh.score AS health
     FROM deals d
     JOIN stages s ON s.id = d.stage_id
+    LEFT JOIN deal_health dh ON dh.deal_id = d.id AND d.status = 'open'
     LEFT JOIN organizations o ON o.id = d.organization_id
     LEFT JOIN users u ON u.id = d.owner_id
     LEFT JOIN LATERAL (
@@ -223,7 +236,8 @@ export async function listPipelineDeals(pipelineId: string, opts: DealListFilter
         OR (${flag}::text = 'overdue' AND d.status = 'open' AND na.due_at < now())
         OR (${flag}::text = 'closing_month' AND d.status = 'open'
               AND date_trunc('month', d.expected_close_date) = date_trunc('month', now()))
-        OR (${flag}::text = 'no_close_date' AND d.status = 'open' AND d.expected_close_date IS NULL))
+        OR (${flag}::text = 'no_close_date' AND d.status = 'open' AND d.expected_close_date IS NULL)
+        OR (${flag}::text = 'at_risk' AND d.status = 'open' AND dh.score < 40))
     ORDER BY ${sort} ${asc ? sql`ASC` : sql`DESC`} NULLS LAST, d.created_at DESC
     LIMIT 1000`;
 }

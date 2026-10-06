@@ -1175,6 +1175,9 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
       if (Object.keys(set).length === 0) throw new UserError("La propuesta no cambia nada.");
       await sql`UPDATE deals SET ${sql(set)} WHERE id = ${a.deal_id}`;
       await recordEvent(sql, AI_ACTOR, "deal", a.deal_id, "deal.updated", { changes: set });
+      if ("expected_close_date" in set && set.expected_close_date !== before.expected_close_date) {
+        await recordEvent(sql, AI_ACTOR, "deal", a.deal_id, "deal.close_date_changed", { from: before.expected_close_date, to: set.expected_close_date });
+      }
       return { before: Object.fromEntries(Object.keys(set).map((k) => [k, before[k as keyof typeof before]])) };
     }
     case "webhook": {

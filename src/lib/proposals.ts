@@ -6,6 +6,7 @@ import { generate, parseJsonReply } from "./ai";
 import { publicBase } from "./email-track";
 import { dealLines } from "./products";
 import { BILLING_LABELS } from "./products";
+import { readerOf } from "./reader";
 
 // ===========================================================================
 // Propuestas: una página con el texto (redactado por la IA con lo que sabemos
@@ -93,13 +94,30 @@ export async function markSent(proposalId: string) {
   await sql`UPDATE proposals SET status = 'sent' WHERE id = ${proposalId} AND status = 'draft'`;
 }
 
-/** Visita del cliente: se cuenta (la primera, también en la historia del deal). */
-export async function recordView(token: string) {
-  const [p] = await sql<{ id: string; deal_id: string; first: boolean }[]>`
+/** Visita del cliente: se registra cada una; la primera y las vueltas otro día, también en la historia del deal y con aviso. */
+export async function recordView(token: string, headers: Headers = new Headers()) {
+  const [before] = await sql<{ id: string; last_viewed_at: Date | null }[]>`SELECT id, last_viewed_at FROM proposals WHERE token = ${token}`;
+  if (!before) return;
+  const info = readerOf(headers, null);
+  if (BOT_VIEW(info.why)) return;
+  const [dup] = await sql`SELECT 1 FROM proposal_views WHERE proposal_id = ${before.id} AND reader = ${info.reader} AND at > now() - interval '10 minutes'`;
+  if (dup) return; // recargar la página no es otra visita
+  await sql`INSERT INTO proposal_views (proposal_id, device, place, reader) VALUES (${before.id}, ${info.device}, ${info.place}, ${info.reader})`;
+  const [p] = await sql<{ id: string; deal_id: string; view_count: number; title: string }[]>`
     UPDATE proposals SET view_count = view_count + 1, last_viewed_at = now(), first_viewed_at = coalesce(first_viewed_at, now()),
                          status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END
-    WHERE token = ${token} RETURNING id, deal_id, view_count = 1 AS first`;
-  if (p?.first) await recordEvent(sql, INTEGRATION_ACTOR, "deal", p.deal_id, "proposal.viewed", { proposal_id: p.id });
+    WHERE id = ${before.id} RETURNING id, deal_id, view_count, title`;
+  if (p.view_count === 1) {
+    await recordEvent(sql, INTEGRATION_ACTOR, "deal", p.deal_id, "proposal.viewed", { proposal_id: p.id, device: info.device, place: info.place });
+  } else if (before.last_viewed_at && Date.now() - new Date(before.last_viewed_at).getTime() > 12 * 3600000) {
+    await recordEvent(sql, INTEGRATION_ACTOR, "deal", p.deal_id, "proposal.reviewed", { proposal_id: p.id, count: p.view_count, title: p.title });
+  }
+}
+const BOT_VIEW = (why: string | null) => why === "Escáner de seguridad o robot" || why === "Sin identificación del programa";
+
+export async function proposalViews(proposalId: string) {
+  return sql<{ at: Date; device: string | null; place: string | null }[]>`
+    SELECT at, device, place FROM proposal_views WHERE proposal_id = ${proposalId} ORDER BY at DESC LIMIT 50`;
 }
 
 export async function decide(token: string, accept: boolean, name: string, note: string) {

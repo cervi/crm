@@ -198,6 +198,11 @@ export async function updateDeal(actor: Actor, dealId: string, data: unknown, cu
         from_stage_id: before.stage_id, to_stage_id: v.stage_id,
       });
     }
+    const fromClose = before.expected_close_date ? String(before.expected_close_date).slice(0, 10) : null;
+    const toClose = v.expected_close_date ?? null;
+    if (fromClose !== toClose) {
+      await recordEvent(tx, actor, "deal", dealId, "deal.close_date_changed", { from: fromClose, to: toClose });
+    }
     await recordEvent(tx, actor, "deal", dealId, "deal.updated", {});
   });
 }

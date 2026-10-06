@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { buildDigest, type DigestItem } from "@/lib/digest";
+import { HealthBadge } from "@/components/HealthBadge";
 import { getDealBrief } from "@/lib/briefs";
 import { listConnections } from "@/lib/mailbox";
 import { listUsers } from "@/lib/users";
@@ -121,6 +122,25 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               </ol>
             )}
           </section>
+
+          {(d.movers.length > 0 || d.hotOpens.length > 0) && (
+            <section className="panel" aria-label="Señales">
+              <h2>Señales <span className="muted">desde ayer</span></h2>
+              {d.movers.length > 0 && (
+                <ul className="today-list movers">
+                  {d.movers.map((m) => (
+                    <li key={m.id}>
+                      <HealthBadge score={m.score} compact />
+                      <Link href={`/deals/${m.id}`}>{m.title}</Link>
+                      <span className={m.score < m.before ? "tone-bad" : "tone-good"}> {m.score < m.before ? "▼" : "▲"} {Math.abs(m.score - m.before)}</span>
+                      {m.why && <span className="meta"> · {m.why}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {d.hotOpens.length > 0 && <><h3 className="meta" style={{ margin: "10px 0 4px" }}>Abiertos sin responder: buen momento para llamar</h3><List items={d.hotOpens} empty="" /></>}
+            </section>
+          )}
 
           <section className="panel" aria-label="Decisiones pendientes">
             <h2>Decide <span className="muted">{d.decisions.count}</span></h2>

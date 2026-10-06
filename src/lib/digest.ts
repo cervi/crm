@@ -5,6 +5,7 @@ import { listConnections, sendPlainEmail } from "./mailbox";
 import { UserError } from "./errors";
 import { activityLabel, isSessionType, money } from "./format";
 import { activityTypes } from "./activity-types";
+import { healthMovers } from "./health";
 
 // ===========================================================================
 // Parte del día: lo que hay que decidir, la agenda, lo vencido, los deals que
@@ -58,6 +59,10 @@ export type Digest = {
   leads: { count: number; items: DigestItem[] };
   closed: DigestItem[];
   pipeline: { count: number; value: number };
+  /** Deals cuya salud ha cambiado 10 puntos o más desde ayer. */
+  movers: { id: string; title: string; score: number; before: number; why: string | null }[];
+  /** Correos abiertos recientemente sin respuesta: buen momento para llamar. */
+  hotOpens: DigestItem[];
 };
 
 /**
@@ -107,6 +112,20 @@ export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" 
       SELECT count(*)::int AS count, coalesce(sum(value), 0)::text AS value FROM open_deals_status ods WHERE ${byOwner(sql.unsafe("ods.owner_id"))}`,
   ]);
 
+  const [movers, hotOpens] = await Promise.all([
+    healthMovers(ownerId).catch(() => []),
+    sql<{ id: string; subject: string; who: string | null; deal_title: string | null; opens: number; last: Date }[]>`
+      SELECT e.id, e.subject, coalesce(p.full_name, e.to_name, e.to_email) AS who, d.title AS deal_title,
+             count(o.id)::int AS opens, max(o.at) AS last
+      FROM emails e JOIN email_opens o ON o.email_id = e.id AND NOT o.automatic AND o.at > now() - interval '48 hours'
+      LEFT JOIN persons p ON p.id = e.person_id LEFT JOIN deals d ON d.id = e.deal_id
+      WHERE e.direction = 'out' AND (${ownerId}::uuid IS NULL OR e.user_id = ${ownerId}::uuid)
+        AND NOT EXISTS (SELECT 1 FROM emails r WHERE r.direction = 'in' AND r.sent_at > e.sent_at
+                          AND (r.person_id = e.person_id OR lower(r.from_email) = lower(e.to_email)))
+      GROUP BY e.id, p.full_name, d.title
+      ORDER BY count(o.id) DESC, max(o.at) DESC LIMIT 6`,
+  ]);
+
   const attention = signals
     .map((deal) => ({ deal, step: nextStep(deal) }))
     .filter((a) => a.step.priority <= 2)
@@ -128,6 +147,14 @@ export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" 
     leads: { count: leads[0]?.n ?? 0, items: leads.map((l) => ({ title: l.title, detail: [l.source, l.funnel_stage?.toUpperCase()].filter(Boolean).join(" · ") || null, href: `/leads/${l.id}` })) },
     closed: closed.map((c) => ({ title: c.title, detail: `${c.status === "won" ? "Ganado" : "Perdido"} · ${money(c.value, c.currency)}`, href: `/deals/${c.id}`, tone: c.status === "won" ? "good" as const : "bad" as const })),
     pipeline: { count: pipeline?.count ?? 0, value: Number(pipeline?.value ?? 0) },
+    movers: movers.map((m) => ({
+      id: m.id, title: m.title, score: m.score, before: m.before,
+      why: m.signals.find((x) => (m.score < m.before ? x.tone === "risk" : x.tone === "good"))?.label ?? null,
+    })),
+    hotOpens: hotOpens.map((e) => ({
+      title: `${e.who ?? "Alguien"} ha abierto «${e.subject || "(sin asunto)"}» ${e.opens} ${e.opens === 1 ? "vez" : "veces"}`,
+      detail: e.deal_title ? `${e.deal_title} · sin responder` : "sin responder", href: `/emails/${e.id}`, at: e.last, tone: "good" as const,
+    })),
   };
   d.focus = ruleFocus(d);
   if (opts.ai) {
@@ -169,6 +196,8 @@ function digestFacts(d: Digest) {
     hecho_por_la_ia_24h: d.aiDone.items.map((x) => x.title),
     leads_nuevos_24h: d.leads.count,
     cerrados_24h: d.closed.map((x) => `${x.title} (${x.detail})`),
+    salud_cambios_desde_ayer: d.movers.map((m) => `${m.title}: ${m.before} → ${m.score}${m.why ? ` (${m.why})` : ""}`),
+    correos_abiertos_sin_respuesta_48h: d.hotOpens.map((x) => x.title),
   };
 }
 
@@ -190,6 +219,8 @@ export function digestEmail(d: Digest, appUrl: string) {
     ...section("Agenda de hoy", d.agenda.map((x) => `- ${hhmm(x.at)} ${x.title}${x.detail ? ` — ${x.detail}` : ""}`)),
     ...section(`Tareas de hoy (${d.tasks.length})`, d.tasks.slice(0, 10).map((x) => `- ${x.title}${x.detail ? ` (${x.detail})` : ""}`)),
     ...section("Vencidas", d.overdue.map((x) => `- ${x.title}${x.detail ? ` (${x.detail})` : ""}`)),
+    ...section("Salud: cambios desde ayer", d.movers.map((m) => `- ${m.title}: ${m.before} → ${m.score}${m.why ? ` (${m.why})` : ""} ${url(`/deals/${m.id}`)}`)),
+    ...section("Abiertos sin responder (48 h): buen momento para llamar", d.hotOpens.map((x) => `- ${x.title} (${x.detail})`)),
     ...section("Deals que piden atención", d.attention.map((a) => `- ${a.deal.title} (${money(a.deal.value, a.deal.currency)}): ${a.step.text}. ${a.step.why} ${url(`/deals/${a.deal.id}`)}`)),
     ...section(`Lo que hizo la IA en las últimas 24 h (${d.aiDone.count})`, d.aiDone.items.map((x) => `- ${x.title} — ${x.detail}`)),
     ...section(`Leads nuevos en las últimas 24 h (${d.leads.count})`, d.leads.items.map((x) => `- ${x.title}${x.detail ? ` (${x.detail})` : ""}`)),
