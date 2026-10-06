@@ -127,7 +127,7 @@ export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" 
   if (opts.ai) {
     const key = ownerId ?? "all", day = localNow().day;
     const [cached] = await sql<{ focus: string }[]>`SELECT focus FROM digest_focus WHERE owner_key = ${key} AND day = ${day}`;
-    let text = cached?.focus ?? null;
+    let text: string | null = cached?.focus ?? null;
     if (!text && opts.ai === "generate") {
       text = await generate("daily_digest", digestFacts(d));
       if (text) {
