@@ -38,7 +38,8 @@ export function ProposalCard({ item, showDeal = true, canSend = false }: { item:
           <> · <Link href={`/deals/${item.deal_id}`}>{item.deal_title}</Link>{item.organization_name && <span className="meta"> ({item.organization_name})</span>}</>
         )}
       </p>
-      <ActionForm action={approveAction.bind(null, item.id)} submitLabel={item.action_type === "draft_email" && canSend ? "Enviar desde mi correo" : APPROVE_LABEL[item.action_type] ?? "Aprobar"} pendingLabel="…" good>
+      <ActionForm action={approveAction.bind(null, item.id)} submitLabel={item.action_type === "draft_email" && canSend ? "Enviar desde mi correo"
+        : item.action_type === "move_stage" && s(p.stage_name) ? `Mover a «${s(p.stage_name)}»` : APPROVE_LABEL[item.action_type] ?? "Aprobar"} pendingLabel="…" good>
         {item.action_type === "draft_email" && <EmailDraftFields to={s(p.to)} subject={s(p.subject)} body={s(p.body)} canSend={canSend} />}
         {item.action_type === "create_task" && (
           <>

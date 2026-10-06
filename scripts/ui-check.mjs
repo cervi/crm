@@ -530,10 +530,90 @@ if (MOCK) {
   });
 }
 
+// ------------------------------------------------------------- Hoy, resúmenes y modelo de IA
+await step("Hoy: el parte del día con deals que piden atención", async () => {
+  await page.goto("/");
+  await page.getByRole("heading", { name: /^Buen(os|as) / }).waitFor();
+  await page.getByRole("region", { name: "Enfoque del día" }).waitFor();
+  const att = page.getByRole("region", { name: "Deals que piden atención" });
+  const first = att.locator(".attention-title").first();
+  const title = (await first.textContent()).trim();
+  await first.click();
+  await page.getByRole("heading", { name: title, level: 1 }).waitFor();
+});
+
+await step("ficha del deal: resumen con el siguiente paso", async () => {
+  await page.goto(`/deals/${PACO_OPEN}`);
+  const brief = page.getByRole("region", { name: "Resumen del deal" });
+  await brief.getByText("Siguiente paso").waitFor();
+});
+
+if (MOCK) {
+  await step("configurar el modelo de IA y probar la conexión", async () => {
+    await page.goto("/settings/ai");
+    await page.locator("select[name=provider]").selectOption("compatible");
+    await page.locator("input[name=model]").fill("modelo-de-pruebas");
+    await page.locator("input[name=api_key]").fill("clave-llm-de-pruebas");
+    await page.locator("input[name=base_url]").fill(`${MOCK}/llm/openai`);
+    await submit("Guardar");
+    await page.getByRole("heading", { name: /^Activo: Otro compatible/ }).waitFor();
+    await submit("Probar conexión");
+    await page.getByText("Última respuesta correcta").waitFor();
+    const [a] = await sql`SELECT provider, api_key FROM ai_settings`;
+    expect(a.provider === "compatible" && a.api_key.startsWith("v1.") && !a.api_key.includes("clave-llm"), "la clave no se guardó cifrada");
+  });
+
+  await step("resumen del deal redactado por la IA", async () => {
+    await page.goto(`/deals/${PACO_OPEN}`);
+    const brief = page.getByRole("region", { name: "Resumen del deal" });
+    await brief.getByRole("button", { name: /Redactar con IA|Actualizar/ }).click();
+    await brief.getByText("(IA) Llama a Ana para cerrar fecha").waitFor();
+    await brief.getByText(/Redactado por la IA/).waitFor();
+  });
+
+  await step("reunión celebrada con transcripción: la IA prepara el resumen para el cliente", async () => {
+    await page.goto(`/deals/${PACO_OPEN}`);
+    const item = page.locator(".item", { hasText: `Demo ${stamp}` });
+    await item.getByText("Marcar como hecha").click();
+    await item.locator("select[name=outcome]").selectOption("held");
+    await item.locator("textarea[name=transcript]").fill("Ana: nos encaja la propuesta, revisad los plazos.");
+    await item.getByRole("button", { name: "Guardar" }).click();
+    await item.waitFor({ state: "detached" });
+    await page.goto("/inbox");
+    await submit("Revisar ahora");
+    const card = page.locator("article.proposal", { hasText: "Enviar el resumen de la demo" });
+    await card.waitFor();
+    expect((await card.getByLabel("Texto").inputValue()).includes("(IA) Repasamos la propuesta"), "el correo no lleva el resumen de la IA");
+    await shot("bandeja-resumen");
+  });
+
+  await step("parte del día: ajustes y enfoque redactado por la IA", async () => {
+    await page.goto("/settings/automations");
+    const digest = page.getByRole("region", { name: "Parte del día" });
+    await digest.locator("select[name=hour]").selectOption("7");
+    await digest.getByRole("button", { name: "Guardar" }).click();
+    await page.waitForTimeout(400);
+    const [d] = await sql`SELECT digest_hour FROM automation_settings`;
+    expect(d.digest_hour === 7, `hora ${d.digest_hour}`);
+    await page.goto("/");
+    await page.getByRole("region", { name: "Enfoque del día" }).getByRole("button", { name: /con IA/ }).click();
+    await page.getByText("(IA) Hoy, primero responde a Ana").waitFor();
+    await shot("hoy");
+  });
+}
+
+await step("tablero: las tarjetas marcan las propuestas de la IA pendientes", async () => {
+  await page.goto("/pipelines/10000000-0000-0000-0000-000000000003");
+  const card = page.locator(".deal-card", { hasText: "Paco — ampliación de servicio" });
+  await card.waitFor();
+  const [{ n }] = await sql`SELECT count(*)::int AS n FROM automation_actions WHERE deal_id = ${PACO_OPEN} AND status = 'pending'`;
+  if (n > 0) await card.locator(".badge.ai").filter({ hasText: String(n) }).waitFor();
+});
+
 await step("capturas de las pantallas principales", async () => {
   for (const [name, path] of [["tablero", "/pipelines/10000000-0000-0000-0000-000000000001"], ["empresa", "/organizations/60000000-0000-0000-0000-000000000001"],
                               ["leads", "/leads?status=all"], ["actividades", "/activities"], ["contacto", "/persons/70000000-0000-0000-0000-000000000001"],
-                              ["bandeja", "/inbox"], ["registro", "/inbox?view=log"], ["ia", "/settings/automations"], ["correo-ajustes", "/settings/mailbox"]]) {
+                              ["bandeja", "/inbox"], ["registro", "/inbox?view=log"], ["ia", "/settings/automations"], ["correo-ajustes", "/settings/mailbox"], ["ia-modelo", "/settings/ai"], ["deal", `/deals/${PACO_OPEN}`]]) {
     await page.goto(path);
     await shot(name);
   }

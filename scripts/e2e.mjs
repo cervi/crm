@@ -7,6 +7,7 @@
 //
 // Si la app tiene BASIC_AUTH_USER/BASIC_AUTH_PASSWORD, pásalos también.
 import postgres from "postgres";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const KEY = (process.env.INBOUND_API_KEYS ?? "").split(",")[0]?.trim();
@@ -121,7 +122,9 @@ for (const path of ["/deals/no-existe", `/deals/00000000-0000-0000-0000-00000000
 }
 
 const root = await get("/");
-check([307, 308].includes(root.status), "la portada redirige", `HTTP ${root.status}`);
+const rootHtml = await root.text();
+check(root.status === 200 && rootHtml.includes("Enfoque del día") && rootHtml.includes("Deals que piden atención"),
+      "la portada es «Hoy» con el parte del día", `HTTP ${root.status}`);
 
 const lookup = await (await get("/api/lookup?type=organizations&q=pac")).json();
 check(Array.isArray(lookup) && lookup.some((o) => o.label === "Paco S.L."), "búsqueda de empresas");
@@ -453,6 +456,93 @@ if (process.env.MOCK_URL) {
   check(page.includes("Google Workspace · jesus@empresa-google.example"), "/settings/mailbox muestra la cuenta de Google");
   const dealPage = await (await get(`/deals/${DEAL_OPEN}`)).text();
   check(dealPage.includes("Documentos") && dealPage.includes("Enlazar documento"), "la ficha del deal tiene la sección de documentos");
+}
+
+// ------------------------------------------------------------- Resúmenes automáticos (con y sin IA)
+{
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const MOCK = process.env.MOCK_URL;
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  // Mismo cifrado que src/lib/crypto.ts (para guardar la clave del modelo desde la prueba).
+  const enc = (plain) => {
+    const key = createHash("sha256").update(process.env.TOKEN_ENCRYPTION_KEY ?? "").digest();
+    const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", key, iv);
+    const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
+    return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+  };
+
+  // Sin IA: resumen y siguiente paso por reglas.
+  const deal0 = await (await get(`/deals/${DEAL_OPEN}`)).text();
+  check(deal0.includes("Siguiente paso") && deal0.includes("Según la actividad del deal"), "ficha del deal: resumen y siguiente paso por reglas");
+  const [{ owner_id: OWNER }] = await sql`SELECT owner_id FROM deals WHERE id = ${DEAL_OPEN}`;
+  const today = await (await get(`/?owner=${OWNER}`)).text();
+  check(today.includes("Paco — ampliación de servicio") && today.includes("Decisiones pendientes"), "Hoy: parte filtrado por persona");
+
+  if (MOCK && process.env.TOKEN_ENCRYPTION_KEY) {
+    await sql`UPDATE ai_settings SET provider = 'anthropic', base_url = ${`${MOCK}/llm/anthropic`}, model = 'modelo-de-pruebas',
+                     api_key = ${enc("clave-llm-de-pruebas")}, last_error = NULL`;
+
+    // Reunión celebrada con transcripción → correo de resumen redactado por la IA y propuesta de pasar de fase.
+    const [meet] = await sql`SELECT id FROM activities WHERE deal_id = ${DEAL_OPEN} AND external_ref = 'evt:e1'`;
+    await sql`UPDATE activities SET done = true, outcome = 'held', transcript = 'Ana: nos encaja, revisad plazos.' WHERE id = ${meet.id}`;
+    await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, payload)
+              VALUES ('deal', ${DEAL_OPEN}, 'activity.completed', 'user', ${sql.json({ activity_id: meet.id, outcome: "held" })})`;
+    const r1 = await run();
+    const [recap] = await sql`SELECT x.payload FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                              WHERE r.key = 'meeting_recap' AND x.deal_id = ${DEAL_OPEN} AND x.status = 'pending'`;
+    check(recap?.payload.body.includes("(IA) Repasamos la propuesta") && recap.payload.body.includes("- (IA) Enviar la propuesta revisada")
+          && recap.payload.body.includes("(hora de Madrid)") && recap.payload.subject.includes("Resumen de nuestra videollamada"),
+          "tras la reunión: correo con resumen, próximos pasos (IA) y huecos", JSON.stringify(recap?.payload));
+    const [{ summary }] = await sql`SELECT summary FROM activities WHERE id = ${meet.id}`;
+    check(summary?.startsWith("(IA)"), "tras la reunión: el resumen queda en la actividad", summary);
+    const [adv] = await sql`SELECT x.payload FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                            WHERE r.key = 'advance_after_session' AND x.deal_id = ${DEAL_OPEN} AND x.status = 'pending'`;
+    check(adv?.payload.stage_name === "Propuesta enviada", "sesión de la fase celebrada: propone pasar a la siguiente", JSON.stringify(adv?.payload));
+
+    // Resúmenes de deals con IA (en caché) y fallback.
+    check(r1.briefs > 0, "la revisión redacta con IA los resúmenes de deals con novedades", JSON.stringify(r1));
+    const [b] = await sql`SELECT content FROM deal_briefs WHERE deal_id = ${DEAL_OPEN}`;
+    check(b?.content.siguiente_paso === "(IA) Llama a Ana para cerrar fecha", "resumen del deal: la respuesta JSON del modelo se interpreta", JSON.stringify(b));
+    const deal1 = await (await get(`/deals/${DEAL_OPEN}`)).text();
+    check(deal1.includes("(IA) Llama a Ana para cerrar fecha") && deal1.includes("Redactado por la IA"), "ficha del deal: muestra el resumen de la IA");
+    const [g1] = await sql`SELECT generated_at FROM deal_briefs WHERE deal_id = ${DEAL_OPEN}`;
+    await run();
+    const [g2] = await sql`SELECT generated_at FROM deal_briefs WHERE deal_id = ${DEAL_OPEN}`;
+    check(g1.generated_at.getTime() === g2.generated_at.getTime(), "sin novedades en el deal, no se vuelve a pedir su resumen a la IA");
+
+    // Traspaso a CS redactado por la IA.
+    const [won] = await sql`SELECT id FROM open_deals_status WHERE id <> ${DEAL_OPEN} ORDER BY id DESC LIMIT 1`;
+    await sql`UPDATE deals SET status = 'won' WHERE id = ${won.id}`;
+    await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type) VALUES ('deal', ${won.id}, 'deal.won', 'user')`;
+    await run();
+    const [ho] = await sql`SELECT a.note FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                           JOIN activities a ON a.id = (x.result->>'activity_id')::uuid WHERE r.key = 'won_handoff' AND x.deal_id = ${won.id}`;
+    check(ho?.note.startsWith("(IA) Traspaso") && ho.note.includes("— Datos del CRM —"), "traspaso a CS redactado por la IA, con los datos debajo", ho?.note?.slice(0, 80));
+
+    // Parte del día por correo (a quien tenga cuenta conectada), una vez al día.
+    await sql`UPDATE automation_settings SET digest_enabled = true, digest_hour = 0, digest_days = ARRAY[1,2,3,4,5,6,7]`;
+    const r3 = await run();
+    const st = await (await fetch(`${MOCK}/__state`)).json();
+    const mail = st.gsent.find((m) => m.subject.startsWith("Tu parte del día"));
+    check(r3.digests >= 1 && mail?.to === "jesus@empresa-google.example" && mail.body.includes("Enfoque del día (IA):") && mail.body.includes("Deals que piden atención"),
+          "parte del día: llega al correo de la persona con el enfoque de la IA", JSON.stringify({ digests: r3.digests, mail: mail?.body?.slice(0, 120) }));
+    const r4 = await run();
+    check(r4.digests === 0, "parte del día: solo uno al día", JSON.stringify(r4));
+    const hoy = await (await get("/")).text();
+    check(hoy.includes("(IA) Hoy, primero responde a Ana") && hoy.includes("Redactado por la IA"), "Hoy: muestra el enfoque del día de la IA");
+    check(st.llm.every((c) => c.model === "modelo-de-pruebas") && st.llm.some((c) => c.task === "daily_digest"), "se usa el modelo configurado", JSON.stringify(st.llm.slice(0, 3)));
+
+    // Si el modelo falla, se sigue con reglas y el error queda visible.
+    await sql`UPDATE ai_settings SET api_key = ${enc("clave-mala")}`;
+    await sql`DELETE FROM deal_briefs`;
+    const r5 = await run();
+    const [ai] = await sql`SELECT last_error FROM ai_settings`;
+    const deal2 = await (await get(`/deals/${DEAL_OPEN}`)).text();
+    check(r5.briefs === 0 && ai.last_error?.includes("Clave de API no válida") && deal2.includes("Según la actividad del deal"),
+          "si la IA falla, resumen por reglas y error visible en Ajustes", JSON.stringify({ briefs: r5.briefs, err: ai.last_error }));
+    const conf = await (await get("/settings/ai")).text();
+    check(conf.includes("Último error") && conf.includes("Resumen tras una reunión"), "/settings/ai muestra el estado y los prompts");
+  }
 }
 
 await sql.end();

@@ -5,6 +5,7 @@ export const metadata = { title: "Ajustes" };
 
 const SECTIONS: { href: string; title: string; text: string; icon: IconName }[] = [
   { href: "/settings/mailbox", icon: "inbox", title: "Correo, calendario y documentos", text: "Conecta Microsoft 365 o Google Workspace: enviar desde tu correo, registrar correos y reuniones, ofrecer tus huecos y enlazar documentos." },
+  { href: "/settings/ai", icon: "spark", title: "Modelo de IA", text: "Proveedor, modelo, clave y prompts de los resúmenes (Claude, OpenAI, Grok u otro)." },
   { href: "/settings/automations", icon: "spark", title: "Automatizaciones e IA", text: "Qué puede hacer la IA sola, qué te pregunta antes y qué reglas sigue." },
   { href: "/settings/pipelines", icon: "deals", title: "Pipelines y fases", text: "Crea pipelines, ordena sus fases y define cuándo un deal se considera parado y qué sesión toca en cada fase." },
   { href: "/settings/fields", icon: "settings", title: "Campos personalizados", text: "Añade tus propios campos a empresas, contactos, leads y deals." },

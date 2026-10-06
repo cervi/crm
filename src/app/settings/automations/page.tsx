@@ -5,6 +5,8 @@ import {
 } from "@/lib/automations";
 import { dateTime } from "@/lib/format";
 import { hasActiveMailbox } from "@/lib/mailbox";
+import { getDigestSettings } from "@/lib/digest";
+import { saveDigestSettingsAction } from "@/app/actions/ai";
 import {
   runNowAction, setPausedAction, setPermissionAction, setRuleAutonomyAction, updateRuleParamsAction,
 } from "@/app/actions/automations";
@@ -15,7 +17,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Automatizaciones e IA" };
 
 export default async function AutomationsSettingsPage() {
-  const [rules, permissions, settings, stats, mailbox] = await Promise.all([listRules(), listPermissions(), getSettings(), ruleStats(), hasActiveMailbox()]);
+  const [rules, permissions, settings, stats, mailbox, digest] = await Promise.all([listRules(), listPermissions(), getSettings(), ruleStats(), hasActiveMailbox(), getDigestSettings()]);
   // Sin buzón conectado, un correo no puede salir solo.
   const allowedFor = (action: string, allowed: typeof permissions[number]["allowed_autonomy"]) =>
     action === "draft_email" && !mailbox ? allowed.filter((l) => l !== "auto") : allowed;
@@ -44,6 +46,27 @@ export default async function AutomationsSettingsPage() {
           </form>
           {!settings.paused && <ActionForm action={runNowAction} submitLabel="Revisar ahora" pendingLabel="Revisando…" secondary className="form inline" />}
         </div>
+      </section>
+
+      <section className="panel" aria-label="Parte del día">
+        <h2>Parte del día</h2>
+        <p className="muted">
+          Cada persona con su cuenta conectada recibe en su correo el parte del día: lo que tiene que decidir, su agenda, lo vencido,
+          los deals que piden atención con el siguiente paso y lo que hizo la IA. También está siempre en <Link href="/">Hoy</Link>.
+        </p>
+        <ActionForm action={saveDigestSettingsAction} submitLabel="Guardar" secondary className="form inline">
+          <label className="checkbox"><input type="checkbox" name="enabled" defaultChecked={digest.enabled} />Enviar el parte por correo</label>
+          <label className="field"><span className="label">A partir de las</span>
+            <select name="hour" defaultValue={digest.hour}>
+              {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
+            </select>
+          </label>
+          <div className="day-picks" role="group" aria-label="Días del parte">
+            {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d, i) => (
+              <label key={d} className="checkbox"><input type="checkbox" name={`day_${i + 1}`} defaultChecked={digest.days.includes(i + 1)} />{d}</label>
+            ))}
+          </div>
+        </ActionForm>
       </section>
 
       <section className="panel">

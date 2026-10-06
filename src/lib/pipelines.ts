@@ -56,6 +56,8 @@ export type BoardDeal = {
   is_rotten: boolean;
   has_upcoming_session: boolean;
   next_activity_at: Date | null;
+  /** Propuestas de la IA esperando decisión. */
+  pending_ai: number;
 };
 
 export type BoardStage = {
@@ -105,7 +107,8 @@ export async function getBoard(pipelineId: string, ownerId?: string | null, sort
                'value', o.value::text, 'currency', o.currency,
                'days_in_stage', o.days_in_stage, 'is_rotten', o.is_rotten,
                'has_upcoming_session', o.has_upcoming_session,
-               'next_activity_at', na.due_at
+               'next_activity_at', na.due_at,
+               'pending_ai', (SELECT count(*) FROM automation_actions x WHERE x.deal_id = o.id AND x.status = 'pending')
              ) ORDER BY ${boardOrder(sort)}) FILTER (WHERE o.id IS NOT NULL),
              '[]'
            ) AS deals

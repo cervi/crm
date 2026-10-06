@@ -137,6 +137,11 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
   return { activityId: activityId!, from: conn.email };
 }
 
+/** Envía un correo sin registrarlo en ningún deal (p. ej. el parte del día a uno mismo). */
+export async function sendPlainEmail(conn: Connection, to: string, subject: string, body: string) {
+  await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: { email: to }, subject, body }));
+}
+
 type ActivityRow = {
   type: string; subject: string; note: string | null; due_at: Date; duration_minutes?: number | null; done: boolean;
   deal_id: string | null; person_id: string | null; organization_id: string | null; owner_id: string | null;

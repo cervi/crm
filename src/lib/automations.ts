@@ -9,6 +9,9 @@ import { UserError } from "./errors";
 import { activityLabel, money } from "./format";
 import { optText, optional, parse } from "./validation";
 import { hasActiveMailbox, sendEmail, senderFor, slotsText, syncAllMailboxes } from "./mailbox";
+import { generate, parseJsonReply } from "./ai";
+import { refreshStaleBriefs } from "./briefs";
+import { sendDueDigests } from "./digest";
 
 // ===========================================================================
 // Motor de automatizaciones
@@ -70,6 +73,8 @@ export type Rule = {
 
 /** Qué acción produce cada regla incluida. */
 export const RULE_ACTION: Record<string, ActionType> = {
+  meeting_recap: "draft_email",
+  advance_after_session: "move_stage",
   offer_session_slots: "draft_email",
   missing_stage_session: "create_task",
   stale_deal_followup: "draft_email",
@@ -104,6 +109,10 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
   stale_deal_escalate: [
     { key: "factor", label: "Veces el límite de días de la fase", kind: "number" },
     { key: "cooldown_days", label: "No repetir antes de (días)", kind: "days" },
+  ],
+  meeting_recap: [
+    { key: "subject", label: "Asunto", kind: "text" },
+    { key: "body", label: "Texto", kind: "textarea", help: "Puedes usar {deal}, {nombre}, {responsable}, {sesion}, {resumen}, {proximos_pasos} y {huecos}." },
   ],
   won_handoff: [
     { key: "due_days", label: "Plazo de la tarea (días)", kind: "days" },
@@ -366,6 +375,18 @@ const SCANNERS: Record<string, Scanner> = {
   },
 };
 
+/** A quién escribir tras una sesión: su contacto si tiene email; si no, el principal del deal. */
+async function contactFor(personId: string | null, d: DealContact) {
+  let to = { person_id: d.person_id, name: d.person_name, email: d.email };
+  if (personId && personId !== d.person_id) {
+    const [p] = await sql<{ full_name: string; email: string | null }[]>`
+      SELECT p.full_name, (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email
+      FROM persons p WHERE p.id = ${personId} AND p.deleted_at IS NULL AND p.unsubscribed_at IS NULL`;
+    if (p?.email) to = { person_id: personId, name: p.full_name, email: p.email };
+  }
+  return to;
+}
+
 const EVENT_HANDLERS: Record<string, EventHandler> = {
   // Sesión marcada como «No se presentó»: correo para reagendar.
   no_show_rebook: {
@@ -377,14 +398,7 @@ const EVENT_HANDLERS: Record<string, EventHandler> = {
       if (!a) return null;
       const [d] = await openDeals(sql`ods.id = ${e.entity_id}`);
       if (!d) return null;
-      // Mejor el contacto de la sesión que el principal del deal.
-      let to = { person_id: d.person_id, name: d.person_name, email: d.email };
-      if (a.person_id && a.person_id !== d.person_id) {
-        const [p] = await sql<{ full_name: string; email: string | null }[]>`
-          SELECT p.full_name, (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email
-          FROM persons p WHERE p.id = ${a.person_id} AND p.deleted_at IS NULL AND p.unsubscribed_at IS NULL`;
-        if (p?.email) to = { person_id: a.person_id, name: p.full_name, email: p.email };
-      }
+      const to = await contactFor(a.person_id, d);
       if (!to.email) return null;
       const vars = { deal: d.title, nombre: firstName(to.name), responsable: d.owner_name ?? "", sesion: activityLabel(a.type).toLowerCase() };
       return {
@@ -403,11 +417,76 @@ const EVENT_HANDLERS: Record<string, EventHandler> = {
   },
 
   // Deal ganado: tarea de traspaso a Customer Success con el resumen.
+  // Reunión celebrada: correo al contacto con el resumen, próximos pasos y huecos.
+  meeting_recap: {
+    events: ["activity.completed"],
+    async handle(rule, e, ctx) {
+      if (e.payload.outcome !== "held" || typeof e.payload.activity_id !== "string") return null;
+      const [a] = await sql<{ type: string; subject: string; note: string | null; transcript: string | null; person_id: string | null }[]>`
+        SELECT type, subject, note, transcript, person_id FROM activities WHERE id = ${e.payload.activity_id}`;
+      if (!a || !["call", "meeting", "video_call", "demo"].includes(a.type)) return null;
+      const [d] = await openDeals(sql`ods.id = ${e.entity_id}`);
+      if (!d) return null;
+      const to = await contactFor(a.person_id, d);
+      if (!to.email) return null;
+      const session = activityLabel(a.type).toLowerCase();
+      // Con IA: resumen y próximos pasos a partir de las notas o la transcripción.
+      const ai = parseJsonReply<{ resumen?: string; proximos_pasos?: string[] }>(await generate("meeting_recap", {
+        deal: { titulo: d.title, fase: d.stage_name },
+        reunion: { tipo: activityLabel(a.type), asunto: a.subject, notas: a.note, transcripcion: a.transcript?.slice(0, 60000) ?? null },
+        contacto: to.name,
+      }));
+      const resumen = ai?.resumen?.trim() || a.note?.trim() || "[Añade aquí lo más importante de la reunión]";
+      const pasos = (ai?.proximos_pasos?.length ? ai.proximos_pasos : ["Te envío lo que hemos acordado", "Agendamos la siguiente sesión"])
+        .map((x) => `- ${String(x).replace(/^[-•]\s*/, "")}`).join("\n");
+      if (ai?.resumen) await sql`UPDATE activities SET summary = ${ai.resumen.slice(0, 5000)} WHERE id = ${e.payload.activity_id}`;
+      const vars = { deal: d.title, nombre: firstName(to.name), responsable: d.owner_name ?? "", sesion: session, resumen, proximos_pasos: pasos };
+      return {
+        dealId: d.id,
+        title: `Enviar el resumen de la ${session} a ${to.name}`,
+        reason: `Se celebró «${a.subject}».${ai ? " Resumen redactado por la IA a partir de tus notas." : a.note ? " Resumen a partir de tus notas." : " Añade tus notas al resumen antes de enviarlo."}`,
+        payload: {
+          activity_id: e.payload.activity_id, to: to.email, to_name: to.name, person_id: to.person_id,
+          ...(await renderEmail(rule, ctx, d.owner_id, vars, { subject: "Resumen de nuestra {sesion}: {deal}", body: "Hola {nombre},\n\n{resumen}\n\n{proximos_pasos}" })),
+        },
+      };
+    },
+    stillValid: () => sql`d.status = 'open'`,
+  },
+
+  // Se celebró la sesión que pide la fase: proponer pasar a la siguiente.
+  advance_after_session: {
+    events: ["activity.completed"],
+    async handle(_rule, e) {
+      if (e.payload.outcome !== "held" || typeof e.payload.activity_id !== "string") return null;
+      const [x] = await sql<{ deal_id: string; title: string; subject: string; stage_id: string; stage_name: string;
+                              next_id: string | null; next_name: string | null }[]>`
+        SELECT d.id AS deal_id, d.title, a.subject, s.id AS stage_id, s.name AS stage_name, nx.id AS next_id, nx.name AS next_name
+        FROM activities a JOIN deals d ON d.id = a.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
+        JOIN stages s ON s.id = d.stage_id AND s.required_activity_type = a.type
+        LEFT JOIN LATERAL (
+          SELECT id, name FROM stages WHERE pipeline_id = d.pipeline_id AND is_active AND position > s.position ORDER BY position LIMIT 1
+        ) nx ON true
+        WHERE a.id = ${e.payload.activity_id}`;
+      if (!x?.next_id) return null;
+      return {
+        dealId: x.deal_id,
+        title: `Pasar «${x.title}» a «${x.next_name}»`,
+        reason: `Se celebró «${x.subject}», la sesión que pide «${x.stage_name}».`,
+        payload: { activity_id: e.payload.activity_id, stage_id: x.next_id, stage_name: x.next_name, from_stage_id: x.stage_id },
+      };
+    },
+    stillValid: () => sql`d.status = 'open' AND d.stage_id::text = x.payload->>'from_stage_id'`,
+  },
+
   won_handoff: {
     events: ["deal.won"],
     async handle(rule, e) {
       const summary = await handoffSummary(e.entity_id);
       if (!summary) return null;
+      // Con IA, el resumen lo redacta el modelo; los datos de siempre quedan debajo.
+      const ai = await generate("handoff", { datos_del_deal: summary.text });
+      if (ai) summary.text = `${ai}\n\n— Datos del CRM —\n${summary.text}`.slice(0, 4900);
       return {
         dealId: e.entity_id,
         title: `Traspaso a Customer Success: ${summary.title}`,
@@ -422,7 +501,7 @@ const EVENT_HANDLERS: Record<string, EventHandler> = {
   },
 };
 
-/** Resumen del deal para Customer Success (la IA lo redactará mejor en la fase B). */
+/** Resumen del deal para Customer Success con los datos del CRM (la IA, si está configurada, lo redacta encima). */
 export async function handoffSummary(dealId: string) {
   const [d] = await sql<{ title: string; value: string | null; currency: string; organization_name: string | null; owner_id: string | null;
                           owner_name: string | null; source: string | null; lead_source: string | null; lead_detail: string | null;
@@ -522,6 +601,8 @@ async function propose(rule: Rule, mode: "ask" | "auto", c: Candidate): Promise<
 export type RunResult = {
   status: "ok" | "paused" | "busy"; proposed: number; executed: number; expired: number; failed: number;
   sync?: { emails: number; meetings: number; updated: number; error?: string };
+  briefs?: number;
+  digests?: number;
 };
 
 const LOCK_KEY = 4_201_337; // pg_advisory_lock: una sola ejecución a la vez
@@ -536,8 +617,15 @@ export async function runAutomations(): Promise<RunResult> {
     try {
       // Primero se traen los correos y reuniones (aunque la IA esté en pausa).
       result.sync = await syncAllMailboxes();
-      if ((await getSettings()).paused) return { ...result, status: "paused" };
-      await runLocked(result);
+      const paused = (await getSettings()).paused;
+      if (!paused) {
+        await runLocked(result);
+        // Resúmenes de los deals que han cambiado.
+        result.briefs = await refreshStaleBriefs().catch(() => 0);
+      }
+      // El parte del día sale aunque la IA esté en pausa: es información, no una acción.
+      result.digests = await sendDueDigests().catch((err) => { console.error("[parte del día]", err); return 0; });
+      if (paused) return { ...result, status: "paused" };
       await sql`UPDATE automation_settings SET last_run_at = now()`;
     } finally {
       await conn`SELECT pg_advisory_unlock(${LOCK_KEY})`;

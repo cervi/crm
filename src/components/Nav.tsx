@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "./Icon";
 
 export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: IconName }[] = [
+  { href: "/", match: ["/"], label: "Hoy", icon: "home" },
   { href: "/pipelines", match: ["/pipelines", "/deals"], label: "Deals", icon: "deals" },
   { href: "/inbox", match: ["/inbox"], label: "Bandeja de la IA", icon: "inbox" },
   { href: "/leads", match: ["/leads"], label: "Leads", icon: "leads" },

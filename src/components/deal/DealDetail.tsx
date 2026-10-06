@@ -11,6 +11,9 @@ import { listActions } from "@/lib/automations";
 import { senderFor } from "@/lib/mailbox";
 import { PROVIDERS } from "@/lib/integrations";
 import { documentKind, listDocuments } from "@/lib/documents";
+import { getDealBrief } from "@/lib/briefs";
+import { aiReady, getAiSettings } from "@/lib/ai";
+import { regenerateBriefAction } from "@/app/actions/ai";
 import { addDocumentAction, removeDocumentAction } from "@/app/actions/documents";
 import { DrivePicker } from "./DrivePicker";
 import { sendDealEmailAction } from "@/app/actions/mailbox";
@@ -38,7 +41,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   const deal = await getDeal(dealId);
   if (!deal) return <div className="empty">Este deal ya no existe.</div>;
 
-  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals, sender, documents] = await Promise.all([
+  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals, sender, documents, brief, ai] = await Promise.all([
     listStages(deal.pipeline_id), dealParticipants(dealId), stageHistory(dealId), listActivitiesFor({ dealId }),
     listNotesFor({ dealId }), listFieldDefinitions("deal", true), listUsers(), listLostReasons(),
     timeline(sql, [{ type: "deal", id: dealId }], 100),
@@ -51,6 +54,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     listActions({ view: "pending", dealId, limit: 10 }),
     senderFor(deal.owner_id),
     listDocuments(dealId),
+    deal.status === "open" ? getDealBrief(dealId) : Promise.resolve(null),
+    getAiSettings(),
   ]);
   const canSend = sender !== null;
   const provider = sender ? PROVIDERS[sender.provider] : null;
@@ -236,6 +241,27 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
         </aside>
 
         <div className="deal-main">
+          {brief && (
+            <section className="brief" aria-label="Resumen del deal">
+              <div className="brief-head">
+                <h2><Icon name="spark" />Resumen</h2>
+                <span className="meta">
+                  {brief.source === "ai" ? `Redactado por la IA · ${dateTime(brief.generated_at)}${brief.stale ? " · hay novedades desde entonces" : ""}` : "Según la actividad del deal"}
+                </span>
+                <span className="spacer" />
+                {aiReady(ai) && (
+                  <ActionForm action={regenerateBriefAction.bind(null, dealId, back)} submitLabel={brief.source === "ai" ? "Actualizar" : "Redactar con IA"} pendingLabel="Redactando…" secondary className="form inline" />
+                )}
+              </div>
+              <p>{brief.resumen}</p>
+              <div className={`brief-next p${brief.prioridad}`}>
+                <span className="label">Siguiente paso</span>
+                <div><strong>{brief.siguiente_paso}</strong>{brief.source === "rules" && <span className="muted"> {brief.por_que}</span>}</div>
+              </div>
+              {brief.riesgos.length > 0 && <ul className="brief-risks">{brief.riesgos.map((r) => <li key={r}>{r}</li>)}</ul>}
+            </section>
+          )}
+
           <ComposerTabs
             note={
               <ActionForm action={createNoteAction.bind(null, back)} submitLabel="Guardar nota" resetOnSuccess>
@@ -323,6 +349,12 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                         </select>
                       </label>
                       <label className="field" style={{ flex: 1 }}><span className="label">Comentario</span><input name="note" /></label>
+                      {["call", "meeting", "video_call", "demo"].includes(a.type) && (
+                        <label className="field" style={{ flexBasis: "100%" }}>
+                          <span className="label">Notas o transcripción de la reunión (opcional)</span>
+                          <textarea name="transcript" rows={3} placeholder="Pega aquí la transcripción o tus notas: la IA preparará el resumen y los próximos pasos para el cliente." />
+                        </label>
+                      )}
                     </ActionForm>
                   </details>
                 </li>

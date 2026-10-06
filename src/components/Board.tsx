@@ -5,6 +5,7 @@ import { useOptimistic, useState, useTransition } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { moveDealAction } from "@/app/actions/deals";
 import type { BoardDeal, BoardStage } from "@/lib/pipelines";
+import { Icon } from "./Icon";
 import { Avatar } from "./Avatar";
 import { formatValue } from "@/lib/chart-format";
 
@@ -94,8 +95,13 @@ export function Board({ stages }: { stages: BoardStage[] }) {
                     <span className="age" title="Días en esta fase">{deal.days_in_stage === 0 ? "Hoy" : `${deal.days_in_stage} d`}</span>
                     {deal.owner_name && <span title={`Responsable: ${deal.owner_name}`}><Avatar name={deal.owner_name} size="sm" /></span>}
                   </span>
-                  {(deal.is_rotten || !deal.has_upcoming_session) && (
+                  {(deal.is_rotten || !deal.has_upcoming_session || deal.pending_ai > 0) && (
                     <span className="flags">
+                      {deal.pending_ai > 0 && (
+                        <span className="badge ai" title="Propuestas de la IA esperando tu decisión">
+                          <Icon name="spark" />{deal.pending_ai}
+                        </span>
+                      )}
                       {deal.is_rotten && <span className="badge warn">Parado</span>}
                       {!deal.has_upcoming_session && <span className="badge">Sin sesión agendada</span>}
                     </span>

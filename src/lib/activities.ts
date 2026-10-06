@@ -117,12 +117,13 @@ export async function createActivity(actor: Actor, data: unknown): Promise<strin
 
 /** Marca una actividad como hecha, con su resultado (p. ej. «No se presentó»). */
 export async function completeActivity(actor: Actor, activityId: string, data: unknown) {
-  const v = parse(z.object({ outcome: optional(z.enum(outcomes)), note: optText(5000) }), data);
+  const v = parse(z.object({ outcome: optional(z.enum(outcomes)), note: optText(5000), transcript: optText(200000) }), data);
   await transaction(async (tx) => {
     const [a] = await tx<{ deal_id: string | null; subject: string; type: string; note: string | null }[]>`
       UPDATE activities SET done = true, outcome = ${v.outcome ?? null},
              note = CASE WHEN ${v.note ?? null}::text IS NULL THEN note
-                         ELSE concat_ws(E'\n\n', note, ${v.note ?? null}::text) END
+                         ELSE concat_ws(E'\n\n', note, ${v.note ?? null}::text) END,
+             transcript = coalesce(${v.transcript ?? null}::text, transcript)
       WHERE id = ${activityId} AND NOT done
       RETURNING deal_id, subject, type, note`;
     if (!a) return;

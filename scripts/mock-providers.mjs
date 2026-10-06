@@ -40,7 +40,7 @@ function reset() {
         from: { emailAddress: { address: "news@otro.example" } }, toRecipients: [{ emailAddress: { address: ME.mail } }],
         receivedDateTime: new Date(Date.now() - 2 * D).toISOString(), sentDateTime: new Date(Date.now() - 2 * D).toISOString() },
     ],
-    gsent: [], gevents: [],
+    gsent: [], gevents: [], llm: [],
     gmessages: [
       gmsg("g1", 10, { From: "Ana García <ana@paco.example>", To: GME.email, Subject: "Re: propuesta" }, "Lo vemos con dirección."),
       gmsg("g2", 11, { From: `Jesús <${GME.email}>`, To: "\"Ana García\" <ana@paco.example>", Subject: "Propuesta" }, "Te adjunto la propuesta.", ["SENT"]),
@@ -114,7 +114,30 @@ createServer(async (req, res) => {
   const p = url.pathname;
   try {
     // --- Utilidades de prueba
-    if (p === "/__state") return send(res, 200, { sent: state.sent, events: state.events, gsent: state.gsent, gevents: state.gevents });
+    if (p === "/__state") return send(res, 200, { sent: state.sent, events: state.events, gsent: state.gsent, gevents: state.gevents, llm: state.llm });
+
+    // --- Modelos de IA (Anthropic y compatible con OpenAI)
+    if (p === "/llm/anthropic/v1/messages" || p === "/llm/openai/chat/completions") {
+      const anthropic = p.startsWith("/llm/anthropic");
+      const key = anthropic ? req.headers["x-api-key"] : (req.headers.authorization ?? "").replace(/^Bearer /, "");
+      if (key !== "clave-llm-de-pruebas") return send(res, 401, { error: { message: "Clave de API no válida" } });
+      const j = JSON.parse(await body(req));
+      const user = anthropic ? j.messages[0].content : j.messages.find((m) => m.role === "user").content;
+      const system = anthropic ? j.system : j.messages.find((m) => m.role === "system").content;
+      const task = JSON.parse(user).tarea;
+      state.llm.push({ task, model: j.model, system: system.slice(0, 80) });
+      const replies = {
+        test: "ok",
+        deal_brief: "```json\n" + JSON.stringify({ resumen: "(IA) El deal avanza pero falta la videollamada.", siguiente_paso: "(IA) Llama a Ana para cerrar fecha", riesgos: ["(IA) Riesgo de prueba"] }) + "\n```",
+        meeting_recap: "Aquí tienes:\n" + JSON.stringify({ resumen: "(IA) Repasamos la propuesta y los plazos.", proximos_pasos: ["(IA) Enviar la propuesta revisada", "(IA) Reunión con dirección"] }),
+        daily_digest: "(IA) Hoy, primero responde a Ana y luego revisa la bandeja.",
+        handoff: "(IA) Traspaso: cliente con buena relación; vigilar plazos.",
+      };
+      const text = replies[task] ?? "(IA) respuesta";
+      return anthropic
+        ? send(res, 200, { content: [{ type: "text", text }], stop_reason: "end_turn" })
+        : send(res, 200, { choices: [{ message: { role: "assistant", content: text } }] });
+    }
     if (p === "/__expire") { state.access.clear(); return send(res, 200, { ok: true }); }
     if (p === "/__revoke") { state.access.clear(); state.refresh.clear(); return send(res, 200, { ok: true }); }
     if (p === "/__reset") { reset(); return send(res, 200, { ok: true }); }
