@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Nav } from "@/components/Nav";
-import type { Theme } from "@/components/ThemeSwitch";
+import { Topbar, type Theme } from "@/components/Topbar";
 import "@fontsource-variable/instrument-sans";
 import "./globals.css";
 
@@ -25,8 +25,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="es" data-theme={theme === "system" ? undefined : theme}>
       <body>
         <div className="shell">
-          <Nav theme={theme} />
-          <div className="content">{children}</div>
+          <Nav />
+          <div className="main">
+            <Topbar theme={theme} />
+            <div className="content">{children}</div>
+          </div>
         </div>
       </body>
     </html>

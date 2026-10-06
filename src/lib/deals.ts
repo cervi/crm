@@ -100,8 +100,8 @@ export async function dealParticipants(dealId: string) {
 }
 
 export async function stageHistory(dealId: string) {
-  return sql<{ stage_name: string; pipeline_name: string; changed_at: Date; days: number | null }[]>`
-    SELECT s.name AS stage_name, p.name AS pipeline_name, h.changed_at,
+  return sql<{ stage_id: string; stage_name: string; pipeline_name: string; changed_at: Date; days: number | null }[]>`
+    SELECT h.to_stage_id AS stage_id, s.name AS stage_name, p.name AS pipeline_name, h.changed_at,
            floor(extract(epoch FROM coalesce(lead(h.changed_at) OVER w, now()) - h.changed_at) / 86400)::int AS days
     FROM deal_stage_history h
     JOIN stages s ON s.id = h.to_stage_id

@@ -13,6 +13,16 @@ const PATHS = {
   plus: "M12 5v14M5 12h14",
   plug: "M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v3",
   x: "M6 6l12 12M18 6L6 18",
+  search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4",
+  board: "M4 4h4v16H4zM10 4h4v10h-4zM16 4h4v13h-4z",
+  list: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
+  pencil: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
+  check: "M5 12l5 5L20 7",
+  chevron: "M6 9l6 6 6-6",
+  up: "M6 15l6-6 6 6",
+  expand: "M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7",
+  sort: "M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4",
 } as const;
 
 export type IconName = keyof typeof PATHS;

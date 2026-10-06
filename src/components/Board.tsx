@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { moveDealAction } from "@/app/actions/deals";
 import type { BoardDeal, BoardStage } from "@/lib/pipelines";
 import { Avatar } from "./Avatar";
@@ -30,6 +31,15 @@ function applyMove(stages: BoardStage[], { dealId, to }: Move): BoardStage[] {
 /** Tablero tipo Pipedrive: se arrastran los deals de una fase a otra. */
 export function Board({ stages }: { stages: BoardStage[] }) {
   const [optimistic, addMove] = useOptimistic(stages, applyMove);
+  const path = usePathname();
+  const params = useSearchParams();
+  const selected = params.get("deal");
+  // Pulsar una tarjeta abre el deal en el panel lateral, sin salir del tablero.
+  const panelHref = (id: string) => {
+    const next = new URLSearchParams(params.toString());
+    next.set("deal", id);
+    return `${path}?${next}`;
+  };
   const [, startTransition] = useTransition();
   const [dragging, setDragging] = useState<{ id: string; from: string } | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -72,9 +82,9 @@ export function Board({ stages }: { stages: BoardStage[] }) {
                   draggable
                   onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragging({ id: deal.id, from: stage.id }); }}
                   onDragEnd={() => { setDragging(null); setOver(null); }}
-                  className={["deal-card", deal.is_rotten && "rotten", dragging?.id === deal.id && "dragging"].filter(Boolean).join(" ")}
+                  className={["deal-card", deal.is_rotten && "rotten", dragging?.id === deal.id && "dragging", selected === deal.id && "selected"].filter(Boolean).join(" ")}
                 >
-                  <Link href={`/deals/${deal.id}`} draggable={false} className="deal-title">{deal.title}</Link>
+                  <Link href={panelHref(deal.id)} scroll={false} draggable={false} className="deal-title">{deal.title}</Link>
                   <span className="who">
                     <Avatar name={deal.organization_name ?? deal.person_name} kind={deal.organization_name ? "org" : "person"} size="sm" />
                     <span>{[deal.organization_name, deal.person_name].filter(Boolean).join(" · ") || "Sin empresa"}</span>

@@ -124,7 +124,7 @@ await step("arrastrar el deal en el tablero a otra fase", async () => {
 
 await step("programar una demo y marcar que no se presentó", async () => {
   await page.goto(`/deals/${dealId}`);
-  await page.getByText("+ Programar actividad").click();
+  await page.getByRole("tab", { name: "Actividad" }).click();
   await page.getByLabel("Tipo").selectOption({ label: "Demo" });
   await page.getByLabel("Asunto").fill("Demo del producto");
   await page.getByLabel("Fecha y hora").fill("2026-12-01T10:30");
@@ -135,12 +135,13 @@ await step("programar una demo y marcar que no se presentó", async () => {
   await item.getByText("Marcar como hecha").click();
   await item.getByLabel("Resultado").selectOption({ label: "No se presentó" });
   await item.getByRole("button", { name: "Guardar" }).click();
-  await page.locator(".timeline li", { hasText: "no se presentó" }).first().waitFor();
+  await page.locator(".feed-item", { hasText: "no se presentó" }).first().waitFor();
 });
 
 await step("añadir una nota", async () => {
+  await page.getByRole("tab", { name: "Nota" }).click();
   await page.getByLabel("Nota", { exact: true }).fill("Interesados en la integración con su ERP.");
-  await submit("Añadir nota");
+  await submit("Guardar nota");
   await page.locator(".note-body", { hasText: "integración con su ERP" }).waitFor();
   expect(await page.getByLabel("Nota", { exact: true }).inputValue() === "", "la nota no se ha vaciado tras guardar");
 });
@@ -150,7 +151,7 @@ await step("perder el deal con motivo programa el seguimiento", async () => {
   await page.getByLabel("Motivo *").selectOption({ label: "Sin presupuesto ahora (seguimiento a 90 días)" });
   await page.getByLabel("Comentario").fill("Vuelven a mirarlo el próximo año");
   await submit("Marcar como perdido");
-  await page.getByText("Sin presupuesto ahora — Vuelven a mirarlo").waitFor();
+  await page.getByText(/Sin presupuesto ahora\. Vuelven a mirarlo/).waitFor();
   const [t] = await sql`SELECT due_at::date - now()::date AS days FROM activities WHERE deal_id = ${dealId} AND subject LIKE 'Retomar contacto%'`;
   expect(t?.days === 90, `tarea de seguimiento a ${t?.days} días`);
 });
@@ -251,16 +252,70 @@ await step("crear un widget en un dashboard con vista previa", async () => {
   await widget.waitFor({ state: "detached" });
 });
 
-await step("cambiar a modo oscuro y que se recuerde", async () => {
-  await page.getByRole("button", { name: "Modo oscuro" }).click();
+await step("cambiar a modo oscuro desde el menú de usuario y que se recuerde", async () => {
+  await page.getByRole("button", { name: "Tu cuenta" }).click();
+  await page.getByRole("menuitemradio", { name: "Oscuro" }).click();
   expect(await page.evaluate(() => document.documentElement.dataset.theme) === "dark", "no se aplicó el modo oscuro");
   await page.reload();
   expect(await page.evaluate(() => document.documentElement.dataset.theme) === "dark", "el modo oscuro no se recuerda al recargar");
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(bg === "rgb(15, 19, 26)", `fondo en modo oscuro: ${bg}`);
   await shot("dashboard-oscuro");
-  await page.getByRole("button", { name: "Como el sistema" }).click();
+  await page.getByRole("button", { name: "Tu cuenta" }).click();
+  await page.getByRole("menuitemradio", { name: "Como el sistema" }).click();
   expect(await page.evaluate(() => document.documentElement.dataset.theme) === undefined, "no volvió a seguir al sistema");
+});
+
+await step("buscador global: escribir, elegir con el teclado y abrir", async () => {
+  await page.goto("/activities");
+  await page.keyboard.press("Control+k");
+  await page.keyboard.type("Paco S");
+  await page.getByRole("option", { name: /Paco S\.L\./ }).first().waitFor();
+  const opts = await page.getByRole("option").allTextContents();
+  const idx = opts.findIndex((t) => t.startsWith("Paco S.L.") && t.includes("paco.example"));
+  for (let i = 0; i < idx; i++) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await page.waitForURL(/\/organizations\/60000000-0000-0000-0000-000000000001$/);
+});
+
+await step("panel lateral: abrir desde el tablero, navegar y cerrar con Esc", async () => {
+  await page.goto("/pipelines/10000000-0000-0000-0000-000000000001?sort=title");
+  const first = page.locator(".deal-card .deal-title").first();
+  const firstTitle = (await first.textContent()).trim();
+  await first.click();
+  const panel = page.locator(".deal-panel");
+  await panel.getByRole("heading", { level: 1, name: firstTitle }).waitFor();
+  expect(page.url().includes("deal="), "la URL no recoge el deal abierto");
+  await shot("panel-deal");
+  await panel.getByRole("link", { name: "Deal siguiente (J)" }).click();
+  await page.waitForFunction((t) => document.querySelector(".deal-panel h1")?.textContent !== t, firstTitle);
+  await page.keyboard.press("k");
+  await panel.getByRole("heading", { level: 1, name: firstTitle }).waitFor();
+  await page.keyboard.press("Escape");
+  await panel.waitFor({ state: "detached" });
+  expect(await page.locator(".board").isVisible(), "el tablero no sigue a la vista");
+});
+
+await step("vista de lista y ordenar por importe", async () => {
+  await page.goto("/pipelines/10000000-0000-0000-0000-000000000001");
+  await page.getByRole("button", { name: "Vista de lista" }).click();
+  await page.waitForURL(/view=list/);
+  await page.getByRole("link", { name: "Importe" }).click();
+  await page.getByRole("link", { name: "Importe ↑" }).waitFor();
+  const values = await page.locator("tbody tr td.num:nth-of-type(4)").allTextContents();
+  const nums = values.map((v) => Number(v.replace(/[^0-9]/g, ""))).filter((n) => !Number.isNaN(n));
+  expect(nums.every((n, i) => i === 0 || n >= nums[i - 1]), `no está ordenado: ${nums.slice(0, 6).join(", ")}`);
+  await page.getByLabel("Estado").selectOption({ label: "Todos (también cerrados)" });
+  await page.waitForURL(/status=all/);
+  await page.locator(".badge.won").first().waitFor();
+});
+
+await step("selector de pipeline en la barra del tablero", async () => {
+  await page.goto("/pipelines/10000000-0000-0000-0000-000000000001");
+  await page.getByRole("button", { name: /Inbound/ }).click();
+  await page.getByRole("menuitemradio", { name: "Ampliaciones" }).click();
+  await page.waitForURL(/10000000-0000-0000-0000-000000000003/);
+  await page.locator(".stage-head", { hasText: "Necesidad detectada" }).waitFor();
 });
 
 await step("capturas de las pantallas principales", async () => {

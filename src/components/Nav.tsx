@@ -3,42 +3,37 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "./Icon";
-import { ThemeSwitch, type Theme } from "./ThemeSwitch";
 
-const ITEMS: { href: string; match: string[]; label: string; icon: IconName }[] = [
+export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: IconName }[] = [
   { href: "/pipelines", match: ["/pipelines", "/deals"], label: "Deals", icon: "deals" },
-  { href: "/dashboards", match: ["/dashboards"], label: "Dashboards", icon: "dashboards" },
   { href: "/leads", match: ["/leads"], label: "Leads", icon: "leads" },
+  { href: "/activities", match: ["/activities"], label: "Actividades", icon: "activities" },
   { href: "/organizations", match: ["/organizations"], label: "Empresas", icon: "organizations" },
   { href: "/persons", match: ["/persons"], label: "Contactos", icon: "persons" },
-  { href: "/activities", match: ["/activities"], label: "Actividades", icon: "activities" },
+  { href: "/dashboards", match: ["/dashboards"], label: "Dashboards", icon: "dashboards" },
   { href: "/settings", match: ["/settings"], label: "Ajustes", icon: "settings" },
 ];
 
-export function Nav({ theme }: { theme: Theme }) {
+/** Menú lateral colapsado: solo iconos, con el nombre al pasar el ratón. */
+export function Nav() {
   const path = usePathname();
   return (
-    <aside className="sidebar">
-      <Link href="/" className="brand">
-        <span className="brand-mark"><Icon name="deals" /></span>
-        <span>CRM</span>
-      </Link>
+    <aside className="rail">
+      <Link href="/" className="rail-brand" aria-label="Inicio"><Icon name="deals" /></Link>
       <nav aria-label="Principal">
         <ul>
-          {ITEMS.map((item) => {
+          {NAV_ITEMS.map((item) => {
             const active = item.match.some((m) => path === m || path.startsWith(`${m}/`));
             return (
               <li key={item.href}>
-                <Link href={item.href} aria-current={active ? "page" : undefined}>
-                  <Icon name={item.icon} /><span>{item.label}</span>
+                <Link href={item.href} aria-current={active ? "page" : undefined} aria-label={item.label} data-tip={item.label}>
+                  <Icon name={item.icon} />
                 </Link>
               </li>
             );
           })}
         </ul>
       </nav>
-      <div className="spacer" />
-      <ThemeSwitch initial={theme} />
     </aside>
   );
 }

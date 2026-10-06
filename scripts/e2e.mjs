@@ -34,7 +34,7 @@ const DEAL_LOST = "90000000-0000-0000-0000-000000000003", LEAD = "80000000-0000-
 
 const pages = {
   "/pipelines": null, [`/pipelines/${P.inbound}`]: ["Demo solicitada"], [`/pipelines/${P.ampl}`]: ["Paco — ampliación de servicio", "Parado"],
-  "/deals/new": ["Nuevo deal"], [`/deals/${DEAL_OPEN}`]: ["Necesidad detectada", "No se presentó"],
+  "/deals/new": ["Nuevo deal"], [`/deals/${DEAL_OPEN}`]: ["Necesidad detectada", "no se presentó", "Enfoque", "Historia"],
   [`/deals/${DEAL_WON}`]: ["Ganado el"], [`/deals/${DEAL_LOST}`]: ["Eligió a la competencia"], [`/deals/${DEAL_OPEN}/edit`]: ["Editar deal"],
   "/leads": null, "/leads?status=all": ["Webinar: automatizar la captación"], [`/leads/${LEAD}`]: ["Ana García"], "/leads/new": ["Nuevo lead"],
   "/organizations": ["Paco S.L."], "/organizations?q=paco": ["Paco S.L."], [`/organizations/${ORG}`]: ["Antiguos contactos", "Luis Martín"],
@@ -58,6 +58,28 @@ for (const path of ["/deals/no-existe", `/deals/00000000-0000-0000-0000-00000000
   const res = await get(path);
   check(res.status === 404, `404 en ${path}`, `HTTP ${res.status}`);
 }
+// ------------------------------------------------------------- Buscador, vistas y panel
+{
+  const hits = await (await get("/api/search?q=paco")).json();
+  const types = new Set(hits.map((h) => h.type));
+  check(types.has("deal") && types.has("organization"), "buscador: «paco» encuentra deals y empresa", [...types].join(","));
+  const byEmail = await (await get("/api/search?q=ana@paco")).json();
+  check(byEmail.some((h) => h.type === "person" && h.title === "Ana García"), "buscador: por email encuentra el contacto");
+  check((await (await get("/api/search?q=a")).json()).length === 0, "buscador: una sola letra no busca");
+  check((await (await get("/api/search?q=%25%25%25")).json()).length === 0, "buscador: los comodines se tratan como texto");
+  const sres = await (await get("/search?q=paco")).text();
+  check(sres.includes("Paco S.L.") && sres.includes("Deals"), "página de resultados de búsqueda");
+  const list = await (await get(`/pipelines/${P.inbound}?view=list&status=all&sort=value&dir=desc`)).text();
+  check(list.includes("Paco — contrato anual") && list.includes("Paco — otra plataforma") && list.includes("Importe ↓"),
+        "vista de lista con cerrados y orden por importe");
+  const sorted = await (await get(`/pipelines/${P.inbound}?sort=value`)).text();
+  check(sorted.includes("Ordenar: importe"), "tablero ordenado por importe");
+  const panel = await (await get(`/pipelines/${P.ampl}?deal=${DEAL_OPEN}`)).text();
+  check(panel.includes("deal-panel") && panel.includes("Enfoque") && panel.includes("Cerrar (Esc)"), "panel lateral del deal en el tablero");
+  const bogus = await get(`/pipelines/${P.ampl}?deal=00000000-0000-0000-0000-00000000dead`);
+  check(bogus.status === 200 && (await bogus.text()).includes("ya no existe"), "panel con un deal inexistente no rompe el tablero");
+}
+
 // ------------------------------------------------------------- Dashboards
 {
   const r = await get("/dashboards");

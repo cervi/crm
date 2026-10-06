@@ -68,8 +68,33 @@ export type BoardStage = {
   deals: BoardDeal[];
 };
 
+export const BOARD_SORTS = {
+  attention: "Requieren atención",
+  value: "Importe",
+  days: "Días en la fase",
+  next_activity: "Próxima actividad",
+  created: "Fecha de alta",
+  close: "Cierre previsto",
+  title: "Título",
+} as const;
+export type BoardSort = keyof typeof BOARD_SORTS;
+export const isBoardSort = (v: unknown): v is BoardSort => typeof v === "string" && v in BOARD_SORTS;
+
+/** Orden de las tarjetas dentro de cada columna (lista cerrada de opciones). */
+function boardOrder(sort: BoardSort) {
+  switch (sort) {
+    case "value": return sql`o.value DESC NULLS LAST, o.title`;
+    case "days": return sql`o.days_in_stage DESC, o.title`;
+    case "next_activity": return sql`na.due_at ASC NULLS LAST, o.title`;
+    case "created": return sql`dd.created_at DESC`;
+    case "close": return sql`dd.expected_close_date ASC NULLS LAST, o.title`;
+    case "title": return sql`lower(o.title)`;
+    default: return sql`o.is_rotten DESC, o.has_upcoming_session ASC, o.days_in_stage DESC`;
+  }
+}
+
 /** Tablero de un pipeline: fases en orden, cada una con sus deals abiertos. */
-export async function getBoard(pipelineId: string, ownerId?: string | null): Promise<BoardStage[]> {
+export async function getBoard(pipelineId: string, ownerId?: string | null, sort: BoardSort = "attention"): Promise<BoardStage[]> {
   return sql<BoardStage[]>`
     SELECT s.id, s.name, s.position, s.rotten_after_days, s.win_probability,
            coalesce(sum(o.value), 0)::text AS total_value,
@@ -81,11 +106,12 @@ export async function getBoard(pipelineId: string, ownerId?: string | null): Pro
                'days_in_stage', o.days_in_stage, 'is_rotten', o.is_rotten,
                'has_upcoming_session', o.has_upcoming_session,
                'next_activity_at', na.due_at
-             ) ORDER BY o.is_rotten DESC, o.days_in_stage DESC) FILTER (WHERE o.id IS NOT NULL),
+             ) ORDER BY ${boardOrder(sort)}) FILTER (WHERE o.id IS NOT NULL),
              '[]'
            ) AS deals
     FROM stages s
     LEFT JOIN open_deals_status o ON o.stage_id = s.id AND (${ownerId ?? null}::uuid IS NULL OR o.owner_id = ${ownerId ?? null}::uuid)
+    LEFT JOIN deals dd ON dd.id = o.id
     LEFT JOIN organizations org ON org.id = o.organization_id
     LEFT JOIN users u ON u.id = o.owner_id
     LEFT JOIN LATERAL (
@@ -98,6 +124,72 @@ export async function getBoard(pipelineId: string, ownerId?: string | null): Pro
     WHERE s.pipeline_id = ${pipelineId} AND s.is_active
     GROUP BY s.id
     ORDER BY s.position`;
+}
+
+export type PipelineDealRow = {
+  id: string;
+  title: string;
+  status: "open" | "won" | "lost";
+  value: string | null;
+  currency: string;
+  stage_name: string;
+  stage_position: number;
+  organization_id: string | null;
+  organization_name: string | null;
+  person_name: string | null;
+  owner_name: string | null;
+  days_in_stage: number;
+  is_rotten: boolean;
+  next_activity_at: Date | null;
+  expected_close_date: string | null;
+  created_at: Date;
+};
+
+const LIST_ORDER = {
+  title: sql`lower(d.title)`,
+  value: sql`d.value`,
+  stage: sql`s.position`,
+  organization: sql`lower(o.name)`,
+  owner: sql`lower(u.name)`,
+  days: sql`d.stage_entered_at`,
+  next_activity: sql`na.due_at`,
+  close: sql`d.expected_close_date`,
+  created: sql`d.created_at`,
+} as const;
+export type ListSort = keyof typeof LIST_ORDER;
+export const isListSort = (v: unknown): v is ListSort => typeof v === "string" && v in LIST_ORDER;
+
+/** Vista de lista de un pipeline, con deals cerrados opcionalmente. */
+export async function listPipelineDeals(pipelineId: string, opts: {
+  ownerId?: string | null; status?: "open" | "all" | "won" | "lost"; sort?: ListSort; dir?: "asc" | "desc";
+}) {
+  const status = opts.status ?? "open";
+  const sort = LIST_ORDER[opts.sort ?? "stage"];
+  // "días en la fase" crece cuanto más antigua es la fecha de entrada: se invierte.
+  const asc = (opts.dir ?? "asc") === "asc" ? opts.sort !== "days" : opts.sort === "days";
+  return sql<PipelineDealRow[]>`
+    SELECT d.id, d.title, d.status, d.value::text, d.currency, s.name AS stage_name, s.position AS stage_position,
+           d.organization_id, o.name AS organization_name, pp.full_name AS person_name, u.name AS owner_name,
+           floor(extract(epoch FROM now() - d.stage_entered_at) / 86400)::int AS days_in_stage,
+           (d.status = 'open' AND s.rotten_after_days IS NOT NULL
+             AND now() - d.stage_entered_at > make_interval(days => s.rotten_after_days)) AS is_rotten,
+           na.due_at AS next_activity_at, d.expected_close_date::text, d.created_at
+    FROM deals d
+    JOIN stages s ON s.id = d.stage_id
+    LEFT JOIN organizations o ON o.id = d.organization_id
+    LEFT JOIN users u ON u.id = d.owner_id
+    LEFT JOIN LATERAL (
+      SELECT p.full_name FROM deal_participants dp JOIN persons p ON p.id = dp.person_id
+      WHERE dp.deal_id = d.id ORDER BY dp.is_primary DESC LIMIT 1
+    ) pp ON true
+    LEFT JOIN LATERAL (
+      SELECT min(a.due_at) AS due_at FROM activities a WHERE a.deal_id = d.id AND NOT a.done
+    ) na ON true
+    WHERE d.pipeline_id = ${pipelineId} AND d.deleted_at IS NULL
+      AND (${status} = 'all' OR d.status = ${status})
+      AND (${opts.ownerId ?? null}::uuid IS NULL OR d.owner_id = ${opts.ownerId ?? null}::uuid)
+    ORDER BY ${sort} ${asc ? sql`ASC` : sql`DESC`} NULLS LAST, d.created_at DESC
+    LIMIT 1000`;
 }
 
 // ---------------------------------------------------------------------------
