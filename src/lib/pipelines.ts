@@ -2,7 +2,7 @@ import { z } from "zod";
 import { sql, transaction } from "./db";
 import { UserError } from "./errors";
 import { checkbox, optional, optText, parse, text } from "./validation";
-import { ACTIVITY_TYPES } from "./format";
+import { assertActivityType } from "./activity-types";
 
 export type Pipeline = { id: string; name: string; description: string | null; is_active: boolean; position: number };
 export type Stage = {
@@ -231,16 +231,16 @@ export async function updatePipeline(id: string, data: unknown) {
             WHERE id = ${id}`;
 }
 
-const activityTypes = ACTIVITY_TYPES.map((a) => a.value) as [string, ...string[]];
 const stageSchema = z.object({
   name: text("El nombre", 100),
   win_probability: optional(z.coerce.number().int().min(0).max(100, "La probabilidad va de 0 a 100")),
   rotten_after_days: optional(z.coerce.number().int().min(1, "Los días deben ser 1 o más")),
-  required_activity_type: optional(z.enum(activityTypes)),
+  required_activity_type: optText(40),
 });
 
 export async function addStage(pipelineId: string, data: unknown) {
   const v = parse(stageSchema, data);
+  await assertActivityType(v.required_activity_type, true);
   await sql`
     INSERT INTO stages (pipeline_id, name, position, win_probability, rotten_after_days, required_activity_type)
     SELECT ${pipelineId}, ${v.name}, coalesce(max(position), 0) + 1, ${v.win_probability ?? null},
@@ -250,6 +250,7 @@ export async function addStage(pipelineId: string, data: unknown) {
 
 export async function updateStage(stageId: string, data: unknown) {
   const v = parse(stageSchema, data);
+  await assertActivityType(v.required_activity_type, true);
   await sql`
     UPDATE stages SET name = ${v.name}, win_probability = ${v.win_probability ?? null},
            rotten_after_days = ${v.rotten_after_days ?? null},

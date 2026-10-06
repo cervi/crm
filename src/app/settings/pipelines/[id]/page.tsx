@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPipeline, listStages } from "@/lib/pipelines";
-import { ACTIVITY_TYPES } from "@/lib/format";
+import { activityTypes } from "@/lib/activity-types";
 import { isId } from "@/lib/validation";
 import {
   addStageAction, deleteStageAction, moveStageAction, updatePipelineAction, updateStageAction,
@@ -11,7 +11,7 @@ import { ActionForm } from "@/components/ActionForm";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Pipeline" };
 
-function StageFields({ s }: { s?: { name: string; win_probability: number | null; rotten_after_days: number | null; required_activity_type: string | null } }) {
+async function StageFields({ s }: { s?: { name: string; win_probability: number | null; rotten_after_days: number | null; required_activity_type: string | null } }) {
   return (
     <>
       <label className="field" style={{ flex: 2 }}><span className="label">Nombre</span><input name="name" required defaultValue={s?.name} /></label>
@@ -22,7 +22,8 @@ function StageFields({ s }: { s?: { name: string; win_probability: number | null
       <label className="field" style={{ width: 170 }}><span className="label">Sesión requerida</span>
         <select name="required_activity_type" defaultValue={s?.required_activity_type ?? ""}>
           <option value="">Ninguna</option>
-          {ACTIVITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          {(await activityTypes()).filter((t) => t.is_active || t.key === s?.required_activity_type)
+            .map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
         </select>
       </label>
     </>

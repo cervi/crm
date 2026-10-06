@@ -3,7 +3,8 @@ import { generate } from "./ai";
 import { dealSignals, nextStep, type NextStep, type Signals } from "./briefs";
 import { listConnections, sendPlainEmail } from "./mailbox";
 import { UserError } from "./errors";
-import { activityLabel, money } from "./format";
+import { activityLabel, isSessionType, money } from "./format";
+import { activityTypes } from "./activity-types";
 
 // ===========================================================================
 // Parte del día: lo que hay que decidir, la agenda, lo vencido, los deals que
@@ -12,7 +13,6 @@ import { activityLabel, money } from "./format";
 // ===========================================================================
 
 const TZ = () => process.env.TZ || "Europe/Madrid";
-const SESSION_TYPES = ["call", "meeting", "video_call", "demo"];
 
 export type DigestSettings = { enabled: boolean; hour: number; days: number[] };
 
@@ -66,6 +66,7 @@ export type Digest = {
  */
 export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" | "generate" } = {}): Promise<Digest> {
   const byOwner = (col: ReturnType<typeof sql.unsafe>) => (ownerId ? sql`${col} = ${ownerId}` : sql`true`);
+  await activityTypes();
   const [owner] = ownerId ? await sql<{ name: string }[]>`SELECT name FROM users WHERE id = ${ownerId}` : [];
 
   const [signals, decisions, agenda, overdue, aiDone, leads, closed, [pipeline]] = await Promise.all([
@@ -117,9 +118,9 @@ export async function buildDigest(ownerId: string | null, opts: { ai?: "cached" 
     focus: "", focusSource: "rules",
     decisions: { count: decisions[0]?.n ?? 0, items: decisions.map((x) => ({ title: x.title, detail: x.deal_title, href: x.deal_id ? `/deals/${x.deal_id}` : "/inbox" })) },
     // Agenda: las sesiones con hora. Las tareas del día van aparte.
-    agenda: agenda.filter((a) => SESSION_TYPES.includes(a.type)).map((a) => ({ title: `${activityLabel(a.type)}: ${a.subject}`, detail: [a.deal_title, a.person].filter(Boolean).join(" · ") || null,
+    agenda: agenda.filter((a) => isSessionType(a.type)).map((a) => ({ title: `${activityLabel(a.type)}: ${a.subject}`, detail: [a.deal_title, a.person].filter(Boolean).join(" · ") || null,
                                  href: a.deal_id ? `/deals/${a.deal_id}` : undefined, at: a.due_at })),
-    tasks: agenda.filter((a) => !SESSION_TYPES.includes(a.type)).map((a) => ({
+    tasks: agenda.filter((a) => !isSessionType(a.type)).map((a) => ({
       title: a.subject, detail: a.deal_title, href: a.deal_id ? `/deals/${a.deal_id}` : "/activities", at: a.due_at })),
     overdue: overdue.map((a) => ({ title: a.subject, detail: a.deal_title, href: a.deal_id ? `/deals/${a.deal_id}` : "/activities", at: a.due_at, tone: "bad" as const })),
     attention,

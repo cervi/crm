@@ -3,17 +3,19 @@ import {
   completeActivityAction, createActivityAction, reopenActivityAction,
 } from "@/app/actions/records";
 import type { Activity } from "@/lib/activities";
-import { ACTIVITY_TYPES, OUTCOMES, activityLabel, dateTime, outcomeLabel } from "@/lib/format";
+import { OUTCOMES, activityLabel, dateTime, outcomeLabel } from "@/lib/format";
+import { activeActivityTypes } from "@/lib/activity-types";
 
 type Ref = { deal_id?: string; lead_id?: string; person_id?: string; organization_id?: string };
 
 /** Actividades de una ficha: alta, pendientes (con su cierre) y hechas. */
-export function ActivityPanel({ activities, refs, back, users }: {
+export async function ActivityPanel({ activities, refs, back, users }: {
   activities: Activity[];
   refs: Ref;
   back: string;
   users: { id: string; name: string }[];
 }) {
+  const types = await activeActivityTypes();
   const pending = activities.filter((a) => !a.done);
   const done = activities.filter((a) => a.done);
   return (
@@ -25,8 +27,8 @@ export function ActivityPanel({ activities, refs, back, users }: {
           {Object.entries(refs).map(([k, v]) => v && <input key={k} type="hidden" name={k} value={v} />)}
           <div className="grid-2">
             <label className="field"><span className="label">Tipo</span>
-              <select name="type" defaultValue="call">
-                {ACTIVITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              <select name="type" defaultValue={types.find((t) => t.key === "call")?.key ?? types[0]?.key}>
+                {types.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </label>
             <label className="field"><span className="label">Asunto</span><input name="subject" required /></label>

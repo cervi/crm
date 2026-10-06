@@ -34,8 +34,20 @@ export const ACTIVITY_TYPES = [
   { value: "task", label: "Tarea" },
   { value: "deadline", label: "Fecha límite" },
 ] as const;
-export type ActivityType = (typeof ACTIVITY_TYPES)[number]["value"];
-export const activityLabel = (t: string | null) => ACTIVITY_TYPES.find((a) => a.value === t)?.label ?? t ?? "—";
+export type ActivityType = string;
+
+// Los tipos son configurables (tabla activity_types). Estos son los de serie;
+// el servidor registra aquí los de la base de datos (lib/activity-types.ts).
+const SESSION_BUILTINS = new Set(["call", "meeting", "video_call", "demo"]);
+const typeRegistry = new Map<string, { label: string; session: boolean }>(
+  ACTIVITY_TYPES.map((t) => [t.value, { label: t.label, session: SESSION_BUILTINS.has(t.value) }]),
+);
+export function registerActivityTypes(rows: { key: string; label: string; is_session: boolean }[]) {
+  for (const r of rows) typeRegistry.set(r.key, { label: r.label, session: r.is_session });
+}
+export const activityLabel = (t: string | null) => (t ? typeRegistry.get(t)?.label ?? t : "—");
+/** ¿Es una sesión con el cliente (llamada, reunión, demo…)? */
+export const isSessionType = (t: string | null | undefined) => Boolean(t && typeRegistry.get(t)?.session);
 
 export const OUTCOMES = [
   { value: "held", label: "Realizada" },

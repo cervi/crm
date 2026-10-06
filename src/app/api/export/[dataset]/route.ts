@@ -1,6 +1,7 @@
 import { toCsv, type Separator } from "@/lib/csv";
 import { DATASETS, exportFilename, getCsvSeparator } from "@/lib/export";
 import { UserError } from "@/lib/errors";
+import { activityTypes } from "@/lib/activity-types";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ dataset:
   if (!def) return new Response("Exportación no encontrada.", { status: 404 });
   const q = new URL(req.url).searchParams;
   try {
+    await activityTypes(); // etiquetas de los tipos de actividad
     const table = await def.run(q);
     const sepParam = q.get("sep");
     const sep: Separator = sepParam === "," ? "," : sepParam === "tab" ? "\t" : sepParam === ";" ? ";" : await getCsvSeparator();

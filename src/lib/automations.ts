@@ -6,7 +6,8 @@ import { completeActivity, createActivity } from "./activities";
 import { createNote } from "./notes";
 import { moveDealToStage } from "./deals";
 import { UserError } from "./errors";
-import { activityLabel, money } from "./format";
+import { activityLabel, isSessionType, money } from "./format";
+import { activityTypes } from "./activity-types";
 import { optText, optional, parse } from "./validation";
 import { hasActiveMailbox, sendEmail, senderFor, slotsText, syncAllMailboxes } from "./mailbox";
 import { generate, parseJsonReply } from "./ai";
@@ -70,7 +71,33 @@ export type Rule = {
   allowed_autonomy: Autonomy[];
   params: Record<string, unknown>;
   position: number;
+  is_custom: boolean;
+  trigger: CustomTrigger | null;
+  action: CustomAction | null;
 };
+
+// ---------------------------------------------------------------------------
+// Reglas personalizadas: «cuando una actividad de tal tipo se hace (con tal
+// resultado) o sigue sin hacerse N días después, haz tal cosa».
+
+export type Outcome = "any" | "held" | "no_show" | "rescheduled" | "cancelled";
+export type CustomTrigger =
+  | { kind: "activity_done"; activity_type: string | null; outcome: Outcome }
+  | { kind: "activity_overdue"; activity_type: string | null; days: number };
+export type CustomAction =
+  | { kind: "create_activity"; activity_type: string; subject: string; due_in_days: number; note: string | null }
+  | { kind: "draft_email"; subject: string; body: string }
+  | { kind: "move_stage"; stage_id: string }
+  | { kind: "notify"; message: string };
+
+const CUSTOM_ACTION: Record<CustomAction["kind"], ActionType> = {
+  create_activity: "create_task", draft_email: "draft_email", move_stage: "move_stage", notify: "notify",
+};
+
+/** Qué tipo de acción produce una regla (de serie o personalizada). */
+export function ruleAction(rule: Pick<Rule, "key" | "is_custom" | "action">): ActionType | undefined {
+  return rule.is_custom && rule.action ? CUSTOM_ACTION[rule.action.kind] : RULE_ACTION[rule.key];
+}
 
 /** Qué acción produce cada regla incluida. */
 export const RULE_ACTION: Record<string, ActionType> = {
@@ -130,8 +157,8 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
 
 export async function listRules(): Promise<Rule[]> {
   return sql<Rule[]>`
-    SELECT id, key, name, description, autonomy, allowed_autonomy, params, position
-    FROM automation_rules ORDER BY position, name`;
+    SELECT id, key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action
+    FROM automation_rules ORDER BY is_custom, position, name`;
 }
 
 export type Permission = { actor: AgentKind; action_type: ExecutableAction; autonomy: Autonomy; allowed_autonomy: Autonomy[] };
@@ -145,7 +172,7 @@ export async function listPermissions(): Promise<Permission[]> {
  * del asistente. Sin buzón conectado, un correo no puede salir solo.
  */
 export function effectiveAutonomy(rule: Rule, permissions: Permission[], ctx: { mailbox: boolean }): Autonomy {
-  const action = RULE_ACTION[rule.key];
+  const action = ruleAction(rule);
   if (!action) return "off";
   // Pedir una decisión nunca es automático: es una pregunta.
   if (action === "notify") return minAutonomy(rule.autonomy, "ask");
@@ -312,7 +339,10 @@ const escalateFactor = (all: Rule[]) => num(all.find((r) => r.key === "stale_dea
 
 /** Rellena una plantilla de correo; {huecos} solo se calcula si aparece. */
 async function renderEmail(rule: Rule, ctx: RunContext, ownerId: string | null, vars: Record<string, string>, defaults: { subject: string; body: string }) {
-  const subjectT = str(rule.params.subject, defaults.subject), bodyT = str(rule.params.body, defaults.body);
+  return renderTemplates(ctx, ownerId, vars, str(rule.params.subject, defaults.subject), str(rule.params.body, defaults.body));
+}
+
+async function renderTemplates(ctx: RunContext, ownerId: string | null, vars: Record<string, string>, subjectT: string, bodyT: string) {
   const all = { ...vars };
   if (bodyT.includes("{huecos}") || subjectT.includes("{huecos}")) all.huecos = await ctx.slotsFor(ownerId);
   return { subject: renderTemplate(subjectT, all), body: renderTemplate(bodyT, all) };
@@ -376,7 +406,7 @@ const SCANNERS: Record<string, Scanner> = {
       ods.is_rotten AND ods.days_in_stage < s.rotten_after_days * ${factor}
       -- «nada agendado»: ninguna sesión con el cliente por delante (una tarea interna no cuenta)
       AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = ods.id AND NOT a.done AND a.due_at >= now()
-                        AND a.type IN ('call', 'meeting', 'video_call', 'demo'))
+                        AND a.type IN (SELECT key FROM activity_types WHERE is_session))
       AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = ods.id AND a.type = 'email' AND a.done
                         AND a.done_at > now() - make_interval(days => ${quiet}))`);
     const out: Candidate[] = [];
@@ -457,7 +487,7 @@ const EVENT_HANDLERS: Record<string, EventHandler> = {
       if (e.payload.outcome !== "held" || typeof e.payload.activity_id !== "string") return null;
       const [a] = await sql<{ type: string; subject: string; note: string | null; transcript: string | null; person_id: string | null }[]>`
         SELECT type, subject, note, transcript, person_id FROM activities WHERE id = ${e.payload.activity_id}`;
-      if (!a || !["call", "meeting", "video_call", "demo"].includes(a.type)) return null;
+      if (!a || !isSessionType(a.type)) return null;
       const [d] = await openDeals(sql`ods.id = ${e.entity_id}`);
       if (!d) return null;
       const to = await contactFor(a.person_id, d);
@@ -613,6 +643,106 @@ export async function handoffSummary(dealId: string) {
   return { title: d.title, text: lines.join("\n").slice(0, 4900), personId: contacts[0]?.person_id ?? null, ownerId: d.owner_id };
 }
 
+// ---------------------------------------------------------------------------
+// Motor de las reglas personalizadas
+
+type TriggerActivity = { id: string; deal_id: string; type: string; subject: string; due_at: Date | null; person_id: string | null };
+
+/** Lo que hace la regla personalizada sobre el deal de la actividad que la disparó. */
+async function customCandidate(rule: Rule, ctx: RunContext, act: TriggerActivity, why: string): Promise<Candidate | null> {
+  const action = rule.action;
+  if (!action) return null;
+  const [d] = await openDeals(sql`ods.id = ${act.deal_id}`);
+  if (!d) return null;
+  const to = await contactFor(act.person_id, d);
+  const vars = {
+    deal: d.title, nombre: firstName(to.name), responsable: d.owner_name ?? "", actividad: act.subject,
+    tipo: activityLabel(act.type).toLowerCase(), sesion: activityLabel(act.type).toLowerCase(),
+  };
+  const base = { activity_id: act.id };
+  switch (action.kind) {
+    case "create_activity": {
+      const subject = renderTemplate(action.subject, vars).slice(0, 300);
+      return {
+        dealId: d.id, reason: why,
+        title: `${activityLabel(action.activity_type)}: ${subject}`,
+        payload: { ...base, type: action.activity_type, subject, note: action.note ? renderTemplate(action.note, vars) : null,
+                   due_in_days: action.due_in_days, person_id: to.person_id, owner_id: d.owner_id },
+      };
+    }
+    case "draft_email": {
+      if (!to.email) return null;
+      return {
+        dealId: d.id, reason: why,
+        title: `Escribir a ${to.name}: ${renderTemplate(action.subject, vars)}`.slice(0, 300),
+        payload: { ...base, to: to.email, to_name: to.name, person_id: to.person_id,
+                   ...(await renderTemplates(ctx, d.owner_id, vars, action.subject, action.body)) },
+      };
+    }
+    case "move_stage": {
+      const [st] = await sql<{ name: string; pipeline_id: string; is_active: boolean }[]>`
+        SELECT name, pipeline_id, is_active FROM stages WHERE id = ${action.stage_id}`;
+      const [deal] = await sql<{ pipeline_id: string; stage_id: string }[]>`SELECT pipeline_id, stage_id FROM deals WHERE id = ${d.id}`;
+      // Solo si la fase es de su pipeline y no está ya en ella.
+      if (!st?.is_active || st.pipeline_id !== deal.pipeline_id || deal.stage_id === action.stage_id) return null;
+      return {
+        dealId: d.id, reason: why, title: `Pasar «${d.title}» a «${st.name}»`,
+        payload: { ...base, stage_id: action.stage_id, stage_name: st.name, from_stage_id: deal.stage_id },
+      };
+    }
+    case "notify":
+      return { dealId: d.id, reason: why, title: renderTemplate(action.message, vars).slice(0, 300), payload: base };
+  }
+}
+
+const OUTCOME_TEXT: Record<string, string> = { held: "realizada", no_show: "no se presentó", rescheduled: "reprogramada", cancelled: "cancelada" };
+
+/** Disparador «se marca como hecha»: llega como evento activity.completed del deal. */
+const CUSTOM_DONE: EventHandler = {
+  events: ["activity.completed"],
+  async handle(rule, e, ctx) {
+    const t = rule.trigger;
+    if (t?.kind !== "activity_done" || typeof e.payload.activity_id !== "string") return null;
+    const outcome = (e.payload.outcome as string | null) ?? null;
+    if (t.outcome !== "any" && outcome !== t.outcome) return null;
+    const [a] = await sql<TriggerActivity[]>`
+      SELECT id, deal_id, type, subject, due_at, person_id FROM activities WHERE id = ${e.payload.activity_id} AND deal_id IS NOT NULL`;
+    if (!a || (t.activity_type && a.type !== t.activity_type)) return null;
+    return customCandidate(rule, ctx, a, `Se marcó «${a.subject}» como hecha${outcome ? ` (${OUTCOME_TEXT[outcome] ?? outcome})` : ""}.`);
+  },
+  stillValid: () => sql`d.status = 'open'`,
+};
+
+/** Disparador «sigue sin hacerse N días después de su fecha»: se revisa periódicamente. */
+const CUSTOM_OVERDUE: Scanner = async (rule, ctx) => {
+  const t = rule.trigger;
+  if (t?.kind !== "activity_overdue") return [];
+  const rows = await sql<TriggerActivity[]>`
+    SELECT a.id, a.deal_id, a.type, a.subject, a.due_at, a.person_id
+    FROM activities a JOIN deals d ON d.id = a.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
+    WHERE NOT a.done AND a.due_at < now() - make_interval(days => ${Math.max(0, Math.round(t.days))})
+      AND (${t.activity_type}::text IS NULL OR a.type = ${t.activity_type}::text)
+    ORDER BY a.due_at LIMIT 300`;
+  const out: Candidate[] = [];
+  for (const a of rows) {
+    const late = Math.floor((Date.now() - new Date(a.due_at!).getTime()) / 86400000);
+    const c = await customCandidate(rule, ctx, a, `«${a.subject}» era para el ${dateText(a.due_at)} y sigue sin hacerse (${late} día${late === 1 ? "" : "s"}).`);
+    if (c) out.push(c);
+  }
+  return out;
+};
+
+const dateText = (d: Date | null) => (d ? new Date(d).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "—");
+
+function scannerFor(rule: Rule): Scanner | undefined {
+  if (rule.is_custom) return rule.trigger?.kind === "activity_overdue" ? CUSTOM_OVERDUE : undefined;
+  return SCANNERS[rule.key];
+}
+function handlerFor(rule: Rule): EventHandler | undefined {
+  if (rule.is_custom) return rule.trigger?.kind === "activity_done" ? CUSTOM_DONE : undefined;
+  return EVENT_HANDLERS[rule.key];
+}
+
 /** Ya se propuso esto hace poco (o la tarea anterior sigue abierta). */
 async function coolingDown(rule: Rule, c: Candidate) {
   const days = num(rule.params.cooldown_days, 0);
@@ -646,7 +776,7 @@ async function propose(rule: Rule, mode: "ask" | "auto", c: Candidate): Promise<
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO automation_actions ${sql({
       actor: "assistant", rule_id: rule.id, subject_type: "deal", subject_id: c.dealId, deal_id: c.dealId,
-      action_type: RULE_ACTION[rule.key], title: c.title, reason: c.reason, payload: json(c.payload), mode,
+      action_type: ruleAction(rule), title: c.title, reason: c.reason, payload: json(c.payload), mode,
     })}
     ON CONFLICT (rule_id, subject_type, subject_id) WHERE status = 'pending' DO NOTHING
     RETURNING id`;
@@ -702,6 +832,7 @@ export async function runAutomations(): Promise<RunResult> {
 }
 
 async function runLocked(result: RunResult) {
+  await activityTypes(true);
   const ctx = await buildContext();
   const { rules, permissions } = ctx;
   const count = (r: Awaited<ReturnType<typeof propose>>) => {
@@ -719,7 +850,7 @@ async function runLocked(result: RunResult) {
       continue;
     }
 
-    const scan = SCANNERS[rule.key];
+    const scan = scannerFor(rule);
     if (scan) {
       // Los huecos ofrecidos caducan: una propuesta con {huecos} de hace más de
       // dos días se retira y se vuelve a proponer con huecos actuales.
@@ -737,12 +868,13 @@ async function runLocked(result: RunResult) {
           AND NOT (subject_id::text || ':' || coalesce(payload->>'stage_id', '') = ANY(${keys}::text[]))`;
       result.expired += expired.count;
       for (const c of candidates) {
-        if (await coolingDown(rule, c)) continue;
+        // Las reglas sobre una actividad concreta actúan una vez por actividad.
+        if (c.payload.activity_id ? await alreadyHandled(rule, c) : await coolingDown(rule, c)) continue;
         count(await propose(rule, mode, c));
       }
     }
 
-    const handler = EVENT_HANDLERS[rule.key];
+    const handler = handlerFor(rule);
     if (handler) {
       const expired = await sql`
         UPDATE automation_actions x SET status = 'expired', decided_at = now()
@@ -760,7 +892,7 @@ async function runLocked(result: RunResult) {
   for (const e of events) {
     if (Date.now() - new Date(e.occurred_at).getTime() > 7 * 86400000) continue;
     for (const rule of rules) {
-      const handler = EVENT_HANDLERS[rule.key];
+      const handler = handlerFor(rule);
       if (!handler || !handler.events.includes(e.event_type)) continue;
       const mode = effectiveAutonomy(rule, permissions, ctx);
       if (mode === "off") continue;
@@ -999,3 +1131,125 @@ export function autonomySuggestion(rule: Rule, s: RuleStats | undefined): string
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Alta, edición y borrado de reglas personalizadas
+
+const OUTCOME_LABELS: Record<Outcome, string> = {
+  any: "cualquier resultado", held: "Realizada", no_show: "No se presentó", rescheduled: "Reprogramada", cancelled: "Cancelada",
+};
+
+/** Descripción legible de una regla personalizada («Cuando… → …»). */
+export async function describeCustomRule(trigger: CustomTrigger, action: CustomAction): Promise<string> {
+  await activityTypes();
+  const what = trigger.activity_type ? `una actividad «${activityLabel(trigger.activity_type)}»` : "cualquier actividad";
+  const when = trigger.kind === "activity_done"
+    ? `Cuando ${what} de un deal se marca como hecha${trigger.outcome === "any" ? "" : ` con resultado «${OUTCOME_LABELS[trigger.outcome]}»`}`
+    : `Cuando ${what} de un deal sigue sin hacerse ${trigger.days === 0 ? "pasada su fecha" : `${trigger.days} día${trigger.days === 1 ? "" : "s"} después de su fecha`}`;
+  let then: string;
+  switch (action.kind) {
+    case "create_activity":
+      then = `crea «${action.subject}» (${activityLabel(action.activity_type)}) ${action.due_in_days === 0 ? "para el mismo día" : `para dentro de ${action.due_in_days} día${action.due_in_days === 1 ? "" : "s"}`}`;
+      break;
+    case "draft_email": then = `prepara un correo al contacto: «${action.subject}»`; break;
+    case "move_stage": {
+      const [st] = await sql<{ name: string; pipeline: string }[]>`
+        SELECT s.name, p.name AS pipeline FROM stages s JOIN pipelines p ON p.id = s.pipeline_id WHERE s.id = ${action.stage_id}`;
+      then = `mueve el deal a «${st?.name ?? "?"}» (${st?.pipeline ?? "?"})`;
+      break;
+    }
+    case "notify": then = `te pide una decisión: «${action.message}»`; break;
+  }
+  return `${when}, ${then}.`;
+}
+
+async function parseCustomRule(data: Record<string, unknown>) {
+  const s = (k: string) => String(data[k] ?? "").trim();
+  const name = s("name");
+  if (!name) throw new UserError("Ponle un nombre a la regla.");
+  if (name.length > 120) throw new UserError("El nombre es demasiado largo.");
+  const types = await activityTypes(true);
+  const typeOrNull = (k: string) => {
+    const v = s(k);
+    if (!v) return null;
+    if (!types.some((t) => t.key === v)) throw new UserError("Tipo de actividad no válido.");
+    return v;
+  };
+  const int = (k: string, label: string, max = 365) => {
+    const n = Number(s(k) || "0");
+    if (!Number.isInteger(n) || n < 0 || n > max) throw new UserError(`«${label}» debe ser un número de 0 a ${max}.`);
+    return n;
+  };
+  let trigger: CustomTrigger;
+  if (s("trigger_kind") === "activity_done") {
+    const outcome = (s("trigger_outcome") || "any") as Outcome;
+    if (!(outcome in OUTCOME_LABELS)) throw new UserError("Resultado no válido.");
+    trigger = { kind: "activity_done", activity_type: typeOrNull("trigger_type"), outcome };
+  } else if (s("trigger_kind") === "activity_overdue") {
+    trigger = { kind: "activity_overdue", activity_type: typeOrNull("trigger_type"), days: int("trigger_days", "Días de retraso", 90) };
+  } else throw new UserError("Elige cuándo se dispara la regla.");
+
+  let action: CustomAction;
+  const text = (k: string, label: string, max: number) => {
+    const v = s(k);
+    if (!v) throw new UserError(`Falta «${label}».`);
+    if (v.length > max) throw new UserError(`«${label}» es demasiado largo.`);
+    return v;
+  };
+  switch (s("action_kind")) {
+    case "create_activity": {
+      const type = typeOrNull("action_type");
+      if (!type) throw new UserError("Elige el tipo de la actividad a crear.");
+      action = { kind: "create_activity", activity_type: type, subject: text("action_subject", "Asunto de la actividad", 300),
+                 due_in_days: int("action_due_days", "Plazo"), note: s("action_note") || null };
+      break;
+    }
+    case "draft_email":
+      action = { kind: "draft_email", subject: text("action_email_subject", "Asunto del correo", 300), body: text("action_email_body", "Texto del correo", 20000) };
+      break;
+    case "move_stage": {
+      const stage = s("action_stage");
+      const [st] = stage ? await sql`SELECT 1 FROM stages WHERE id = ${stage}::uuid AND is_active` : [];
+      if (!st) throw new UserError("Elige la fase.");
+      action = { kind: "move_stage", stage_id: stage };
+      break;
+    }
+    case "notify":
+      action = { kind: "notify", message: text("action_message", "Mensaje", 300) };
+      break;
+    default: throw new UserError("Elige qué hace la regla.");
+  }
+  return { name, trigger, action, description: await describeCustomRule(trigger, action) };
+}
+
+export async function createCustomRule(data: Record<string, unknown>) {
+  const r = await parseCustomRule(data);
+  const autonomy = (["off", "ask", "auto"] as const).find((a) => a === data.autonomy) ?? "ask";
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO automation_rules (key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action)
+    VALUES (${`custom_${randomKey()}`}, ${r.name}, ${r.description}, ${autonomy}, ARRAY['off', 'ask', 'auto'], '{}'::jsonb,
+            (SELECT coalesce(max(position), 0) + 1 FROM automation_rules), true, ${json(r.trigger)}, ${json(r.action)})
+    RETURNING id`;
+  return row.id;
+}
+
+export async function updateCustomRule(ruleId: string, data: Record<string, unknown>) {
+  const r = await parseCustomRule(data);
+  const res = await sql`
+    UPDATE automation_rules SET name = ${r.name}, description = ${r.description}, trigger = ${json(r.trigger)}, action = ${json(r.action)}
+    WHERE id = ${ruleId} AND is_custom`;
+  if (res.count === 0) throw new UserError("La regla no existe.");
+  // Lo pendiente se hizo con la versión anterior de la regla.
+  await sql`UPDATE automation_actions SET status = 'expired', decided_at = now() WHERE rule_id = ${ruleId} AND status = 'pending'`;
+}
+
+/** Borra la regla; lo que ya hizo queda en el registro, sin regla. */
+export async function deleteCustomRule(ruleId: string) {
+  await sql.begin(async (tx) => {
+    await tx`UPDATE automation_actions SET status = 'expired', decided_at = now() WHERE rule_id = ${ruleId} AND status = 'pending'`;
+    await tx`UPDATE automation_actions SET rule_id = NULL WHERE rule_id = ${ruleId}`;
+    await tx`DELETE FROM automation_rules WHERE id = ${ruleId} AND is_custom`;
+  });
+}
+
+const randomKey = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);

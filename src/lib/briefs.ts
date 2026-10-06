@@ -2,6 +2,7 @@ import type postgres from "postgres";
 import { sql, json } from "./db";
 import { aiReady, generate, getAiSettings, parseJsonReply } from "./ai";
 import { activityLabel, date, money } from "./format";
+import { activityTypes } from "./activity-types";
 
 // ===========================================================================
 // Resumen y siguiente paso de cada deal.
@@ -23,7 +24,8 @@ export type Signals = {
   last_touch_at: Date | null; pending_ai: number; expected_close_date: string | null;
 };
 
-const SESSIONS = sql`('call', 'meeting', 'video_call', 'demo')`;
+// Tipos que son sesiones con el cliente (configurable en Ajustes → Tipos de actividad).
+const SESSIONS = sql`(SELECT key FROM activity_types WHERE is_session)`;
 
 /** Señales de los deals abiertos que cumplen `where` (sobre la vista open_deals_status «ods»). */
 export function dealSignals(where: postgres.PendingQuery<postgres.Row[]> = sql`true`, limit = 500) {
@@ -135,6 +137,7 @@ type Facts = Awaited<ReturnType<typeof dealFacts>>;
 
 /** Todo lo que se sabe del deal, para el resumen por reglas y para la IA. */
 export async function dealFacts(dealId: string) {
+  await activityTypes();
   const [s] = await dealSignals(sql`ods.id = ${dealId}`, 1);
   if (!s) return null;
   const [contacts, history, docs, [counts], [basis]] = await Promise.all([

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { attempt, type ActionState } from "@/lib/errors";
 import { UI_ACTOR } from "@/lib/events";
 import {
+  createCustomRule, deleteCustomRule, updateCustomRule,
   dismissAction, executeAction, runAutomations, setPaused, setPermission, setRuleAutonomy, undoAction, updateRuleParams,
   type AgentKind, type Autonomy, type ExecutableAction,
 } from "@/lib/automations";
@@ -55,6 +56,24 @@ export async function setPermissionAction(actor: AgentKind, action: ExecutableAc
 
 export async function updateRuleParamsAction(ruleId: string, _: ActionState, form: FormData): Promise<ActionState> {
   const res = await attempt(() => updateRuleParams(ruleId, Object.fromEntries(form)));
+  refresh();
+  return res;
+}
+
+export async function createCustomRuleAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const res = await attempt(() => createCustomRule(Object.fromEntries(form)));
+  refresh();
+  return res;
+}
+
+export async function updateCustomRuleAction(ruleId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const res = await attempt(() => updateCustomRule(ruleId, Object.fromEntries(form)));
+  refresh();
+  return res;
+}
+
+export async function deleteCustomRuleAction(ruleId: string, _: ActionState): Promise<ActionState> {
+  const res = await attempt(() => deleteCustomRule(ruleId));
   refresh();
   return res;
 }

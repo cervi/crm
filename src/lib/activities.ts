@@ -2,7 +2,8 @@ import { z } from "zod";
 import { sql, transaction } from "./db";
 import { recordEvent, type Actor } from "./events";
 import { UserError } from "./errors";
-import { ACTIVITY_TYPES, OUTCOMES } from "./format";
+import { OUTCOMES } from "./format";
+import { activityTypes, assertActivityType } from "./activity-types";
 import { optId, optText, optional, parse, text } from "./validation";
 
 export type Activity = {
@@ -41,6 +42,7 @@ const select = () => sql`
 
 /** Actividades de una ficha (deal, lead, contacto o empresa): pendientes primero. */
 export async function listActivitiesFor(ref: { dealId?: string; leadId?: string; personId?: string; organizationId?: string }) {
+  await activityTypes();
   return sql<Activity[]>`
     ${select()}
     WHERE (${ref.dealId ?? null}::uuid IS NULL OR a.deal_id = ${ref.dealId ?? null}::uuid)
@@ -54,6 +56,7 @@ export async function listActivitiesFor(ref: { dealId?: string; leadId?: string;
 
 /** Bandeja de actividades: pendientes (vencidas, hoy, próximas) o hechas. */
 export async function listActivities({ view = "pending", ownerId }: { view?: "pending" | "done"; ownerId?: string | null }) {
+  await activityTypes();
   return sql<Activity[]>`
     ${select()}
     WHERE a.done = ${view === "done"}
@@ -62,11 +65,10 @@ export async function listActivities({ view = "pending", ownerId }: { view?: "pe
     LIMIT 300`;
 }
 
-const types = ACTIVITY_TYPES.map((a) => a.value) as [string, ...string[]];
 const outcomes = OUTCOMES.map((o) => o.value) as [string, ...string[]];
 
 const activitySchema = z.object({
-  type: z.enum(types, { message: "Tipo de actividad no válido" }),
+  type: z.string({ message: "Tipo de actividad no válido" }).trim().min(1, "Tipo de actividad no válido"),
   subject: text("El asunto", 300),
   note: optText(5000),
   due_at: optional(z.string().refine((v) => !Number.isNaN(Date.parse(v)), "Fecha no válida")),
@@ -81,6 +83,7 @@ const activitySchema = z.object({
 
 export async function createActivity(actor: Actor, data: unknown): Promise<string> {
   const v = parse(activitySchema, data);
+  await assertActivityType(v.type);
   if (!v.deal_id && !v.lead_id && !v.person_id && !v.organization_id) {
     throw new UserError("La actividad debe estar asociada a algo.");
   }

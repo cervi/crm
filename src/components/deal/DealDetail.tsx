@@ -18,7 +18,8 @@ import { regenerateBriefAction } from "@/app/actions/ai";
 import { addDocumentAction, removeDocumentAction } from "@/app/actions/documents";
 import { DrivePicker } from "./DrivePicker";
 import { sendDealEmailAction } from "@/app/actions/mailbox";
-import { ACTIVITY_TYPES, OUTCOMES, activityLabel, date, dateTime, money, outcomeLabel, STATUS_LABELS } from "@/lib/format";
+import { OUTCOMES, activityLabel, date, dateTime, isSessionType, money, outcomeLabel, STATUS_LABELS } from "@/lib/format";
+import { activeActivityTypes } from "@/lib/activity-types";
 import {
   addParticipantAction, loseDealAction, moveDealFormAction, removeParticipantAction, reopenDealAction, winDealAction,
 } from "@/app/actions/deals";
@@ -42,7 +43,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   const deal = await getDeal(dealId);
   if (!deal) return <div className="empty">Este deal ya no existe.</div>;
 
-  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals, sender, documents, brief, ai] = await Promise.all([
+  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals, sender, documents, brief, ai, types] = await Promise.all([
     listStages(deal.pipeline_id), dealParticipants(dealId), stageHistory(dealId), listActivitiesFor({ dealId }),
     listNotesFor({ dealId }), listFieldDefinitions("deal", true), listUsers(), listLostReasons(),
     timeline(sql, [{ type: "deal", id: dealId }], 100),
@@ -57,6 +58,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     listDocuments(dealId),
     deal.status === "open" ? getDealBrief(dealId) : Promise.resolve(null),
     getAiSettings(),
+    activeActivityTypes(),
   ]);
   const canSend = sender !== null;
   const provider = sender ? PROVIDERS[sender.provider] : null;
@@ -277,7 +279,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 <div className="grid-2">
                   <label className="field"><span className="label">Tipo</span>
                     <select name="type" defaultValue={stageInfo?.required_activity_type ?? "call"}>
-                      {ACTIVITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      {types.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
                     </select>
                   </label>
                   <label className="field"><span className="label">Asunto</span><input name="subject" required /></label>
@@ -350,7 +352,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                         </select>
                       </label>
                       <label className="field" style={{ flex: 1 }}><span className="label">Comentario</span><input name="note" /></label>
-                      {["call", "meeting", "video_call", "demo"].includes(a.type) && (
+                      {isSessionType(a.type) && (
                         <label className="field" style={{ flexBasis: "100%" }}>
                           <span className="label">Notas o transcripción de la reunión (opcional)</span>
                           <textarea name="transcript" rows={3} placeholder="Pega aquí la transcripción o tus notas: la IA preparará el resumen y los próximos pasos para el cliente." />

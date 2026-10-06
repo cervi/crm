@@ -2,6 +2,7 @@ import { sql, json, transaction, type Db } from "./db";
 import { decrypt, encrypt } from "./crypto";
 import { INTEGRATION_ACTOR, recordEvent, type Actor } from "./events";
 import { UserError } from "./errors";
+import { isSessionType } from "./format";
 import { PROVIDERS, ProviderError, providerMessage, type Provider, type ProviderKey, type Tokens } from "./integrations";
 import { apiClient, type ApiClient } from "./integrations/http";
 import { DEFAULT_SCHEDULING, formatSlots, freeSlots, NO_SLOTS_TEXT, normalizeScheduling, type Interval, type Scheduling } from "./slots";
@@ -255,7 +256,6 @@ async function matchContacts(emails: string[]): Promise<Match[]> {
     ORDER BY lower(pe.email), pe.is_primary DESC`;
 }
 
-const SESSION_TYPES = new Set(["call", "meeting", "video_call", "demo"]);
 
 export type SyncResult = { emails: number; meetings: number; updated: number; error?: string };
 
@@ -308,7 +308,7 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
         const who = matches.find((m) => m.deal_id) ?? matches[0];
         if (!who) continue;
         // Una reunión futura con el contacto de un deal cuenta como la sesión que pide su fase.
-        const type = e.start > new Date() && who.required_activity_type && SESSION_TYPES.has(who.required_activity_type)
+        const type = e.start > new Date() && who.required_activity_type && isSessionType(who.required_activity_type)
           ? who.required_activity_type
           : /\bdemo/i.test(e.subject ?? "") ? "demo" : e.online ? "video_call" : "meeting";
         const id = await transaction((tx) => logActivity(tx, INTEGRATION_ACTOR, {

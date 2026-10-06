@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { Nav } from "@/components/Nav";
 import { Topbar, type Theme } from "@/components/Topbar";
 import { countPending } from "@/lib/automations";
+import { activityTypes } from "@/lib/activity-types";
 import "@fontsource-variable/instrument-sans";
 import "./globals.css";
 
@@ -24,6 +25,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const theme: Theme = saved === "light" || saved === "dark" ? saved : "system";
   // Propuestas de la IA esperando decisión (el aviso del menú lateral).
   const inboxCount = await countPending().catch(() => 0);
+  // Etiquetas de los tipos de actividad (configurables) disponibles en todo el servidor.
+  await activityTypes().catch(() => null);
   return (
     <html lang="es" data-theme={theme === "system" ? undefined : theme}>
       <body>

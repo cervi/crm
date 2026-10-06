@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  ACTION_TYPES, AGENTS, RULE_ACTION, RULE_PARAMS, actionLabel, autonomySuggestion, effectiveAutonomy, getSettings,
+  ACTION_TYPES, AGENTS, RULE_PARAMS, ruleAction, actionLabel, autonomySuggestion, effectiveAutonomy, getSettings,
   listPermissions, listRules, ruleStats, AUTONOMY_LEVELS,
 } from "@/lib/automations";
 import { dateTime } from "@/lib/format";
@@ -12,6 +12,10 @@ import {
 } from "@/app/actions/automations";
 import { ActionForm } from "@/components/ActionForm";
 import { AutonomyPicker } from "@/components/ai/AutonomyPicker";
+import { CustomRuleForm } from "@/components/ai/CustomRuleForm";
+import { activityTypes } from "@/lib/activity-types";
+import { sql } from "@/lib/db";
+import { createCustomRuleAction, deleteCustomRuleAction, updateCustomRuleAction } from "@/app/actions/automations";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Automatizaciones e IA" };
@@ -21,6 +25,14 @@ export default async function AutomationsSettingsPage() {
   // Sin buzón conectado, un correo no puede salir solo.
   const allowedFor = (action: string, allowed: typeof permissions[number]["allowed_autonomy"]) =>
     action === "draft_email" && !mailbox ? allowed.filter((l) => l !== "auto") : allowed;
+  const types = await activityTypes();
+  const typeOptions = types.filter((t) => t.is_active).map((t) => ({ value: t.key, label: t.label }));
+  const stageRows = await sql<{ id: string; name: string; pipeline: string }[]>`
+    SELECT s.id, s.name, p.name AS pipeline FROM stages s JOIN pipelines p ON p.id = s.pipeline_id
+    WHERE s.is_active AND p.is_active ORDER BY p.name, s.position`;
+  const stageOptions = [...new Set(stageRows.map((r) => r.pipeline))].map((pipeline) => ({
+    pipeline, options: stageRows.filter((r) => r.pipeline === pipeline).map((r) => ({ value: r.id, label: r.name })),
+  }));
   const NO_MAILBOX = "Para que envíe correos sola, conecta tu cuenta en Ajustes → Correo, calendario y documentos.";
   const perm = (actor: string, action: string) => permissions.find((p) => p.actor === actor && p.action_type === action);
   const levelLabel = (v: string) => AUTONOMY_LEVELS.find((l) => l.value === v)?.label ?? v;
@@ -112,10 +124,10 @@ export default async function AutomationsSettingsPage() {
       </section>
 
       <section className="rules-section">
-        <h2 className="section-title">Reglas</h2>
+        <h2 className="section-title">Reglas de serie</h2>
         <div className="rules">
-          {rules.map((r) => {
-            const action = RULE_ACTION[r.key];
+          {rules.filter((r) => !r.is_custom).map((r) => {
+            const action = ruleAction(r)!;
             const eff = effectiveAutonomy(r, permissions, { mailbox });
             const st = stats.get(r.id);
             const tip = autonomySuggestion(r, st);
@@ -183,6 +195,51 @@ export default async function AutomationsSettingsPage() {
               </article>
             );
           })}
+        </div>
+      </section>
+
+      <section className="rules-section" id="reglas-personalizadas" aria-label="Tus reglas">
+        <h2 className="section-title">Tus reglas</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Reglas sobre las actividades de los deals: cuando una actividad de un tipo se hace (con un resultado) o no se hace a tiempo,
+          la IA crea otra actividad, escribe al contacto, mueve el deal o te pide una decisión. Los tipos se configuran en{" "}
+          <Link href="/settings/activity-types">Ajustes → Tipos de actividad</Link>.
+        </p>
+        <div className="rules">
+          {rules.filter((r) => r.is_custom).map((r) => {
+            const action = ruleAction(r)!;
+            const eff = effectiveAutonomy(r, permissions, { mailbox });
+            const st = stats.get(r.id);
+            const tip = autonomySuggestion(r, st);
+            return (
+              <article key={r.id} className="panel rule" aria-label={r.name}>
+                <div className="rule-head">
+                  <div>
+                    <h3>{r.name}</h3>
+                    <p className="custom-rule-desc">{r.description}</p>
+                  </div>
+                  <AutonomyPicker label={`Autonomía: ${r.name}`} value={r.autonomy} allowed={allowedFor(action, r.allowed_autonomy)}
+                                  action={setRuleAutonomyAction.bind(null, r.id)} unavailableHint={NO_MAILBOX} />
+                </div>
+                <div className="rule-foot meta">
+                  <span>Acción: {actionLabel(action)}</span>
+                  {eff !== r.autonomy && <span className="badge warn">Limitada a «{levelLabel(eff)}»</span>}
+                  <span>Últimos 90 días: {st ? `${st.approved} aprobadas, ${st.auto_done} hechas solas, ${st.pending} pendientes` : "sin actividad"}</span>
+                </div>
+                {tip && <p className="callout good" style={{ margin: "10px 0 0" }}>{tip}</p>}
+                <details className="rule-params">
+                  <summary className="meta">Editar la regla</summary>
+                  <CustomRuleForm action={updateCustomRuleAction.bind(null, r.id)} types={typeOptions} stages={stageOptions}
+                                  initial={{ name: r.name, trigger: r.trigger ?? undefined, action: r.action ?? undefined }} submitLabel="Guardar" />
+                  <ActionForm action={deleteCustomRuleAction.bind(null, r.id)} submitLabel="Borrar la regla" pendingLabel="…" danger className="form inline" />
+                </details>
+              </article>
+            );
+          })}
+          <article className="panel rule new-rule" aria-label="Nueva regla">
+            <h3>Nueva regla</h3>
+            <CustomRuleForm action={createCustomRuleAction} types={typeOptions} stages={stageOptions} submitLabel="Crear regla" withAutonomy />
+          </article>
         </div>
       </section>
     </main>
