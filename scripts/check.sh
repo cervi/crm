@@ -37,6 +37,8 @@ echo "▸ Migraciones, datos de ejemplo y comprobaciones del modelo"
 node scripts/db.mjs reset
 
 echo "▸ Tipos"
+# Los tipos que genera Next de una compilación anterior pueden apuntar a rutas que ya no existen.
+rm -rf .next/types .next/dev/types
 npx tsc --noEmit
 
 echo "▸ Compilación"
