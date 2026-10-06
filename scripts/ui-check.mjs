@@ -447,7 +447,7 @@ if (MOCK) {
 
   await step("escribir desde el deal con mis huecos y enviarlo por Outlook", async () => {
     await page.goto(`/deals/${PACO_OPEN}`);
-    await page.getByRole("tab", { name: "Correo" }).click();
+    await page.getByRole("tab", { name: "Correo", exact: true }).click();
     const form = page.locator(".composer form", { has: page.getByRole("button", { name: "Insertar mis huecos" }) });
     await form.getByLabel("Asunto").fill(`Huecos ${stamp}`);
     await form.getByRole("button", { name: "Insertar mis huecos" }).click();
@@ -462,7 +462,7 @@ if (MOCK) {
   await step("bandeja: la IA ofrece huecos y se envía desde Outlook", async () => {
     await page.goto("/inbox");
     await submit("Revisar ahora");
-    const card = page.locator("article.proposal", { hasText: "Ofrecer huecos" }).first();
+    const card = page.locator("article.proposal", { hasText: "Ofrecer huecos a Ana García" });
     await card.waitFor();
     const subject = await card.getByLabel("Asunto").inputValue();
     expect((await card.getByLabel("Texto").inputValue()).includes("(hora de Madrid)"), "el borrador no lleva los huecos");
@@ -473,7 +473,7 @@ if (MOCK) {
 
   await step("programar una demo invitando desde el calendario", async () => {
     await page.goto(`/deals/${PACO_OPEN}`);
-    await page.getByRole("tab", { name: "Actividad" }).click();
+    await page.getByRole("tab", { name: "Actividad", exact: true }).click();
     const form = page.locator("form", { has: page.getByRole("button", { name: "Programar" }) });
     await form.locator("select[name=type]").selectOption("demo");
     await form.locator("input[name=subject]").fill(`Demo ${stamp}`);
