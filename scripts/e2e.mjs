@@ -58,6 +58,40 @@ for (const path of ["/deals/no-existe", `/deals/00000000-0000-0000-0000-00000000
   const res = await get(path);
   check(res.status === 404, `404 en ${path}`, `HTTP ${res.status}`);
 }
+// ------------------------------------------------------------- Dashboards
+{
+  const r = await get("/dashboards");
+  const loc = r.headers.get("location") ?? "";
+  check([307, 308].includes(r.status) && /\/dashboards\/[0-9a-f-]{36}$/.test(loc), "/dashboards abre el primer dashboard", `${r.status} ${loc}`);
+  const dashHtml = await (await get(new URL(loc, BASE).pathname)).text();
+  const expected = ["Ingresos ganados", "Tasa de cierre", "Valor abierto por fase", "Motivos de pérdida", "Añadir widget"];
+  const missing = expected.filter((t) => !dashHtml.includes(t));
+  check(missing.length === 0 && !dashHtml.includes("No se ha podido calcular"), "el dashboard de ventas calcula sus widgets", missing.join(", "));
+  const newW = await get(`${new URL(loc, BASE).pathname}/widgets/new`);
+  check(newW.status === 200 && (await newW.text()).includes("Qué medir"), "editor de widgets");
+
+  const preview = (config) => fetch(`${BASE}/api/analytics/preview`, {
+    method: "POST", headers: { "content-type": "application/json", ...auth }, body: JSON.stringify({ config }),
+  });
+  const base = { source: "deals", metric: "sum_value", group_by: "stage", date_field: "created_at", period: "all", chart: "bar", filters: { status: "open" } };
+  const p1 = await preview(base);
+  const j1 = await p1.json();
+  check(p1.ok && j1.result?.kind === "series" && j1.result.points.some((pt) => pt.label.startsWith("Necesidad detectada")),
+        "vista previa: valor abierto por fase", JSON.stringify(j1).slice(0, 200));
+  const p2 = await (await preview({ ...base, group_by: "month", chart: "bar", date_field: "won_at", filters: { status: "won" }, period: "12m" })).json();
+  check(p2.result?.kind === "series" && p2.result.time && p2.result.points.length >= 12, "vista previa: serie mensual de 12 meses sin huecos", String(p2.result?.points?.length));
+  const p3 = await (await preview({ ...base, group_by: "none", chart: "bar", metric: "win_rate" })).json();
+  check(p3.config?.chart === "number" && p3.result?.kind === "single" && p3.result.value >= 0 && p3.result.value <= 1,
+        "sin agrupar se convierte en cifra (tasa entre 0 y 1)", JSON.stringify(p3).slice(0, 200));
+  const p4 = await (await preview({ source: "leads", metric: "conversion_rate", group_by: "source", date_field: "created_at", period: "12m", chart: "bar", filters: {} })).json();
+  check(p4.result?.kind === "series" && p4.result.points.length > 0, "vista previa: conversión de leads por origen");
+  check((await preview({ ...base, metric: "drop_table" })).status === 422, "métrica desconocida → 422");
+  check((await preview({ ...base, group_by: "stage; DROP TABLE deals" })).status === 422, "agrupación inyectada → 422");
+  check((await preview({ ...base, filters: { owner_id: "1 OR 1=1" } })).status === 422, "filtro inyectado → 422");
+  const [{ n }] = await sql`SELECT count(*)::int AS n FROM deals`;
+  check(n > 0, "la tabla de deals sigue intacta");
+}
+
 const root = await get("/");
 check([307, 308].includes(root.status), "la portada redirige", `HTTP ${root.status}`);
 

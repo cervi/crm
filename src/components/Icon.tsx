@@ -1,6 +1,7 @@
 // Iconos de trazo (24×24), dibujados a mano para no depender de una librería.
 const PATHS = {
   deals: "M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v6h-4z",
+  dashboards: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   leads: "M3 5h18l-7 8v5l-4 2v-7z",
   organizations: "M4 21V5l8-2v18M12 9h8v12M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2M2 21h20",
   persons: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",

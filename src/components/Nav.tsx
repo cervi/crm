@@ -7,6 +7,7 @@ import { ThemeSwitch, type Theme } from "./ThemeSwitch";
 
 const ITEMS: { href: string; match: string[]; label: string; icon: IconName }[] = [
   { href: "/pipelines", match: ["/pipelines", "/deals"], label: "Deals", icon: "deals" },
+  { href: "/dashboards", match: ["/dashboards"], label: "Dashboards", icon: "dashboards" },
   { href: "/leads", match: ["/leads"], label: "Leads", icon: "leads" },
   { href: "/organizations", match: ["/organizations"], label: "Empresas", icon: "organizations" },
   { href: "/persons", match: ["/persons"], label: "Contactos", icon: "persons" },

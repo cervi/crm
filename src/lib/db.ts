@@ -7,6 +7,9 @@ export const sql =
   globalForDb.sql ??
   postgres(process.env.DATABASE_URL ?? "postgres://crm:crm@localhost:5432/crm", {
     max: Number(process.env.DB_POOL_MAX ?? 10),
+    // Misma zona horaria que la aplicación: los informes agrupan por días,
+    // semanas y meses locales, no UTC.
+    connection: { TimeZone: process.env.TZ || "Europe/Madrid" },
   });
 
 if (process.env.NODE_ENV !== "production") globalForDb.sql = sql;

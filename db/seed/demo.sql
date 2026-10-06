@@ -126,3 +126,87 @@ INSERT INTO notes (content, organization_id, author_id) VALUES
    '60000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001');
 
 COMMIT;
+
+-- ---------------------------------------------------------------------
+-- Histórico de ejemplo para los dashboards: ~80 deals, 200 leads y 120
+-- actividades repartidos en los últimos 12 meses. Determinista (setseed).
+-- ---------------------------------------------------------------------
+BEGIN;
+SELECT setseed(0.42);
+
+DO $$
+DECLARE
+  owners uuid[] := ARRAY['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']::uuid[];
+  sources text[] := ARRAY['webinar', 'ebook', 'formulario demo', 'referido', 'evento', 'blog'];
+  details text[] := ARRAY['Webinar: automatizar la captación', 'Guía de ventas B2B', 'Webinar: IA en ventas', 'Plantilla de propuesta', 'Feria SaaS', 'Artículo: funnel'];
+  reasons uuid[] := ARRAY(SELECT id FROM lost_reasons ORDER BY label);
+  inbound_stages uuid[] := ARRAY(SELECT id FROM stages WHERE pipeline_id = '10000000-0000-0000-0000-000000000001' ORDER BY position);
+  outbound_stages uuid[] := ARRAY(SELECT id FROM stages WHERE pipeline_id = '10000000-0000-0000-0000-000000000002' ORDER BY position);
+  orgs uuid[] := '{}';
+  deals_ids uuid[] := '{}';
+  org uuid; person uuid; deal uuid; pipeline uuid; stage_list uuid[];
+  created timestamptz; closed timestamptz; r float8; st text; i int;
+BEGIN
+  FOR i IN 1..40 LOOP
+    INSERT INTO organizations (name, domain, industry, employee_count, country, owner_id)
+    VALUES ('Empresa Demo ' || i, 'demo' || i || '.example',
+            (ARRAY['Retail', 'SaaS', 'Industria', 'Logística', 'Salud'])[1 + floor(random() * 5)::int],
+            (10 + floor(random() * 490))::int, 'ES', owners[1 + floor(random() * 2)::int])
+    RETURNING id INTO org;
+    orgs := orgs || org;
+  END LOOP;
+
+  FOR i IN 1..80 LOOP
+    created := now() - make_interval(days => floor(random() * 360)::int, hours => floor(random() * 10)::int);
+    IF random() < 0.75 THEN pipeline := '10000000-0000-0000-0000-000000000001'; stage_list := inbound_stages;
+    ELSE pipeline := '10000000-0000-0000-0000-000000000002'; stage_list := outbound_stages; END IF;
+    r := random();
+    st := CASE WHEN r < 0.32 THEN 'won' WHEN r < 0.58 THEN 'lost' ELSE 'open' END;
+    closed := least(now(), created + make_interval(days => (6 + floor(random() * 70))::int));
+    IF st <> 'open' AND closed >= now() THEN st := 'open'; END IF;
+    INSERT INTO deals (title, organization_id, pipeline_id, stage_id, status, value, owner_id, source,
+                       stage_entered_at, created_at, won_at, lost_at, lost_reason_id)
+    VALUES ('Oportunidad ' || i, orgs[1 + floor(random() * 40)::int], pipeline,
+            CASE WHEN st = 'won' THEN stage_list[array_length(stage_list, 1)]
+                 ELSE stage_list[1 + floor(random() * array_length(stage_list, 1))::int] END,
+            st, (2000 + floor(random() * 56) * 500)::numeric, owners[1 + floor(random() * 2)::int],
+            sources[1 + floor(random() * 6)::int],
+            CASE WHEN st = 'open' THEN greatest(created, now() - make_interval(days => floor(random() * 25)::int)) ELSE created END,
+            created,
+            CASE WHEN st = 'won' THEN closed END,
+            CASE WHEN st = 'lost' THEN closed END,
+            CASE WHEN st = 'lost' THEN reasons[1 + floor(random() * array_length(reasons, 1))::int] END)
+    RETURNING id INTO deal;
+    deals_ids := deals_ids || deal;
+  END LOOP;
+
+  FOR i IN 1..200 LOOP
+    created := now() - make_interval(days => floor(power(random(), 1.3) * 360)::int);
+    INSERT INTO persons (first_name, last_name, marketing_consent, created_at)
+    VALUES ('Contacto', 'Demo ' || i, random() < 0.7, created) RETURNING id INTO person;
+    INSERT INTO person_emails (person_id, email, is_primary) VALUES (person, 'contacto' || i || '@demo' || (1 + i % 40) || '.example', true);
+    r := random();
+    st := CASE WHEN r < 0.16 THEN 'converted' WHEN r < 0.26 THEN 'archived' ELSE 'open' END;
+    INSERT INTO leads (title, person_id, organization_id, source, source_detail, funnel_stage, status,
+                       converted_deal_id, converted_at, owner_id, created_at)
+    SELECT 'Contacto Demo ' || i, person, orgs[1 + i % 40], sources[k], details[k],
+           (ARRAY['tofu', 'tofu', 'tofu', 'mofu', 'mofu', 'bofu'])[1 + floor(random() * 6)::int], st,
+           CASE WHEN st = 'converted' THEN deals_ids[1 + floor(random() * 80)::int] END,
+           CASE WHEN st = 'converted' THEN created + interval '9 days' END,
+           owners[2], created
+    FROM (SELECT 1 + floor(power(random(), 1.6) * 6)::int AS k) pick;
+  END LOOP;
+
+  FOR i IN 1..120 LOOP
+    created := now() - make_interval(days => floor(random() * 180)::int);
+    r := random();
+    INSERT INTO activities (type, subject, due_at, done, done_at, outcome, deal_id, owner_id, created_at)
+    VALUES ((ARRAY['call', 'video_call', 'demo', 'meeting', 'task'])[1 + floor(random() * 5)::int],
+            'Seguimiento ' || i, created + interval '2 days', r < 0.7,
+            CASE WHEN r < 0.7 THEN least(now(), created + interval '2 days') END,
+            CASE WHEN r < 0.7 THEN (ARRAY['held', 'held', 'held', 'held', 'held', 'no_show', 'rescheduled'])[1 + floor(random() * 7)::int] END,
+            deals_ids[1 + floor(random() * 80)::int], owners[1 + floor(random() * 2)::int], created);
+  END LOOP;
+END $$;
+
+COMMIT;

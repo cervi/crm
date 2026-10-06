@@ -227,6 +227,42 @@ await step("cambio de empresa de un contacto conserva la anterior como antigua",
   await page.locator(".item", { hasText: orgName }).getByText("Directora Comercial").waitFor();
 });
 
+await step("crear un widget en un dashboard con vista previa", async () => {
+  await page.goto("/dashboards");
+  await page.waitForURL(/\/dashboards\/[0-9a-f-]{36}$/);
+  await page.getByRole("link", { name: "Añadir widget" }).click();
+  await page.getByLabel("Datos").selectOption({ label: "Leads" });
+  await page.getByLabel("Métrica").selectOption({ label: "Número de leads" });
+  await page.getByLabel("Agrupar por").selectOption({ label: "Origen" });
+  await page.getByLabel("Periodo").selectOption({ label: "Todo el histórico" });
+  await page.locator(".preview .bars li").first().waitFor();
+  expect(await page.getByLabel("Título").inputValue() === "Número de leads por origen", `título sugerido: ${await page.getByLabel("Título").inputValue()}`);
+  await page.getByLabel("Título").fill(`Leads por origen ${stamp}`);
+  await page.getByLabel("Ancho").selectOption({ label: "Fila entera" });
+  await submit("Añadir al dashboard");
+  await page.waitForURL(/\/dashboards\/[0-9a-f-]{36}$/);
+  const widget = page.locator(".widget", { hasText: `Leads por origen ${stamp}` });
+  await widget.locator(".bars li").first().waitFor();
+  await widget.getByRole("button", { name: "Ver tabla" }).click();
+  await widget.locator(".widget-table td").first().waitFor();
+  await shot("dashboard");
+  await widget.getByLabel(`Opciones de Leads por origen ${stamp}`).click();
+  await widget.getByRole("button", { name: "Eliminar" }).click();
+  await widget.waitFor({ state: "detached" });
+});
+
+await step("cambiar a modo oscuro y que se recuerde", async () => {
+  await page.getByRole("button", { name: "Modo oscuro" }).click();
+  expect(await page.evaluate(() => document.documentElement.dataset.theme) === "dark", "no se aplicó el modo oscuro");
+  await page.reload();
+  expect(await page.evaluate(() => document.documentElement.dataset.theme) === "dark", "el modo oscuro no se recuerda al recargar");
+  const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(bg === "rgb(15, 19, 26)", `fondo en modo oscuro: ${bg}`);
+  await shot("dashboard-oscuro");
+  await page.getByRole("button", { name: "Como el sistema" }).click();
+  expect(await page.evaluate(() => document.documentElement.dataset.theme) === undefined, "no volvió a seguir al sistema");
+});
+
 await step("capturas de las pantallas principales", async () => {
   for (const [name, path] of [["tablero", "/pipelines/10000000-0000-0000-0000-000000000001"], ["empresa", "/organizations/60000000-0000-0000-0000-000000000001"],
                               ["leads", "/leads?status=all"], ["actividades", "/activities"], ["contacto", "/persons/70000000-0000-0000-0000-000000000001"]]) {
