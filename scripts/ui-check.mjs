@@ -859,7 +859,11 @@ await step("secuencias: crear una, añadir un paso y meter al contacto de un dea
   await add.getByLabel("Asunto").fill("¿Retomamos {deal}?");
   await add.getByRole("button", { name: "Añadir paso" }).click();
   await page.getByRole("listitem", { name: "Paso 1" }).getByText("¿Retomamos {deal}?").waitFor();
-  await page.goto(`/deals/${PACO_OPEN}`);
+  // Un deal abierto con contacto (el de Paco ya se ganó en una prueba anterior).
+  const [open] = await sql`SELECT d.id FROM deals d WHERE d.status = 'open' AND d.deleted_at IS NULL
+                           AND EXISTS (SELECT 1 FROM deal_participants dp JOIN person_emails pe ON pe.person_id = dp.person_id WHERE dp.deal_id = d.id)
+                           ORDER BY d.created_at LIMIT 1`;
+  await page.goto(`/deals/${open.id}`);
   const side = page.getByRole("region", { name: "Secuencias" });
   await side.getByText("+ Añadir a una secuencia").click();
   await side.getByLabel("Secuencia").selectOption({ label: `Reactivar ${stamp} (1 pasos)` });

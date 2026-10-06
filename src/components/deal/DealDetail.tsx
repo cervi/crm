@@ -107,7 +107,9 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
       const p = e.payload as Record<string, unknown>;
       const detail = e.event_type === "deal.stage_changed" && p.from_stage ? `${p.from_stage} → ${p.to_stage}`
         : e.event_type === "deal.lost" ? [p.reason, p.note].filter(Boolean).join(" · ")
-        : e.event_type.startsWith("deal.document_") ? String(p.title ?? "") : null;
+        : e.event_type.startsWith("deal.document_") ? String(p.title ?? "")
+        : e.event_type.startsWith("sequence.") ? [p.sequence, p.reason].filter(Boolean).join(" · ")
+        : e.event_type === "deal.owner_changed" ? `${p.from_name ?? "sin responsable"} → ${p.to_name ?? "sin responsable"}` : null;
       return {
         id: `e${e.id}`, kind: "change" as const, at: new Date(e.occurred_at).toISOString(),
         title: eventLabel(e.event_type), body: detail,
