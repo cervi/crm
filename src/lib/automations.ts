@@ -344,7 +344,9 @@ const SCANNERS: Record<string, Scanner> = {
     const quiet = num(rule.params.cooldown_days, 7);
     const rows = await openDeals(sql`
       ods.is_rotten AND ods.days_in_stage < s.rotten_after_days * ${factor}
-      AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = ods.id AND NOT a.done AND a.due_at >= now())
+      -- «nada agendado»: ninguna sesión con el cliente por delante (una tarea interna no cuenta)
+      AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = ods.id AND NOT a.done AND a.due_at >= now()
+                        AND a.type IN ('call', 'meeting', 'video_call', 'demo'))
       AND NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = ods.id AND a.type = 'email' AND a.done
                         AND a.done_at > now() - make_interval(days => ${quiet}))`);
     const out: Candidate[] = [];
