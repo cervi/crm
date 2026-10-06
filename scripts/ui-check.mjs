@@ -546,6 +546,11 @@ await step("ficha del deal: resumen con el siguiente paso", async () => {
   await page.goto(`/deals/${PACO_OPEN}`);
   const brief = page.getByRole("region", { name: "Resumen del deal" });
   await brief.getByText("Siguiente paso").waitFor();
+  const plan = brief.locator(".step-plan");
+  expect(!(await plan.isVisible()), "los detalles no deberían verse sin pasar el ratón");
+  await brief.locator(".brief-next").hover();
+  await plan.getByText("Quién").waitFor();
+  await shot("siguiente-paso");
 });
 
 if (MOCK) {

@@ -477,6 +477,8 @@ if (process.env.MOCK_URL) {
   // Sin IA: resumen y siguiente paso por reglas.
   const deal0 = await (await get(`/deals/${DEAL_OPEN}`)).text();
   check(deal0.includes("Siguiente paso") && deal0.includes("Según la actividad del deal"), "ficha del deal: resumen y siguiente paso por reglas");
+  check(/class="step-when who-(you|ai_auto|ai_ask)"/.test(deal0) && deal0.includes("<dt>Quién</dt>") && deal0.includes("<dt>Cómo</dt>"),
+        "siguiente paso: cuándo, y detalles de quién y cómo");
   const [{ owner_id: OWNER }] = await sql`SELECT owner_id FROM deals WHERE id = ${DEAL_OPEN}`;
   const today = await (await get(`/?owner=${OWNER}`)).text();
   check(today.includes("Paco — ampliación de servicio") && today.includes("Decisiones pendientes"), "Hoy: parte filtrado por persona");
