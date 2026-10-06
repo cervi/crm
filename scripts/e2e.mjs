@@ -893,6 +893,19 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   await sql`UPDATE automation_settings SET paused = false`;
 }
 
+// ------------------------------------------------------------- Reservas y semana
+{
+  check((await fetch(`${BASE}/book/no-existe`)).status === 404, "reservas: una página que no existe → 404 (sin pedir sesión)");
+  await sql`INSERT INTO booking_pages (user_id, slug, title) VALUES (${ADMIN_ID}, 'gestor-e2e', 'Charla e2e') ON CONFLICT (user_id) DO UPDATE SET slug = 'gestor-e2e', is_active = true`;
+  const pub = await fetch(`${BASE}/book/gestor-e2e`);
+  const pubHtml = await pub.text();
+  check(pub.status === 200 && pubHtml.includes("Charla e2e") && !pubHtml.includes('aria-label="Principal"'), "reservas: la página pública abre sin sesión y sin el menú del CRM", `HTTP ${pub.status}`);
+  const settings = await (await get("/settings/booking")).text();
+  check(settings.includes("Enlace de reserva") && settings.includes("/book/gestor-e2e"), "/settings/booking muestra tu enlace");
+  const week = await (await get("/activities?view=week")).text();
+  check(week.includes("Semana siguiente") && week.includes("week-grid"), "actividades: vista de semana");
+}
+
 // ------------------------------------------------------------- Usuarios y permisos
 {
   const as = async (userId, path) => {

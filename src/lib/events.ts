@@ -65,6 +65,7 @@ const LABELS: Record<string, string> = {
   "deal.created": "Deal creado",
   "deal.updated": "Deal actualizado",
   "deal.owner_changed": "Cambio de responsable",
+  "deal.booked": "Reunión reservada por el contacto",
   "email.opened": "Abrió un correo",
   "email.clicked": "Hizo clic en un enlace de un correo",
   "email.received": "Correo recibido",

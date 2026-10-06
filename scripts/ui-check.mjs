@@ -142,10 +142,11 @@ await step("arrastrar el deal en el tablero a otra fase", async () => {
 await step("programar una demo y marcar que no se presentó", async () => {
   await page.goto(`/deals/${dealId}`);
   await page.getByRole("tab", { name: "Actividad", exact: true }).click();
-  await page.getByLabel("Tipo").selectOption({ label: "Demo" });
-  await page.getByLabel("Asunto").fill("Demo del producto");
-  await page.getByLabel("Fecha y hora").fill("2026-12-01T10:30");
-  await submit("Programar");
+  const composer = page.locator(".composer form", { has: page.getByRole("button", { name: "Programar" }) });
+  await composer.getByLabel("Tipo").selectOption({ label: "Demo" });
+  await composer.getByLabel("Asunto").fill("Demo del producto");
+  await composer.getByLabel("Fecha y hora").fill("2026-12-01T10:30");
+  await composer.getByRole("button", { name: "Programar" }).click();
   const item = page.locator(".item", { hasText: "Demo del producto" });
   await item.waitFor();
   expect((await item.textContent()).includes("10:30"), `hora mostrada: ${await item.locator(".meta").first().textContent()}`);
@@ -546,6 +547,34 @@ if (MOCK) {
     await link.waitFor({ state: "detached" });
   });
 
+  await step("enlace de reserva: un contacto nuevo elige hueco y queda con su deal y la invitación", async () => {
+    await page.goto("/settings/booking");
+    await page.getByLabel("Dirección").fill(`gestor-${stamp}`);
+    await page.getByLabel("Título").fill("Charla de 30 minutos");
+    await submit("Guardar");
+    const link = page.getByRole("link", { name: new RegExp(`/book/gestor-${stamp}$`) });
+    await link.waitFor();
+    // Quien reserva no tiene sesión en el CRM.
+    const visitor = await browser.newContext({ baseURL: BASE, locale: "es-ES" });
+    const v = await visitor.newPage();
+    v.on("pageerror", (e) => errors.push(e.message));
+    await v.goto(`/book/gestor-${stamp}`);
+    await v.getByRole("heading", { name: "Charla de 30 minutos" }).waitFor();
+    await v.locator(".booking-slots .slot").first().click();
+    await v.getByLabel("Tu nombre").fill(`Marta Reserva ${stamp}`);
+    await v.getByLabel("Tu email").fill(`marta.${stamp}@cliente-reserva.example`);
+    await v.getByLabel("Empresa").fill(`Cliente Reserva ${stamp}`);
+    await v.getByRole("button", { name: "Reservar" }).click();
+    await v.getByRole("heading", { name: "¡Reserva confirmada!" }).waitFor();
+    if (SHOTS) await v.screenshot({ path: `${SHOTS}/reserva.png`, fullPage: true });
+    await visitor.close();
+    const [a] = await sql`SELECT a.deal_id, a.subject, d.owner_id FROM activities a JOIN deals d ON d.id = a.deal_id
+                          WHERE a.booked_via IS NOT NULL AND a.subject = ${`Charla de 30 minutos con Marta Reserva ${stamp}`}`;
+    expect(a?.deal_id && a.owner_id, "la reserva no quedó en un deal con responsable");
+    const ev = (await mockState()).events.find((e) => e.subject === `Charla de 30 minutos con Marta Reserva ${stamp}`);
+    expect(ev?.attendees?.some((x) => x.emailAddress.address === `marta.${stamp}@cliente-reserva.example`), "no se creó la invitación en el calendario");
+  });
+
   await step("conectar Google Workspace para otra persona", async () => {
     await page.goto("/settings/mailbox");
     const card = page.locator("article.mailbox", { has: page.getByRole("link", { name: "Conectar Google Workspace" }) }).first();
@@ -558,14 +587,14 @@ if (MOCK) {
   await step("programar una demo invitando desde el calendario", async () => {
     await page.goto(`/deals/${PACO_OPEN}`);
     await page.getByRole("tab", { name: "Actividad", exact: true }).click();
-    const form = page.locator("form", { has: page.getByRole("button", { name: "Programar" }) });
+    const form = page.locator(".composer form", { has: page.getByRole("button", { name: "Programar" }) });
     await form.locator("select[name=type]").selectOption("demo");
     await form.locator("input[name=subject]").fill(`Demo ${stamp}`);
     const d = new Date(Date.now() + 3 * 86400000);
     const pad = (n) => String(n).padStart(2, "0");
     await form.locator("input[name=due_at]").fill(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T16:00`);
     await form.getByLabel(/Invitar a Ana García desde mi calendario/).check();
-    await submit("Programar");
+    await form.getByRole("button", { name: "Programar" }).click();
     await page.locator(".item", { hasText: `Demo ${stamp}` }).waitFor();
     const ev = (await mockState()).events.find((e) => e.subject === `Demo ${stamp}`);
     const [a] = await sql`SELECT external_ref, meeting_url FROM activities WHERE subject = ${`Demo ${stamp}`}`;
@@ -668,10 +697,10 @@ await step("tipos de actividad: crear uno nuevo y usarlo en un deal", async () =
   await page.getByRole("listitem", { name: "Tipo Onboarding" }).waitFor();
   await page.goto(`/deals/${PACO_OPEN}`);
   await page.getByRole("tab", { name: "Actividad", exact: true }).click();
-  const form = page.locator("form", { has: page.getByRole("button", { name: "Programar" }) });
+  const form = page.locator(".composer form", { has: page.getByRole("button", { name: "Programar" }) });
   await form.locator("select[name=type]").selectOption("onboarding");
   await form.locator("input[name=subject]").fill(`Onboarding ${stamp}`);
-  await submit("Programar");
+  await form.getByRole("button", { name: "Programar" }).click();
   await page.locator(".item", { hasText: `Onboarding ${stamp}` }).waitFor();
 });
 

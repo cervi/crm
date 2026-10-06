@@ -3,6 +3,7 @@ import { sql } from "./db";
 import { UserError } from "./errors";
 import { recordEvent, INTEGRATION_ACTOR, type Actor } from "./events";
 import { linksIn } from "./email-track";
+import { bookingLinkFor } from "./booking";
 import { connectionOf, sendEmail } from "./mailbox";
 import { renderTemplate } from "./automations";
 import type { SessionUser } from "./session";
@@ -192,16 +193,21 @@ export async function deleteTemplate(user: SessionUser, templateId: string) {
 
 /** Variables de una plantilla para un deal y un contacto ({huecos} se rellena en el navegador). */
 export async function templateVars(dealId: string): Promise<Record<string, string>> {
-  const [d] = await sql<{ title: string; organization: string | null; owner: string | null; person: string | null }[]>`
-    SELECT d.title, o.name AS organization, u.name AS owner,
-           (SELECT p.full_name FROM deal_participants dp JOIN persons p ON p.id = dp.person_id
-            WHERE dp.deal_id = d.id ORDER BY dp.is_primary DESC LIMIT 1) AS person
+  const [d] = await sql<{ title: string; organization: string | null; owner: string | null; owner_id: string | null;
+                          person: string | null; person_id: string | null }[]>`
+    SELECT d.title, o.name AS organization, u.name AS owner, d.owner_id, pp.full_name AS person, pp.id AS person_id
     FROM deals d LEFT JOIN organizations o ON o.id = d.organization_id LEFT JOIN users u ON u.id = d.owner_id
+    LEFT JOIN LATERAL (
+      SELECT p.id, p.full_name FROM deal_participants dp JOIN persons p ON p.id = dp.person_id
+      WHERE dp.deal_id = d.id ORDER BY dp.is_primary DESC LIMIT 1
+    ) pp ON true
     WHERE d.id = ${dealId}`;
   if (!d) return {};
+  const link = await bookingLinkFor(d.owner_id, dealId, d.person_id).catch(() => null);
   return {
     deal: d.title, empresa: d.organization ?? "", responsable: d.owner ?? "",
     nombre: (d.person ?? "").split(/\s+/)[0] ?? "",
+    ...(link ? { enlace_reserva: link } : {}),
   };
 }
 

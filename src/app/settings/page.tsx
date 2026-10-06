@@ -7,6 +7,7 @@ export const metadata = { title: "Ajustes" };
 const SECTIONS: { href: string; title: string; text: string; icon: IconName; everyone?: boolean }[] = [
   { href: "/settings/users", icon: "persons", title: "Usuarios y permisos", text: "Quién entra al CRM y qué puede hacer: administradores, comerciales y solo lectura." },
   { href: "/settings/mailbox", icon: "inbox", title: "Correo, calendario y documentos", everyone: true, text: "Conecta Microsoft 365 o Google Workspace: enviar desde tu correo, registrar correos y reuniones, ofrecer tus huecos y enlazar documentos." },
+  { href: "/settings/booking", icon: "activities", everyone: true, title: "Enlace de reserva", text: "Tu página pública para que los contactos elijan un hueco de tu calendario." },
   { href: "/settings/templates", icon: "pencil", everyone: true, title: "Plantillas de correo", text: "Textos para escribir más rápido desde los deals, y el seguimiento de aperturas y clics." },
   { href: "/settings/ai", icon: "spark", title: "Modelo de IA", text: "Proveedor, modelo, clave y prompts de los resúmenes (Claude, OpenAI, Grok u otro)." },
   { href: "/settings/automations", icon: "spark", title: "Automatizaciones e IA", text: "Qué puede hacer la IA sola, qué te pregunta antes y qué reglas sigue." },

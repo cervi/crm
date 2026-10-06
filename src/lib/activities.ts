@@ -65,6 +65,17 @@ export async function listActivities({ view = "pending", ownerId }: { view?: "pe
     LIMIT 300`;
 }
 
+/** Actividades con fecha entre dos instantes (vista de semana), hechas o no. */
+export async function listActivitiesBetween(from: Date, to: Date, ownerId?: string | null) {
+  await activityTypes();
+  return sql<Activity[]>`
+    ${select()}
+    WHERE a.due_at >= ${from} AND a.due_at < ${to}
+      AND (${ownerId ?? null}::uuid IS NULL OR a.owner_id = ${ownerId ?? null}::uuid)
+    ORDER BY a.due_at
+    LIMIT 500`;
+}
+
 const outcomes = OUTCOMES.map((o) => o.value) as [string, ...string[]];
 
 const activitySchema = z.object({

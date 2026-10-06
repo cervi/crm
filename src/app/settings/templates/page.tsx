@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Plantillas de correo" };
 
 const VARS = [["{nombre}", "nombre del contacto"], ["{deal}", "título del deal"], ["{empresa}", "empresa"],
-              ["{responsable}", "responsable del deal"], ["{huecos}", "tus próximos huecos libres del calendario"]];
+              ["{responsable}", "responsable del deal"], ["{huecos}", "tus próximos huecos libres del calendario"],
+              ["{enlace_reserva}", "enlace personal a tu página de reservas"]];
 
 function TemplateFields({ t, admin }: { t?: Template; admin: boolean }) {
   return (
