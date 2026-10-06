@@ -300,16 +300,17 @@ if (!KEY) {
   check(/Bandeja de la IA \(\d+ pendientes?\)/.test(nav), "el menú lateral avisa de las propuestas pendientes");
 }
 
-// ------------------------------------------------------------- Correo y calendario (Microsoft simulado)
-if (process.env.MOCK_GRAPH_URL) {
-  const MOCK = process.env.MOCK_GRAPH_URL;
+// ------------------------------------------------------------- Correo, calendario y documentos (Microsoft 365 simulado)
+if (process.env.MOCK_URL) {
+  const MOCK = process.env.MOCK_URL;
   const SECRET = process.env.CRON_SECRET ?? "";
   const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
   const mock = async (path, method = "GET") => (await fetch(`${MOCK}${path}`, { method })).json();
   const [{ owner_id: OWNER }] = await sql`SELECT owner_id FROM deals WHERE id = ${DEAL_OPEN}`;
 
   const page0 = await (await get("/settings/mailbox")).text();
-  check(page0.includes("Conectar Outlook") && page0.includes("Correo y calendario"), "/settings/mailbox ofrece conectar Outlook");
+  check(page0.includes("Conectar Microsoft 365") && page0.includes("Conectar Google Workspace") && page0.includes("Correo, calendario y documentos"),
+        "/settings/mailbox ofrece conectar Microsoft 365 y Google Workspace");
 
   // Conexión OAuth completa: CRM → Microsoft → vuelta al CRM.
   const connect = async (tamper = false) => {
@@ -385,10 +386,73 @@ if (process.env.MOCK_GRAPH_URL) {
   await get(`/api/calendar/slots?deal=${DEAL_OPEN}`);
   const [revoked] = await sql`SELECT status, last_error FROM mailbox_connections WHERE user_id = ${OWNER}`;
   const page1 = await (await get("/settings/mailbox")).text();
-  check(revoked.status === "error" && page1.includes("Reconectar Outlook"), "si Microsoft revoca el acceso, pide reconectar", JSON.stringify(revoked));
+  check(revoked.status === "error" && page1.includes("Reconectar Microsoft 365"), "si Microsoft revoca el acceso, pide reconectar", JSON.stringify(revoked));
   // Sin buzón activo, el correo vuelve a no poder salir solo.
   const conf = await (await get("/settings/automations")).text();
   check(conf.includes("Enviar correos"), "/settings/automations sigue respondiendo con el buzón caído");
+}
+
+// ------------------------------------------------------------- Correo, calendario y documentos (Google Workspace simulado)
+if (process.env.MOCK_URL) {
+  const MOCK = process.env.MOCK_URL;
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  const mock = async (path) => (await fetch(`${MOCK}${path}`)).json();
+  const [{ owner_id: MS_OWNER }] = await sql`SELECT owner_id FROM deals WHERE id = ${DEAL_OPEN}`;
+  const [{ id: G_USER }] = await sql`SELECT id FROM users WHERE kind = 'human' AND id <> ${MS_OWNER} ORDER BY name LIMIT 1`;
+
+  const r1 = await get(`/api/integrations/google/connect?user=${G_USER}`);
+  const cookie = (r1.headers.get("set-cookie") ?? "").split(";")[0];
+  const auth1 = r1.headers.get("location") ?? "";
+  check(auth1.includes("/o/oauth2/v2/auth") && auth1.includes("access_type=offline") && auth1.includes("code_challenge="),
+        "Google: redirige al inicio de sesión con acceso permanente y PKCE", auth1.slice(0, 80));
+  const r2 = await fetch(auth1, { redirect: "manual" });
+  const r3 = await get(r2.headers.get("location").replace(/^https?:\/\/[^/]+/, ""), { headers: { cookie } });
+  check((r3.headers.get("location") ?? "").includes("connected=jesus%40empresa-google.example"), "Google: vuelve al CRM conectado", r3.headers.get("location"));
+  const [gconn] = await sql`SELECT provider, email, scheduling, tokens FROM mailbox_connections WHERE user_id = ${G_USER}`;
+  check(gconn?.provider === "google" && gconn.scheduling.timezone === "Europe/Madrid" && gconn.tokens.startsWith("v1."),
+        "Google: cuenta guardada (cifrada) con su zona horaria", JSON.stringify(gconn && { ...gconn, tokens: undefined }));
+
+  // Huecos: lo rechazado y lo marcado «disponible» no ocupa.
+  const madrid = (d) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(d));
+  const gs = await (await get(`/api/calendar/slots?user=${G_USER}`)).json();
+  check(gs.slots?.length === 3 && gs.slots.every((x) => madrid(x.start) === "13:30"),
+        "Google: huecos tras lo ocupado, sin contar lo rechazado ni lo «disponible»", JSON.stringify(gs.slots?.map((x) => madrid(x.start)) ?? gs));
+
+  // Sincronización (Gmail paginado, sin borradores; calendario sin cancelados).
+  const s1 = await run();
+  check(s1.sync?.emails === 2 && s1.sync?.meetings === 1, "Google: sincroniza 2 correos y 1 reunión con contactos", JSON.stringify(s1.sync));
+  const [meet] = await sql`SELECT type, meeting_url FROM activities WHERE external_ref = 'gcal:ge1'`;
+  check(meet?.meeting_url === "https://meet.example/ge1", "Google: la reunión guarda su enlace de Meet", JSON.stringify(meet));
+  const s2 = await run();
+  check(s2.sync?.emails === 0 && s2.sync?.meetings === 0, "Google: una segunda sincronización no duplica", JSON.stringify(s2.sync));
+
+  // Documentos de Google Drive.
+  const ds = await (await get(`/api/drive/search?q=${encodeURIComponent("paco")}`)).json();
+  check(ds.provider === "google" && ds.files?.length === 2 && ds.files.some((f) => f.name === "Propuesta Paco 2026" && f.url.includes("/presentation/")),
+        "Google Drive: busca archivos por nombre", JSON.stringify(ds));
+
+  // Envío desde Gmail (el deal pasa a ser de la persona con Google; correo en «Sola»).
+  await sql`UPDATE deals SET owner_id = ${G_USER} WHERE id = ${DEAL_OPEN}`;
+  await sql`DELETE FROM automation_actions WHERE deal_id = ${DEAL_OPEN} AND rule_id = (SELECT id FROM automation_rules WHERE key = 'offer_session_slots')`;
+  await sql`UPDATE ai_permissions SET autonomy = 'auto' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
+  await sql`UPDATE automation_rules SET autonomy = 'auto' WHERE key = 'offer_session_slots'`;
+  await run();
+  const gst = await mock("/__state");
+  const gmail = gst.gsent.at(-1);
+  check(gmail && gmail.to.includes("ana@paco.example") && gmail.subject.includes("¿cuándo hacemos la videollamada?") && gmail.body.includes("(hora de Madrid)"),
+        "Gmail: el correo sale con asunto y texto con acentos", JSON.stringify(gmail));
+  const [{ n: gref }] = await sql`SELECT count(*)::int AS n FROM activities WHERE external_ref = ${`gmail:${gmail?.id}`}`;
+  const s3 = await run();
+  check(gref === 1 && s3.sync?.emails === 0, "Gmail: el enviado no se duplica al sincronizar", JSON.stringify({ gref, sync: s3.sync }));
+  await sql`UPDATE deals SET owner_id = ${MS_OWNER} WHERE id = ${DEAL_OPEN}`;
+  await sql`UPDATE ai_permissions SET autonomy = 'ask' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
+  await sql`UPDATE automation_rules SET autonomy = 'ask' WHERE key = 'offer_session_slots'`;
+
+  const page = await (await get("/settings/mailbox")).text();
+  check(page.includes("Google Workspace · jesus@empresa-google.example"), "/settings/mailbox muestra la cuenta de Google");
+  const dealPage = await (await get(`/deals/${DEAL_OPEN}`)).text();
+  check(dealPage.includes("Documentos") && dealPage.includes("Enlazar documento"), "la ficha del deal tiene la sección de documentos");
 }
 
 await sql.end();

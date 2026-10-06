@@ -6,13 +6,13 @@ import { isId } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
-/** Próximos huecos libres del calendario del responsable del deal (o del primer buzón conectado). */
+/** Próximos huecos libres del calendario de un usuario (?user=) o del responsable del deal (?deal=); si no tiene, de la primera cuenta conectada. */
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
-  const dealId = q.get("deal");
+  const dealId = q.get("deal"), userId = q.get("user");
   const [deal] = isId(dealId) ? await sql<{ owner_id: string | null }[]>`SELECT owner_id FROM deals WHERE id = ${dealId}` : [];
-  const conn = await senderFor(deal?.owner_id);
-  if (!conn) return NextResponse.json({ error: "Conecta tu calendario en Ajustes → Correo y calendario." }, { status: 409 });
+  const conn = await senderFor(isId(userId) ? userId : deal?.owner_id);
+  if (!conn) return NextResponse.json({ error: "Conecta tu calendario en Ajustes → Correo, calendario y documentos." }, { status: 409 });
   const duration = Number(q.get("duration"));
   try {
     const slots = await availableSlots(conn, Number.isFinite(duration) && duration > 0 ? { duration } : {});

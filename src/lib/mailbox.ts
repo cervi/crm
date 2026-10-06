@@ -2,29 +2,35 @@ import { sql, json, transaction, type Db } from "./db";
 import { decrypt, encrypt } from "./crypto";
 import { INTEGRATION_ACTOR, recordEvent, type Actor } from "./events";
 import { UserError } from "./errors";
-import { graphClient, microsoftMessage, MicrosoftError, type GraphClient, type Tokens } from "./microsoft";
+import { PROVIDERS, ProviderError, providerMessage, type Provider, type ProviderKey, type Tokens } from "./integrations";
+import { apiClient, type ApiClient } from "./integrations/http";
 import { DEFAULT_SCHEDULING, formatSlots, freeSlots, NO_SLOTS_TEXT, normalizeScheduling, type Interval, type Scheduling } from "./slots";
 
 // ===========================================================================
-// Buzones conectados: enviar desde Outlook, leer la disponibilidad del
-// calendario, crear reuniones y sincronizar correos y reuniones con contactos.
+// Cuentas conectadas (Microsoft 365 o Google Workspace) de cada usuario:
+// enviar desde su correo, leer su calendario para ofrecer huecos, crear
+// reuniones, buscar documentos en su Drive y sincronizar correos y reuniones
+// con contactos del CRM. Lo específico de cada proveedor está en integrations/.
 // ===========================================================================
 
 export type Connection = {
-  id: string; user_id: string; user_name: string; email: string; display_name: string | null;
+  id: string; user_id: string; user_name: string; provider: ProviderKey; email: string; display_name: string | null;
   status: "active" | "error"; last_error: string | null; scheduling: Scheduling;
   sync_mail: boolean; sync_calendar: boolean; mail_synced_at: Date | null; calendar_synced_at: Date | null; created_at: Date;
 };
 
-const selectConnections = (where = sql``) => sql<(Omit<Connection, "scheduling"> & { scheduling: unknown })[]>`
-  SELECT m.id, m.user_id, u.name AS user_name, m.email, m.display_name, m.status, m.last_error, m.scheduling,
+type Row = Omit<Connection, "scheduling"> & { scheduling: unknown };
+
+const selectConnections = (where = sql``) => sql<Row[]>`
+  SELECT m.id, m.user_id, u.name AS user_name, m.provider, m.email, m.display_name, m.status, m.last_error, m.scheduling,
          m.sync_mail, m.sync_calendar, m.mail_synced_at, m.calendar_synced_at, m.created_at
   FROM mailbox_connections m JOIN users u ON u.id = m.user_id
   ${where}
   ORDER BY m.created_at`;
 
-const withScheduling = (rows: (Omit<Connection, "scheduling"> & { scheduling: unknown })[]): Connection[] =>
-  rows.map((r) => ({ ...r, scheduling: normalizeScheduling(r.scheduling) }));
+const withScheduling = (rows: Row[]): Connection[] => rows.map((r) => ({ ...r, scheduling: normalizeScheduling(r.scheduling) }));
+
+export const providerOf = (conn: { provider: ProviderKey }): Provider => PROVIDERS[conn.provider];
 
 export async function listConnections(): Promise<Connection[]> {
   return withScheduling(await selectConnections());
@@ -35,22 +41,30 @@ export async function hasActiveMailbox(): Promise<boolean> {
   return r.n > 0;
 }
 
-/** Buzón desde el que sale un correo: el del responsable del deal o, si no tiene, el primero conectado. */
+/** Cuenta desde la que se actúa: la del usuario indicado o, si no tiene, la primera conectada. */
 export async function senderFor(ownerId: string | null | undefined): Promise<Connection | null> {
   const rows = withScheduling(await selectConnections(sql`WHERE m.status = 'active'`));
   return rows.find((c) => c.user_id === ownerId) ?? rows[0] ?? null;
 }
 
-export async function saveConnection(v: { userId: string; email: string; displayName: string | null; tokens: Tokens; scheduling?: Partial<Scheduling> }) {
+export async function connectionOf(userId: string): Promise<Connection | null> {
+  const [row] = withScheduling(await selectConnections(sql`WHERE m.user_id = ${userId}`));
+  return row ?? null;
+}
+
+export async function saveConnection(v: {
+  userId: string; provider: ProviderKey; email: string; displayName: string | null; tokens: Tokens; scheduling?: Partial<Scheduling>;
+}) {
   const scheduling = normalizeScheduling({ ...DEFAULT_SCHEDULING, ...(v.scheduling ?? {}) });
   await sql`
-    INSERT INTO mailbox_connections (user_id, email, display_name, tokens, scheduling)
-    VALUES (${v.userId}, ${v.email}, ${v.displayName}, ${encrypt(JSON.stringify(v.tokens))}, ${json(scheduling)})
+    INSERT INTO mailbox_connections (user_id, provider, email, display_name, tokens, scheduling)
+    VALUES (${v.userId}, ${v.provider}, ${v.email}, ${v.displayName}, ${encrypt(JSON.stringify(v.tokens))}, ${json(scheduling)})
     ON CONFLICT (user_id) DO UPDATE SET
-      email = EXCLUDED.email, display_name = EXCLUDED.display_name, tokens = EXCLUDED.tokens,
+      provider = EXCLUDED.provider, email = EXCLUDED.email, display_name = EXCLUDED.display_name, tokens = EXCLUDED.tokens,
       status = 'active', last_error = NULL,
-      -- al reconectar se respetan las preferencias guardadas
-      scheduling = CASE WHEN mailbox_connections.scheduling = '{}'::jsonb THEN EXCLUDED.scheduling ELSE mailbox_connections.scheduling END`;
+      -- al cambiar de cuenta se empieza a sincronizar de cero; al reconectar la misma, se sigue
+      mail_synced_at = CASE WHEN mailbox_connections.email = EXCLUDED.email THEN mailbox_connections.mail_synced_at END,
+      calendar_synced_at = CASE WHEN mailbox_connections.email = EXCLUDED.email THEN mailbox_connections.calendar_synced_at END`;
 }
 
 export async function disconnect(userId: string) {
@@ -70,31 +84,32 @@ export async function updateConnectionSettings(userId: string, data: Record<stri
     UPDATE mailbox_connections SET scheduling = ${json(s)},
            sync_mail = ${data.sync_mail === "on"}, sync_calendar = ${data.sync_calendar === "on"}
     WHERE user_id = ${userId}`;
-  if (res.count === 0) throw new UserError("Ese usuario no tiene el correo conectado.");
+  if (res.count === 0) throw new UserError("Ese usuario no tiene ninguna cuenta conectada.");
 }
 
-/** Cliente de Graph de un buzón; guarda los tokens renovados. */
-async function clientFor(conn: { id: string }): Promise<GraphClient> {
+/** Cliente autenticado de una cuenta; guarda los tokens renovados. */
+async function clientFor(conn: Connection): Promise<ApiClient> {
   const [row] = await sql<{ tokens: string }[]>`SELECT tokens FROM mailbox_connections WHERE id = ${conn.id}`;
-  if (!row) throw new UserError("El buzón ya no está conectado.");
-  const tokens = JSON.parse(decrypt(row.tokens)) as Tokens;
-  return graphClient(tokens, async (t) => {
-    await sql`UPDATE mailbox_connections SET tokens = ${encrypt(JSON.stringify(t))} WHERE id = ${conn.id}`;
+  if (!row) throw new UserError("La cuenta ya no está conectada.");
+  const provider = providerOf(conn);
+  return apiClient({
+    provider: provider.label.split(" ")[0],
+    tokens: JSON.parse(decrypt(row.tokens)) as Tokens,
+    refresh: provider.refresh,
+    save: async (t) => { await sql`UPDATE mailbox_connections SET tokens = ${encrypt(JSON.stringify(t))} WHERE id = ${conn.id}`; },
   });
 }
 
-async function markError(conn: { id: string }, err: unknown) {
-  const reconnect = err instanceof MicrosoftError && err.needsReconnect;
-  await sql`UPDATE mailbox_connections SET last_error = ${microsoftMessage(err)}, status = ${reconnect ? "error" : "active"}
-            WHERE id = ${conn.id}`;
-}
-
-async function guarded<T>(conn: { id: string }, fn: (c: GraphClient) => Promise<T>): Promise<T> {
+/** Ejecuta algo contra el proveedor; si falla, lo apunta (y marca «reconectar» si se revocó el acceso). */
+async function guarded<T>(conn: Connection, fn: (c: ApiClient, p: Provider) => Promise<T>): Promise<T> {
   try {
-    return await fn(await clientFor(conn));
+    return await fn(await clientFor(conn), providerOf(conn));
   } catch (err) {
-    if (!(err instanceof UserError)) await markError(conn, err);
-    throw err instanceof UserError ? err : new UserError(microsoftMessage(err));
+    if (err instanceof UserError) throw err;
+    const reconnect = err instanceof ProviderError && err.needsReconnect;
+    await sql`UPDATE mailbox_connections SET last_error = ${providerMessage(err)}, status = ${reconnect ? "error" : "active"}
+              WHERE id = ${conn.id}`;
+    throw new UserError(providerMessage(err));
   }
 }
 
@@ -110,27 +125,13 @@ type EmailInput = {
   organizationId?: string | null;
 };
 
-/**
- * Envía un correo desde el buzón (queda en «Enviados» de Outlook) y lo
- * registra como actividad del deal.
- */
+/** Envía desde el correo de la cuenta (queda en sus «Enviados») y lo registra en el deal. */
 export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
-  const msg = await guarded(conn, async (c) => {
-    const draft = await c.call<{ id: string; internetMessageId: string }>("/me/messages", {
-      method: "POST",
-      json: {
-        subject: v.subject,
-        body: { contentType: "Text", content: v.body },
-        toRecipients: [{ emailAddress: { address: v.to.email, name: v.to.name ?? undefined } }],
-      },
-    });
-    await c.call(`/me/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
-    return draft;
-  });
+  const sent = await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: v.to, subject: v.subject, body: v.body }));
   const activityId = await transaction((tx) => logActivity(tx, actor, {
     type: "email", subject: v.subject, note: `Para: ${v.to.email}\n\n${v.body}`.slice(0, 5000),
     due_at: new Date(), done: true, deal_id: v.dealId ?? null, person_id: v.personId ?? null,
-    organization_id: v.organizationId ?? null, owner_id: conn.user_id, external_ref: `msg:${msg.internetMessageId}`,
+    organization_id: v.organizationId ?? null, owner_id: conn.user_id, external_ref: sent.ref,
   }));
   await sql`UPDATE mailbox_connections SET last_error = NULL WHERE id = ${conn.id}`;
   return { activityId: activityId!, from: conn.email };
@@ -163,31 +164,13 @@ async function logActivity(db: Db, actor: Actor, a: ActivityRow): Promise<string
 // ---------------------------------------------------------------------------
 // Calendario
 
-type GraphEvent = {
-  id: string; subject: string | null; isCancelled: boolean; isOnlineMeeting?: boolean; showAs?: string;
-  start: { dateTime: string }; end: { dateTime: string };
-  onlineMeeting?: { joinUrl?: string } | null;
-  attendees?: { emailAddress: { address: string; name?: string } }[];
-  organizer?: { emailAddress: { address: string; name?: string } };
-};
-
-const utc = (s: string) => new Date(/[zZ]|[+-]\d\d:\d\d$/.test(s) ? s : `${s}Z`);
-
-async function calendarView(c: GraphClient, from: Date, to: Date, select: string, max = 500) {
-  const q = new URLSearchParams({ startDateTime: from.toISOString(), endDateTime: to.toISOString(), $select: select, $top: "100" });
-  return c.all<GraphEvent>(`/me/calendarView?${q}`, max, { Prefer: 'outlook.timezone="UTC"' });
-}
-
-/** Huecos libres del calendario de un buzón según sus preferencias. */
+/** Huecos libres del calendario de una cuenta según sus preferencias. */
 export async function availableSlots(conn: Connection, overrides: Partial<Scheduling> = {}): Promise<Interval[]> {
   const s = normalizeScheduling({ ...conn.scheduling, ...overrides });
   const from = new Date();
   const to = new Date(from.getTime() + (s.horizon_days + 1) * 86400000);
-  const events = await guarded(conn, (c) => calendarView(c, from, to, "start,end,showAs,isCancelled"));
-  const busy = events
-    .filter((e) => !e.isCancelled && e.showAs !== "free" && e.showAs !== "workingElsewhere")
-    .map((e) => ({ start: utc(e.start.dateTime), end: utc(e.end.dateTime) }));
-  return freeSlots(busy, s, from);
+  const events = await guarded(conn, (c, p) => p.events(c, from, to, conn.email.toLowerCase(), s.timezone));
+  return freeSlots(events.filter((e) => e.busy).map((e) => ({ start: e.start, end: e.end })), s, from);
 }
 
 /** Texto con los huecos para un correo, o una frase alternativa si no hay calendario. */
@@ -201,27 +184,7 @@ export async function slotsText(conn: Connection | null): Promise<string> {
   }
 }
 
-/** Crea la reunión en el calendario (con Teams si es en línea) e invita a los asistentes. */
-export async function createCalendarEvent(conn: Connection, v: {
-  subject: string; start: Date; durationMinutes: number; attendees: { email: string; name?: string | null }[]; online: boolean; body?: string | null;
-}) {
-  const end = new Date(v.start.getTime() + v.durationMinutes * 60000);
-  const iso = (d: Date) => d.toISOString().replace(/Z$/, "");
-  const ev = await guarded(conn, (c) => c.call<GraphEvent>("/me/events", {
-    method: "POST",
-    json: {
-      subject: v.subject,
-      body: v.body ? { contentType: "Text", content: v.body } : undefined,
-      start: { dateTime: iso(v.start), timeZone: "UTC" },
-      end: { dateTime: iso(end), timeZone: "UTC" },
-      attendees: v.attendees.map((a) => ({ emailAddress: { address: a.email, name: a.name ?? undefined }, type: "required" })),
-      ...(v.online ? { isOnlineMeeting: true, onlineMeetingProvider: "teamsForBusiness" } : {}),
-    },
-  }));
-  return { eventId: ev.id, joinUrl: ev.onlineMeeting?.joinUrl ?? null };
-}
-
-/** Invita al contacto a una actividad ya creada desde el calendario del responsable. */
+/** Invita al contacto a una actividad ya creada desde el calendario del responsable (con Teams o Meet si es en línea). */
 export async function addActivityToCalendar(activityId: string) {
   const [a] = await sql<{ type: string; subject: string; note: string | null; due_at: Date | null; duration_minutes: number | null;
                          owner_id: string | null; deal_owner: string | null; email: string | null; full_name: string | null }[]>`
@@ -234,27 +197,34 @@ export async function addActivityToCalendar(activityId: string) {
   if (!a.due_at) throw new UserError("Para invitar desde el calendario, la actividad necesita fecha y hora.");
   const conn = await senderFor(a.owner_id ?? a.deal_owner);
   if (!conn) throw new UserError("No hay ningún calendario conectado.");
-  const ev = await createCalendarEvent(conn, {
-    subject: a.subject, start: new Date(a.due_at), durationMinutes: a.duration_minutes ?? conn.scheduling.duration,
+  const minutes = a.duration_minutes ?? conn.scheduling.duration;
+  const start = new Date(a.due_at);
+  const ev = await guarded(conn, (c, p) => p.createEvent(c, {
+    subject: a.subject, start, end: new Date(start.getTime() + minutes * 60000),
     attendees: a.email ? [{ email: a.email, name: a.full_name }] : [], online: a.type !== "meeting" && a.type !== "call",
     body: a.note,
-  });
-  await sql`UPDATE activities SET external_ref = ${`evt:${ev.eventId}`}, meeting_url = coalesce(${ev.joinUrl}, meeting_url),
-                                  duration_minutes = coalesce(duration_minutes, ${conn.scheduling.duration})
+  }));
+  await sql`UPDATE activities SET external_ref = ${ev.ref}, meeting_url = coalesce(${ev.joinUrl}, meeting_url),
+                                  duration_minutes = ${minutes}
             WHERE id = ${activityId}`;
   return ev;
 }
 
 // ---------------------------------------------------------------------------
-// Sincronización: correos y reuniones con contactos del CRM
+// Documentos (Drive / OneDrive)
 
-type GraphMessage = {
-  id: string; internetMessageId?: string; subject: string | null; bodyPreview: string | null; isDraft?: boolean;
-  from?: { emailAddress: { address: string; name?: string } };
-  toRecipients?: { emailAddress: { address: string; name?: string } }[];
-  ccRecipients?: { emailAddress: { address: string; name?: string } }[];
-  sentDateTime?: string; receivedDateTime: string;
-};
+/** Busca archivos por nombre en el almacenamiento de la cuenta del usuario (o de la primera conectada). */
+export async function searchDriveFiles(userId: string | null, query: string) {
+  const conn = await senderFor(userId);
+  if (!conn) throw new UserError("Conecta tu cuenta de Microsoft 365 o Google en Ajustes → Correo, calendario y documentos.");
+  const q = query.trim();
+  if (q.length < 2) return { provider: conn.provider, files: [] };
+  const files = await guarded(conn, (c, p) => p.searchFiles(c, q));
+  return { provider: conn.provider, files };
+}
+
+// ---------------------------------------------------------------------------
+// Sincronización: correos y reuniones con contactos del CRM
 
 type Match = { person_id: string; email: string; full_name: string; organization_id: string | null; deal_id: string | null;
                required_activity_type: string | null };
@@ -288,30 +258,20 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
   const result: SyncResult = { emails: 0, meetings: 0, updated: 0 };
   const own = conn.email.toLowerCase();
   const started = new Date();
-  await guarded(conn, async (c) => {
+  await guarded(conn, async (c, p) => {
     if (conn.sync_mail) {
       const since = conn.mail_synced_at ? new Date(new Date(conn.mail_synced_at).getTime() - 10 * 60000) : new Date(Date.now() - 30 * 86400000);
-      const q = new URLSearchParams({
-        $select: "id,internetMessageId,subject,bodyPreview,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,isDraft",
-        $filter: `receivedDateTime ge ${since.toISOString()}`,
-        $orderby: "receivedDateTime desc",
-        $top: "50",
-      });
-      const messages = (await c.all<GraphMessage>(`/me/messages?${q}`, 1000)).filter((m) => !m.isDraft && m.internetMessageId);
-      for (const m of messages) {
-        const from = m.from?.emailAddress.address.toLowerCase() ?? "";
-        const outgoing = from === own;
-        const others = (outgoing ? [...(m.toRecipients ?? []), ...(m.ccRecipients ?? [])].map((r) => r.emailAddress.address) : [from])
-          .map((e) => e.toLowerCase()).filter((e) => e && e !== own);
-        const matches = await matchContacts([...new Set(others)]);
+      for (const m of await p.messages(c, since, own)) {
+        const outgoing = m.from === own;
+        const others = [...new Set(outgoing ? m.to : [m.from])].filter((e) => e && e !== own);
+        const matches = await matchContacts(others);
         const who = others.map((e) => matches.find((x) => x.email === e)).find(Boolean);
         if (!who) continue;
-        const at = new Date((outgoing ? m.sentDateTime : m.receivedDateTime) ?? m.receivedDateTime);
         const id = await transaction((tx) => logActivity(tx, INTEGRATION_ACTOR, {
           type: "email", subject: m.subject || "(sin asunto)",
-          note: `${outgoing ? `Enviado a ${others.join(", ")}` : `Recibido de ${from}`}\n\n${m.bodyPreview ?? ""}`.slice(0, 5000),
-          due_at: at, done: true, deal_id: who.deal_id, person_id: who.person_id, organization_id: who.organization_id,
-          owner_id: conn.user_id, external_ref: `msg:${m.internetMessageId}`,
+          note: `${outgoing ? `Enviado a ${others.join(", ")}` : `Recibido de ${m.from}`}\n\n${m.preview ?? ""}`.slice(0, 5000),
+          due_at: m.date, done: true, deal_id: who.deal_id, person_id: who.person_id, organization_id: who.organization_id,
+          owner_id: conn.user_id, external_ref: m.ref,
         }));
         if (id) result.emails++;
       }
@@ -320,40 +280,36 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
 
     if (conn.sync_calendar) {
       // Reuniones de los dos últimos días (para marcar si se celebraron) y de los próximos 60.
-      const events = await calendarView(c, new Date(Date.now() - 2 * 86400000), new Date(Date.now() + 60 * 86400000),
-        "id,subject,start,end,isCancelled,isOnlineMeeting,onlineMeeting,attendees,organizer", 2000);
+      const events = await p.events(c, new Date(Date.now() - 2 * 86400000), new Date(Date.now() + 60 * 86400000), own, conn.scheduling.timezone);
       for (const e of events) {
-        const emails = [...(e.attendees ?? []).map((a) => a.emailAddress.address), e.organizer?.emailAddress.address ?? ""]
-          .map((x) => x.toLowerCase()).filter((x) => x && x !== own);
-        const ref = `evt:${e.id}`;
-        const start = utc(e.start.dateTime), end = utc(e.end.dateTime);
-        const minutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
+        const minutes = Math.max(1, Math.round((e.end.getTime() - e.start.getTime()) / 60000));
         const [existing] = await sql<{ id: string; due_at: Date | null; done: boolean; duration_minutes: number | null; subject: string }[]>`
-          SELECT id, due_at, done, duration_minutes, subject FROM activities WHERE external_ref = ${ref}`;
+          SELECT id, due_at, done, duration_minutes, subject FROM activities WHERE external_ref = ${e.ref}`;
         if (existing) {
           if (existing.done) continue;
-          if (e.isCancelled) {
+          if (e.cancelled) {
             await sql`UPDATE activities SET done = true, outcome = 'cancelled' WHERE id = ${existing.id}`;
             result.updated++;
-          } else if (existing.due_at?.getTime() !== start.getTime() || existing.duration_minutes !== minutes || existing.subject !== (e.subject || existing.subject)) {
-            await sql`UPDATE activities SET due_at = ${start}, duration_minutes = ${minutes}, subject = ${(e.subject || existing.subject).slice(0, 300)}
+          } else if (existing.due_at?.getTime() !== e.start.getTime() || existing.duration_minutes !== minutes
+                     || existing.subject !== (e.subject || existing.subject)) {
+            await sql`UPDATE activities SET due_at = ${e.start}, duration_minutes = ${minutes}, subject = ${(e.subject || existing.subject).slice(0, 300)}
                       WHERE id = ${existing.id}`;
             result.updated++;
           }
           continue;
         }
-        if (e.isCancelled) continue;
-        const matches = await matchContacts([...new Set(emails)]);
+        if (e.cancelled) continue;
+        const matches = await matchContacts([...new Set(e.emails.filter((x) => x !== own))]);
         const who = matches.find((m) => m.deal_id) ?? matches[0];
         if (!who) continue;
         // Una reunión futura con el contacto de un deal cuenta como la sesión que pide su fase.
-        const type = start > new Date() && who.required_activity_type && SESSION_TYPES.has(who.required_activity_type)
+        const type = e.start > new Date() && who.required_activity_type && SESSION_TYPES.has(who.required_activity_type)
           ? who.required_activity_type
-          : /\bdemo/i.test(e.subject ?? "") ? "demo" : e.isOnlineMeeting ? "video_call" : "meeting";
+          : /\bdemo/i.test(e.subject ?? "") ? "demo" : e.online ? "video_call" : "meeting";
         const id = await transaction((tx) => logActivity(tx, INTEGRATION_ACTOR, {
-          type, subject: e.subject || "Reunión", note: null, due_at: start, duration_minutes: minutes, done: false,
+          type, subject: e.subject || "Reunión", note: null, due_at: e.start, duration_minutes: minutes, done: false,
           deal_id: who.deal_id, person_id: who.person_id, organization_id: who.organization_id, owner_id: conn.user_id,
-          external_ref: ref, meeting_url: e.onlineMeeting?.joinUrl ?? null,
+          external_ref: e.ref, meeting_url: e.joinUrl,
         }));
         if (id) result.meetings++;
       }
@@ -364,7 +320,7 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
   return result;
 }
 
-/** Sincroniza todos los buzones activos; un fallo en uno no para los demás. */
+/** Sincroniza todas las cuentas activas; un fallo en una no para las demás. */
 export async function syncAllMailboxes(): Promise<SyncResult> {
   const total: SyncResult = { emails: 0, meetings: 0, updated: 0 };
   const conns = withScheduling(await selectConnections(sql`WHERE m.status = 'active'`));

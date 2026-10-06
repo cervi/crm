@@ -19,7 +19,7 @@ export default async function AutomationsSettingsPage() {
   // Sin buzón conectado, un correo no puede salir solo.
   const allowedFor = (action: string, allowed: typeof permissions[number]["allowed_autonomy"]) =>
     action === "draft_email" && !mailbox ? allowed.filter((l) => l !== "auto") : allowed;
-  const NO_MAILBOX = "Para que envíe correos sola, conecta tu correo en Ajustes → Correo y calendario.";
+  const NO_MAILBOX = "Para que envíe correos sola, conecta tu cuenta en Ajustes → Correo, calendario y documentos.";
   const perm = (actor: string, action: string) => permissions.find((p) => p.actor === actor && p.action_type === action);
   const levelLabel = (v: string) => AUTONOMY_LEVELS.find((l) => l.value === v)?.label ?? v;
 

@@ -420,18 +420,18 @@ await step("pausar y reanudar la IA", async () => {
 });
 
 // ------------------------------------------------------------- Correo y calendario (Microsoft simulado)
-const MOCK = process.env.MOCK_GRAPH_URL;
+const MOCK = process.env.MOCK_URL;
 const mockState = async () => (await fetch(`${MOCK}/__state`)).json();
 
 if (MOCK) {
-  await step("conectar Outlook desde Ajustes", async () => {
+  await step("conectar Microsoft 365 desde Ajustes", async () => {
     const [{ owner_id }] = await sql`SELECT owner_id FROM deals WHERE id = ${PACO_OPEN}`;
     const [u] = await sql`SELECT name FROM users WHERE id = ${owner_id}`;
     await page.goto("/settings/mailbox");
-    await page.getByRole("article", { name: `Correo de ${u.name}` }).getByRole("link", { name: "Conectar Outlook" }).click();
+    await page.getByRole("article", { name: `Cuenta de ${u.name}` }).getByRole("link", { name: "Conectar Microsoft 365" }).click();
     await page.waitForURL(/\/settings\/mailbox\?connected=/);
-    await page.getByText("Correo conectado: jesus@aikit.example").waitFor();
-    await page.getByRole("article", { name: `Correo de ${u.name}` }).locator(".slots-preview").filter({ hasText: "(hora de Madrid)" }).waitFor();
+    await page.getByText("Cuenta conectada: jesus@aikit.example").waitFor();
+    await page.getByRole("article", { name: `Cuenta de ${u.name}` }).locator(".slots-preview").filter({ hasText: "(hora de Madrid)" }).waitFor();
     await shot("correo");
   });
 
@@ -466,9 +466,49 @@ if (MOCK) {
     await card.waitFor();
     const subject = await card.getByLabel("Asunto").inputValue();
     expect((await card.getByLabel("Texto").inputValue()).includes("(hora de Madrid)"), "el borrador no lleva los huecos");
-    await card.getByRole("button", { name: "Enviar desde Outlook" }).click();
+    await card.getByRole("button", { name: "Enviar desde mi correo" }).click();
     await card.waitFor({ state: "detached" });
     expect((await mockState()).sent.some((x) => x.subject === subject), "no salió por Outlook");
+  });
+
+  await step("documentos: buscar en OneDrive y enlazar al deal", async () => {
+    await page.goto(`/deals/${PACO_OPEN}`);
+    const docs = page.getByRole("region", { name: "Documentos" });
+    await docs.getByText("+ Enlazar documento").click();
+    await docs.getByLabel("Buscar en OneDrive / SharePoint").fill("paco");
+    const results = docs.getByRole("list", { name: "Archivos encontrados" });
+    await results.getByText("Presentación Paco.pptx").waitFor();
+    expect(await results.getByText("Paco (carpeta)").count() === 0, "las carpetas no deberían salir");
+    await results.locator("li", { hasText: "Presentación Paco.pptx" }).getByRole("button", { name: "Enlazar" }).click();
+    await docs.getByRole("link", { name: "Presentación Paco.pptx" }).waitFor();
+    const [d] = await sql`SELECT source, external_id, url FROM deal_documents WHERE deal_id = ${PACO_OPEN} AND title = 'Presentación Paco.pptx'`;
+    expect(d?.source === "microsoft" && d.external_id === "mf1", JSON.stringify(d));
+    expect((await docs.locator("li", { hasText: "Presentación Paco.pptx" }).textContent()).includes("Presentación"), "falta el tipo");
+  });
+
+  await step("documentos: pegar un enlace, no duplicar y quitar", async () => {
+    await page.goto(`/deals/${PACO_OPEN}`);
+    const docs = page.getByRole("region", { name: "Documentos" });
+    await docs.getByText("+ Enlazar documento").click();
+    const form = docs.locator("form", { has: page.locator("input[name=url][type=url]") });
+    await form.locator("input[name=url]").fill(`https://example.com/propuestas/propuesta-${stamp}.pdf`);
+    await form.getByRole("button", { name: "Enlazar" }).click();
+    const link = docs.getByRole("link", { name: `propuesta-${stamp}.pdf` });
+    await link.waitFor();
+    await form.locator("input[name=url]").fill(`https://example.com/propuestas/propuesta-${stamp}.pdf`);
+    await form.getByRole("button", { name: "Enlazar" }).click();
+    await form.getByRole("alert").filter({ hasText: "ya está enlazado" }).waitFor();
+    await docs.locator("li", { hasText: `propuesta-${stamp}.pdf` }).getByRole("button", { name: "Quitar" }).click();
+    await link.waitFor({ state: "detached" });
+  });
+
+  await step("conectar Google Workspace para otra persona", async () => {
+    await page.goto("/settings/mailbox");
+    const card = page.locator("article.mailbox", { has: page.getByRole("link", { name: "Conectar Google Workspace" }) }).first();
+    const name = (await card.getAttribute("aria-label")).replace("Cuenta de ", "");
+    await card.getByRole("link", { name: "Conectar Google Workspace" }).click();
+    await page.waitForURL(/connected=jesus%40empresa-google\.example/);
+    await page.getByRole("article", { name: `Cuenta de ${name}` }).getByText("Google Workspace · jesus@empresa-google.example").waitFor();
   });
 
   await step("programar una demo invitando desde el calendario", async () => {

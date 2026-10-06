@@ -653,3 +653,19 @@ dl.compact .dl-row { grid-template-columns: 104px 1fr; gap: 8px; }
 .day-picks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .slots-preview { margin: 8px 0 0; padding: 12px 14px; background: var(--sunken); border-radius: var(--r-sm); font: inherit; font-size: 13.5px; white-space: pre-wrap; }
 .compose-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.provider-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.provider-list > li { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px 12px; }
+.provider-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.provider-row .badge { margin-left: auto; }
+.provider-list details { margin-top: 6px; }
+.doc-list { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 6px; }
+.doc-list li { display: flex; gap: 8px; align-items: flex-start; }
+.doc-list li > div { flex: 1; min-width: 0; }
+.doc-list a.doc-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-results { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; max-height: 260px; overflow: auto; }
+.drive-results li { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: var(--r-sm); background: var(--sunken); }
+.drive-results li > div { flex: 1; min-width: 0; }
+.drive-results .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.doc-remove .btn { height: 24px; padding: 0 8px; font-size: 12px; }
+.drive-picker { margin-top: 8px; }
+.drive-results .btn { height: 26px; padding: 0 9px; font-size: 12px; }

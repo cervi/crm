@@ -1,9 +1,9 @@
 import { decrypt, encrypt } from "@/lib/crypto";
 
-export const COOKIE = "ms_oauth";
-export const COOKIE_PATH = "/api/integrations/microsoft";
+export const COOKIE = "oauth_state";
+export const COOKIE_PATH = "/api/integrations";
 
-export type OAuthState = { state: string; verifier: string; userId: string; redirect: string; at: number };
+export type OAuthState = { provider: string; state: string; verifier: string; userId: string; redirect: string; at: number };
 
 export const sealState = (s: OAuthState) => encrypt(JSON.stringify(s));
 export function openState(raw: string | undefined): OAuthState | null {

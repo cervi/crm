@@ -11,6 +11,7 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   custom_field_definitions_entity_type_key_key: "Ya existe un campo con esa clave.",
   deals_stage_id_pipeline_id_fkey: "La fase no pertenece al pipeline elegido.",
   person_organizations_current_uq: "El contacto ya trabaja en esa empresa.",
+  deal_documents_url_uq: "Ese documento ya está enlazado a este deal.",
 };
 
 /** Traduce un error (de validación o de PostgreSQL) a un mensaje para la interfaz. */

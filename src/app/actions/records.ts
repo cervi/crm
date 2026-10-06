@@ -73,7 +73,7 @@ export async function changeCompanyAction(personId: string, _: ActionState, form
 export async function createActivityAction(back: string, _: ActionState, form: FormData): Promise<ActionState> {
   let activityId = "";
   let res = await attempt(async () => { activityId = await createActivity(UI_ACTOR, fields(form)); });
-  // «Invitar desde mi calendario»: la reunión se crea en Outlook (con Teams si es en línea).
+  // «Invitar desde mi calendario»: la reunión se crea en el calendario conectado (con Teams o Meet si es en línea).
   if (!res?.error && form.get("add_to_calendar") === "on") {
     const cal = await attempt(() => addActivityToCalendar(activityId));
     if (cal?.error) res = { error: `Actividad creada, pero no se pudo añadir al calendario: ${cal.error}` };

@@ -8,7 +8,11 @@ import { eventLabel, timeline } from "@/lib/events";
 import { listUsers } from "@/lib/users";
 import { sql } from "@/lib/db";
 import { listActions } from "@/lib/automations";
-import { hasActiveMailbox } from "@/lib/mailbox";
+import { senderFor } from "@/lib/mailbox";
+import { PROVIDERS } from "@/lib/integrations";
+import { documentKind, listDocuments } from "@/lib/documents";
+import { addDocumentAction, removeDocumentAction } from "@/app/actions/documents";
+import { DrivePicker } from "./DrivePicker";
 import { sendDealEmailAction } from "@/app/actions/mailbox";
 import { ACTIVITY_TYPES, OUTCOMES, activityLabel, date, dateTime, money, outcomeLabel, STATUS_LABELS } from "@/lib/format";
 import {
@@ -34,7 +38,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   const deal = await getDeal(dealId);
   if (!deal) return <div className="empty">Este deal ya no existe.</div>;
 
-  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals, canSend] = await Promise.all([
+  const [stages, participants, history, activities, notes, defs, users, reasons, events, [stageInfo], [lead], proposals, sender, documents] = await Promise.all([
     listStages(deal.pipeline_id), dealParticipants(dealId), stageHistory(dealId), listActivitiesFor({ dealId }),
     listNotesFor({ dealId }), listFieldDefinitions("deal", true), listUsers(), listLostReasons(),
     timeline(sql, [{ type: "deal", id: dealId }], 100),
@@ -45,8 +49,11 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
           SELECT id, source, source_detail FROM leads WHERE id = ${deal.lead_id}`
       : Promise.resolve([]),
     listActions({ view: "pending", dealId, limit: 10 }),
-    hasActiveMailbox(),
+    senderFor(deal.owner_id),
+    listDocuments(dealId),
   ]);
+  const canSend = sender !== null;
+  const provider = sender ? PROVIDERS[sender.provider] : null;
   const reachable = participants.filter((p) => p.email);
 
   const isOpen = deal.status === "open";
@@ -71,7 +78,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     ...events.filter((e) => !e.event_type.startsWith("activity.") && e.event_type !== "note.created").map((e) => {
       const p = e.payload as Record<string, unknown>;
       const detail = e.event_type === "deal.stage_changed" && p.from_stage ? `${p.from_stage} → ${p.to_stage}`
-        : e.event_type === "deal.lost" ? [p.reason, p.note].filter(Boolean).join(" · ") : null;
+        : e.event_type === "deal.lost" ? [p.reason, p.note].filter(Boolean).join(" · ")
+        : e.event_type.startsWith("deal.document_") ? String(p.title ?? "") : null;
       return {
         id: `e${e.id}`, kind: "change" as const, at: new Date(e.occurred_at).toISOString(),
         title: eventLabel(e.event_type), body: detail,
@@ -198,6 +206,33 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               </ActionForm>
             </details>
           </section>
+
+          <section className="side-section" aria-label="Documentos">
+            <h3>Documentos <span className="muted">{documents.length}</span></h3>
+            {documents.length > 0 && (
+              <ul className="doc-list">
+                {documents.map((d) => (
+                  <li key={d.id}>
+                    <div>
+                      <a className="doc-title" href={d.url} target="_blank" rel="noopener noreferrer" title={d.title}>{d.title}</a>
+                      <div className="meta">{documentKind(d)}{d.source !== "link" && ` · ${PROVIDERS[d.source].drive.split(" /")[0]}`}</div>
+                    </div>
+                    <ActionForm action={removeDocumentAction.bind(null, d.id, back)} submitLabel="Quitar" pendingLabel="…" secondary className="form inline doc-remove" />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <details>
+              <summary className="meta">+ Enlazar documento</summary>
+              {provider && (
+                <DrivePicker dealId={dealId} driveName={provider.drive} source={sender!.provider} action={addDocumentAction.bind(null, dealId, back)} />
+              )}
+              <ActionForm action={addDocumentAction.bind(null, dealId, back)} submitLabel="Enlazar" resetOnSuccess secondary>
+                <label className="field"><span className="label">Enlace</span><input name="url" type="url" required placeholder="https://…" /></label>
+                <label className="field"><span className="label">Título</span><input name="title" placeholder="Propuesta, presentación…" /></label>
+              </ActionForm>
+            </details>
+          </section>
         </aside>
 
         <div className="deal-main">
@@ -231,7 +266,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 {canSend && (
                   <label className="checkbox">
                     <input type="checkbox" name="add_to_calendar" />
-                    Invitar {primary ? `a ${primary.full_name} ` : ""}desde mi calendario de Outlook (con Teams si es videollamada o demo)
+                    Invitar {primary ? `a ${primary.full_name} ` : ""}desde mi {provider?.calendar} (con {provider?.meeting} si es videollamada o demo)
                   </label>
                 )}
               </ActionForm>
@@ -239,7 +274,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             email={
               canSend ? (
                 reachable.length === 0 ? <p className="muted">Ningún contacto del deal tiene email.</p> : (
-                  <ActionForm action={sendDealEmailAction.bind(null, dealId, back)} submitLabel="Enviar desde Outlook" pendingLabel="Enviando…" resetOnSuccess>
+                  <ActionForm action={sendDealEmailAction.bind(null, dealId, back)} submitLabel={`Enviar desde ${provider?.mail ?? "mi correo"}`} pendingLabel="Enviando…" resetOnSuccess>
                     <div className="grid-2">
                       <label className="field"><span className="label">Para</span>
                         <select name="person_id" defaultValue={primary?.email ? primary.person_id : reachable[0].person_id}>
@@ -252,7 +287,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                   </ActionForm>
                 )
               ) : (
-                <p className="muted">Conecta tu correo en <Link href="/settings/mailbox">Ajustes → Correo y calendario</Link> para escribir desde aquí: saldrá desde tu Outlook y quedará en tus enviados.</p>
+                <p className="muted">Conecta tu cuenta de Microsoft 365 o Google en <Link href="/settings/mailbox">Ajustes → Correo, calendario y documentos</Link> para escribir desde aquí: saldrá desde tu correo y quedará en tus enviados.</p>
               )
             }
           />

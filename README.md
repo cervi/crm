@@ -17,7 +17,7 @@ Tecnología: **Next.js 16 + TypeScript + PostgreSQL**, empaquetado con Docker pa
 | **Ajustes** | Pipelines y fases (orden, días para considerarse parado, sesión requerida), campos personalizados en las cuatro entidades y motivos de pérdida. |
 | **API de entrada** | `POST /api/v1/leads` para formularios, webinars, Zapier o Make: deduplica contactos por email y empresas por dominio; las solicitudes de demo crean el deal. Documentación dentro de la app, en Ajustes → Conectar formularios. |
 | **IA con autonomía configurable** | Para cada tipo de acción (crear tareas, escribir notas, preparar correos, mover de fase, editar deals) y cada agente (el asistente del CRM o agentes externos), eliges: **No**, **Preguntar** (lo deja en la bandeja de decisiones) o **Sola** (lo hace y queda en el registro, con «Deshacer»). Reglas incluidas: fase sin su sesión agendada → tarea; deal parado → correo de seguimiento; «no se presentó» → correo para reagendar; deal muy parado → te pide decidir; deal ganado → tarea de traspaso a Customer Success con el resumen. Cada regla tiene sus días y plantillas, estadísticas de aprobación y sugerencias para subir o bajar su autonomía. Pausa general y «Revisar ahora». |
-| **Correo y calendario (Outlook)** | Cada usuario conecta su Microsoft 365. Los correos del CRM (los que escribes en la ficha del deal y los que propone o envía la IA) salen desde su buzón y quedan en «Enviados». Los correos y reuniones con contactos del CRM se registran solos en sus deals (sin duplicar). La IA ofrece tus huecos libres (`{huecos}`) según tu horario, duración, margen y antelación, y puedes invitar a un contacto desde tu calendario con Teams al programar una actividad. Tokens cifrados en la base de datos. |
+| **Correo, calendario y documentos** | Cada usuario puede conectar su cuenta de **Microsoft 365** (Outlook, calendario, OneDrive/SharePoint) o de **Google Workspace** (Gmail, Google Calendar, Drive). Los correos del CRM (los que escribes en la ficha del deal y los que propone o envía la IA) salen desde su correo y quedan en «Enviados». Los correos y reuniones con contactos del CRM se registran solos en sus deals (sin duplicar). La IA ofrece tus huecos libres (`{huecos}`) según tu horario, duración, margen y antelación; al programar una actividad puedes invitar al contacto desde tu calendario con Teams o Meet. En cada deal, «Documentos» enlaza presentaciones y propuestas buscándolas en tu Drive/OneDrive o pegando un enlace. Accesos cifrados en la base de datos. Todo es opcional: sin configurar nada, el CRM funciona igual. |
 | **Historial** | Todo queda registrado como evento (quién, qué y cuándo): es el historial de cada ficha y será la base de las automatizaciones y de la auditoría de la IA. |
 
 ## Arrancar en local
@@ -50,9 +50,10 @@ Variables (ver `.env.example`):
 | `INBOUND_API_KEYS` | Claves de la API de entrada, separadas por comas (mínimo 16 caracteres). |
 | `TZ` | Zona horaria de las fechas (por defecto `Europe/Madrid`). |
 | `AUTOMATIONS_INTERVAL_MINUTES` | Cada cuántos minutos revisa la IA los deals (15 por defecto; `0` lo desactiva). |
-| `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID` | App registrada en Microsoft Entra para conectar Outlook (pasos en Ajustes → Correo y calendario). |
-| `APP_URL` | Dirección pública del CRM; Microsoft vuelve a `APP_URL/api/integrations/microsoft/callback`. |
-| `TOKEN_ENCRYPTION_KEY` | Clave aleatoria (32+ caracteres) con la que se cifran los tokens del correo. Si se cambia, hay que volver a conectar los buzones. |
+| `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID` | Opcional. App registrada en Microsoft Entra para conectar Microsoft 365 (pasos en Ajustes → Correo, calendario y documentos). |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Opcional. Credenciales OAuth de Google Cloud para conectar Google Workspace (mismos pasos en Ajustes). |
+| `APP_URL` | Dirección pública del CRM; los proveedores vuelven a `APP_URL/api/integrations/<microsoft|google>/callback`. |
+| `TOKEN_ENCRYPTION_KEY` | Clave aleatoria (32+ caracteres) con la que se cifran los accesos guardados. Si se cambia, hay que volver a conectar las cuentas. |
 | `CRON_SECRET` | Para alojamientos sin procesos permanentes (Vercel): un cron llama a `POST /api/v1/automations/run` con `Authorization: Bearer <CRON_SECRET>`. |
 
 Las migraciones se aplican con `node scripts/db.mjs migrate` (el servicio `migrate` del docker-compose lo hace al arrancar).
@@ -67,8 +68,8 @@ Arranca una base de datos temporal y ejecuta, en orden:
 
 1. Las migraciones, los datos de ejemplo y las 13 comprobaciones del modelo.
 2. La comprobación de tipos y la compilación.
-3. 111 pruebas de extremo a extremo contra la app arrancada: todas las pantallas, los 404, la protección de acceso, la API de entrada con deduplicación y envíos simultáneos, el motor de automatizaciones (reglas, permisos como techo, caducidad, pausa) y el correo y calendario contra un Microsoft simulado (`scripts/mock-graph.mjs`): conexión OAuth con PKCE, huecos libres, sincronización sin duplicados, envío automático, renovación y revocación del acceso.
-4. Si Playwright está instalado, 37 pruebas con navegador: formularios y sus errores, buscadores, arrastrar en el tablero, ganar/perder, campos personalizados, ajustes, leads, cambio de empresa, y la bandeja de la IA (aprobar un correo editado, descartar, deshacer, autonomía y pausa) y Outlook (conectar, preferencias, escribir con tus huecos, enviar una propuesta e invitar desde el calendario).
+3. 111 pruebas de extremo a extremo contra la app arrancada: todas las pantallas, los 404, la protección de acceso, la API de entrada con deduplicación y envíos simultáneos, el motor de automatizaciones (reglas, permisos como techo, caducidad, pausa) y el correo, calendario y documentos contra Microsoft 365 y Google simulados (`scripts/mock-providers.mjs`): conexión OAuth con PKCE, huecos libres, sincronización sin duplicados, envío automático (también con acentos por Gmail), búsqueda en Drive, renovación y revocación del acceso.
+4. Si Playwright está instalado, 37 pruebas con navegador: formularios y sus errores, buscadores, arrastrar en el tablero, ganar/perder, campos personalizados, ajustes, leads, cambio de empresa, y la bandeja de la IA (aprobar un correo editado, descartar, deshacer, autonomía y pausa) y las cuentas conectadas (conectar Microsoft 365 y Google, preferencias, escribir con tus huecos, enviar una propuesta, enlazar documentos e invitar desde el calendario).
 
 ## Base de datos
 
@@ -88,7 +89,8 @@ SQL puro en `db/migrations/`, aplicado con `scripts/db.mjs` (`npm run db:migrate
 - **events**: registro de todo lo que pasa (persona, IA, sistema o integración). Las reglas que se disparan con un evento lo leen de aquí.
 - **ai_permissions**: autonomía máxima por agente y tipo de acción.
 - **automation_rules**: reglas, su autonomía y sus parámetros.
-- **mailbox_connections**: buzón de Outlook de cada usuario, con los tokens cifrados y sus preferencias de huecos.
+- **mailbox_connections**: cuenta conectada de cada usuario (Microsoft 365 o Google), con los accesos cifrados y sus preferencias de huecos.
+- **deal_documents**: documentos enlazados a cada deal (Drive, OneDrive o enlace).
 - **automation_actions**: cada propuesta o acción de la IA; es a la vez la bandeja de decisiones y el registro, con lo necesario para deshacer.
 - **open_deals_status** (vista): días en la fase, si el deal está parado y si tiene la sesión requerida agendada.
 
@@ -103,5 +105,5 @@ Las tablas principales tienen `pipedrive_id` para que la importación desde Pipe
 - [x] Traspaso a Customer Success al ganar un deal (resumen con plantilla)
 - [ ] Conexión de agentes externos (Grok Bot…) por MCP, con los mismos permisos
 - [ ] IA integrada configurable (proveedor, modelo, clave y prompts): redacción de correos y resúmenes, y decisiones
-- [x] Correo y calendario de Outlook: envío desde tu buzón, sincronización y huecos libres
+- [x] Correo, calendario y documentos de Microsoft 365 y Google Workspace (opcional)
 - [ ] Secuencias de email y enriquecimiento

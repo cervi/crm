@@ -75,6 +75,8 @@ const LABELS: Record<string, string> = {
   "activity.completed": "Actividad completada",
   "note.created": "Nota añadida",
   "ai.action_undone": "Acción de la IA deshecha",
+  "deal.document_added": "Documento enlazado",
+  "deal.document_removed": "Documento quitado",
 };
 
 export const eventLabel = (type: string) => LABELS[type] ?? type;

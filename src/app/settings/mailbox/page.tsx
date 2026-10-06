@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { listConnections, availableSlots, type Connection } from "@/lib/mailbox";
-import { microsoftConfigured, redirectUri } from "@/lib/microsoft";
+import { listConnections, availableSlots, providerOf, type Connection } from "@/lib/mailbox";
+import { PROVIDER_LIST, PROVIDERS, redirectUri, type Provider } from "@/lib/integrations";
 import { encryptionConfigured } from "@/lib/crypto";
 import { formatSlots } from "@/lib/slots";
 import { listUsers } from "@/lib/users";
@@ -11,7 +11,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { Avatar } from "@/components/Avatar";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Correo y calendario" };
+export const metadata = { title: "Correo, calendario y documentos" };
 
 const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
@@ -26,11 +26,36 @@ async function SlotsPreview({ conn }: { conn: Connection }) {
   }
 }
 
+/** Pasos para activar cada proveedor (los hace una vez quien administra la cuenta de la empresa). */
+function SetupSteps({ provider, redirect }: { provider: Provider; redirect: string }) {
+  if (provider.key === "microsoft") {
+    return (
+      <ol className="steps">
+        <li>En <strong>portal.azure.com → Microsoft Entra ID → Registros de aplicaciones → Nuevo registro</strong>, crea «CRM» (cuentas de esta organización).</li>
+        <li>URI de redirección, tipo <strong>Web</strong>: <code>{redirect}</code></li>
+        <li>En <strong>Permisos de API → Microsoft Graph → Delegados</strong>, añade <code>Mail.Read</code>, <code>Mail.Send</code>, <code>Calendars.ReadWrite</code>, <code>MailboxSettings.Read</code>, <code>Files.Read.All</code>, <code>User.Read</code> y <code>offline_access</code>. Si lo pide, «Conceder consentimiento de administrador».</li>
+        <li>En <strong>Certificados y secretos</strong>, crea un secreto de cliente.</li>
+        <li>En el servidor del CRM: <code>MS_CLIENT_ID</code> (Id. de aplicación), <code>MS_CLIENT_SECRET</code> y <code>MS_TENANT_ID</code> (Id. de directorio).</li>
+      </ol>
+    );
+  }
+  return (
+    <ol className="steps">
+      <li>En <strong>console.cloud.google.com</strong>, crea un proyecto y habilita <strong>Gmail API</strong>, <strong>Google Calendar API</strong> y <strong>Google Drive API</strong>.</li>
+      <li>En <strong>Pantalla de consentimiento de OAuth</strong>, elige tipo <strong>Interno</strong> (solo cuentas de vuestro Google Workspace; así no hace falta que Google revise la app).</li>
+      <li>En <strong>Credenciales → Crear credenciales → ID de cliente de OAuth</strong>, tipo <strong>Aplicación web</strong>, con este URI de redireccionamiento autorizado: <code>{redirect}</code></li>
+      <li>Permisos que pedirá el CRM: enviar y leer correo de Gmail, ver y crear eventos del calendario, leer su zona horaria y ver los nombres de los archivos de Drive.</li>
+      <li>En el servidor del CRM: <code>GOOGLE_CLIENT_ID</code> y <code>GOOGLE_CLIENT_SECRET</code>.</li>
+    </ol>
+  );
+}
+
 export default async function MailboxSettingsPage({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
   const sp = await searchParams;
   const [users, connections] = await Promise.all([listUsers(), listConnections()]);
   const humans = users.filter((u) => u.kind === "human");
-  const ready = microsoftConfigured() && encryptionConfigured();
+  const encryption = encryptionConfigured();
+  const available = PROVIDER_LIST.filter((p) => p.configured() && encryption);
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
 
@@ -39,60 +64,72 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>
-          <h1>Correo y calendario</h1>
+          <h1>Correo, calendario y documentos</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Conecta tu Outlook (Microsoft 365): los correos del CRM saldrán desde tu buzón y quedarán en «Enviados», los correos
-            y reuniones con tus contactos se registrarán solos en sus deals, y la IA podrá ofrecer tus huecos libres.
+            Cada persona puede conectar su cuenta de <strong>Microsoft 365</strong> (Outlook, calendario y OneDrive) o de{" "}
+            <strong>Google Workspace</strong> (Gmail, Google Calendar y Drive). Con ella, los correos del CRM salen desde su buzón,
+            los correos y reuniones con contactos se registran solos, la IA ofrece sus huecos libres y se enlazan documentos a los deals.
           </p>
         </div>
       </div>
 
-      {sp.connected && <p className="callout good">Correo conectado: {sp.connected}.</p>}
+      {sp.connected && <p className="callout good">Cuenta conectada: {sp.connected}.</p>}
       {sp.error && <p className="callout bad" role="alert">{sp.error}</p>}
 
-      {!ready && (
-        <section className="panel">
-          <h2>Falta configurar la conexión con Microsoft</h2>
-          <p className="muted">Se hace una vez (lo hace quien administra Microsoft 365 en la empresa):</p>
-          <ol className="steps">
-            <li>En <strong>portal.azure.com → Microsoft Entra ID → Registros de aplicaciones → Nuevo registro</strong>, crea «CRM» (cuentas de esta organización).</li>
-            <li>URI de redirección, tipo <strong>Web</strong>: <code>{redirectUri(origin)}</code></li>
-            <li>En <strong>Permisos de API → Microsoft Graph → Delegados</strong>, añade: <code>Mail.Read</code>, <code>Mail.Send</code>, <code>Calendars.ReadWrite</code>, <code>MailboxSettings.Read</code>, <code>User.Read</code>, <code>offline_access</code>. Si te lo pide, «Conceder consentimiento de administrador».</li>
-            <li>En <strong>Certificados y secretos</strong>, crea un secreto de cliente.</li>
-            <li>Configura en el servidor del CRM: <code>MS_CLIENT_ID</code> (Id. de aplicación), <code>MS_CLIENT_SECRET</code>, <code>MS_TENANT_ID</code> (Id. de directorio), <code>APP_URL</code> y <code>TOKEN_ENCRYPTION_KEY</code> (una clave aleatoria de 32 caracteres o más).</li>
-          </ol>
-          <p className="meta">
-            Ahora mismo falta: {[!process.env.MS_CLIENT_ID && "MS_CLIENT_ID", !process.env.MS_CLIENT_SECRET && "MS_CLIENT_SECRET",
-              !encryptionConfigured() && "TOKEN_ENCRYPTION_KEY"].filter(Boolean).join(", ")}.
-          </p>
-        </section>
-      )}
+      <section className="panel">
+        <h2>Proveedores</h2>
+        <ul className="provider-list">
+          {PROVIDER_LIST.map((p) => {
+            const missing = [...p.missingEnv(), ...(encryption ? [] : ["TOKEN_ENCRYPTION_KEY"])];
+            return (
+              <li key={p.key}>
+                <div className="provider-row">
+                  <strong>{p.label}</strong>
+                  <span className="meta">{p.mail} · {p.calendar} · {p.drive}</span>
+                  <span className={`badge ${missing.length ? "" : "won"}`}>{missing.length ? "Sin activar" : "Activo"}</span>
+                </div>
+                <details>
+                  <summary className="meta">Cómo activarlo{missing.length > 0 && ` (falta: ${missing.join(", ")})`}</summary>
+                  <SetupSteps provider={p} redirect={redirectUri(p.key, origin)} />
+                  {!encryption && <p className="meta">Además, <code>TOKEN_ENCRYPTION_KEY</code>: una clave aleatoria de 32 caracteres o más para cifrar los accesos guardados. Y <code>APP_URL</code> con la dirección pública del CRM.</p>}
+                </details>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
 
+      <h2 className="section-title" style={{ marginTop: 22 }}>Cuentas del equipo</h2>
       <div className="rules">
         {humans.map((u) => {
           const conn = connections.find((c) => c.user_id === u.id);
+          const p = conn ? providerOf(conn) : null;
           return (
-            <article key={u.id} className="panel mailbox" aria-label={`Correo de ${u.name}`}>
+            <article key={u.id} className="panel mailbox" aria-label={`Cuenta de ${u.name}`}>
               <div className="rule-head">
                 <div className="mailbox-who">
                   <Avatar name={u.name} />
                   <div>
                     <h3>{u.name}</h3>
-                    {conn ? (
+                    {conn && p ? (
                       <p className="meta" style={{ margin: 0 }}>
-                        {conn.email} · <span className={`badge ${conn.status === "active" ? "won" : "lost"}`}>{conn.status === "active" ? "Conectado" : "Hay que reconectar"}</span>
+                        {p.label} · {conn.email} · <span className={`badge ${conn.status === "active" ? "won" : "lost"}`}>{conn.status === "active" ? "Conectada" : "Hay que reconectar"}</span>
                         {" "}· Última sincronización: {conn.mail_synced_at || conn.calendar_synced_at ? dateTime(conn.calendar_synced_at ?? conn.mail_synced_at) : "todavía no"}
                       </p>
-                    ) : <p className="meta" style={{ margin: 0 }}>Sin correo conectado</p>}
+                    ) : <p className="meta" style={{ margin: 0 }}>Sin cuenta conectada</p>}
                   </div>
                 </div>
                 <div className="head-actions">
                   {conn && conn.status === "active" && (
                     <ActionForm action={syncMailboxAction.bind(null, u.id)} submitLabel="Sincronizar ahora" pendingLabel="Sincronizando…" secondary className="form inline" />
                   )}
-                  {ready && (!conn || conn.status !== "active") && (
-                    <a className="btn" href={`/api/integrations/microsoft/connect?user=${u.id}`}>{conn ? "Reconectar Outlook" : "Conectar Outlook"}</a>
+                  {conn && conn.status !== "active" && PROVIDERS[conn.provider].configured() && encryption && (
+                    <a className="btn" href={`/api/integrations/${conn.provider}/connect?user=${u.id}`}>Reconectar {PROVIDERS[conn.provider].label}</a>
                   )}
+                  {!conn && available.map((ap) => (
+                    <a key={ap.key} className="btn secondary" href={`/api/integrations/${ap.key}/connect?user=${u.id}`}>Conectar {ap.label}</a>
+                  ))}
+                  {!conn && available.length === 0 && <span className="meta">Activa un proveedor para poder conectar</span>}
                   {conn && (
                     <ActionForm action={disconnectMailboxAction.bind(null, u.id)} submitLabel="Desconectar" pendingLabel="…" secondary className="form inline" />
                   )}

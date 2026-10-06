@@ -23,7 +23,7 @@ export function EmailDraftFields({ to, subject, body, canSend = false }: { to: s
       </label>
       {canSend ? (
         <div className="email-draft-tools">
-          <span className="meta">Saldrá desde tu Outlook y quedará en tus «Enviados» y en la historia del deal.</span>
+          <span className="meta">Saldrá desde tu correo conectado y quedará en tus «Enviados» y en la historia del deal.</span>
         </div>
       ) : (
       <div className="email-draft-tools">

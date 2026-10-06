@@ -39,7 +39,7 @@ export const AUTONOMY_LEVELS: { value: Autonomy; label: string; help: string }[]
 export const ACTION_TYPES: { value: ExecutableAction; label: string; help: string }[] = [
   { value: "create_task", label: "Crear tareas", help: "Tareas y recordatorios en los deals." },
   { value: "add_note", label: "Escribir notas", help: "Notas en la ficha del deal." },
-  { value: "draft_email", label: "Enviar correos", help: "Desde tu buzón de Outlook. Sin buzón conectado, solo prepara borradores." },
+  { value: "draft_email", label: "Enviar correos", help: "Desde tu correo conectado (Outlook o Gmail). Sin cuenta conectada, solo prepara borradores." },
   { value: "move_stage", label: "Mover deals de fase", help: "Avanzar o retroceder un deal en su pipeline." },
   { value: "update_deal", label: "Editar deals", help: "Cambiar título, importe o fecha de cierre." },
 ];
@@ -685,7 +685,7 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
       const [deal] = a.deal_id
         ? await sql<{ owner_id: string | null; organization_id: string | null }[]>`SELECT owner_id, organization_id FROM deals WHERE id = ${a.deal_id}`
         : [];
-      // Con buzón conectado sale desde Outlook (salvo que la persona diga que ya lo envió ella).
+      // Con cuenta conectada sale desde su correo (salvo que la persona diga que ya lo envió ella).
       const sender = edits.manual === "1" ? null : await senderFor(deal?.owner_id);
       if (sender) {
         const sent = await sendEmail(sender, actor, {

@@ -43,7 +43,7 @@ export async function sendDealEmailAction(dealId: string, back: string, _: Actio
       FROM persons p, deals d WHERE p.id = ${v.person_id} AND d.id = ${dealId}`;
     if (!p?.email) throw new UserError("Ese contacto no tiene email.");
     const conn = await senderFor(p.owner_id);
-    if (!conn) throw new UserError("Conecta tu correo en Ajustes → Correo y calendario para enviar desde aquí.");
+    if (!conn) throw new UserError("Conecta tu cuenta en Ajustes → Correo, calendario y documentos para enviar desde aquí.");
     await sendEmail(conn, UI_ACTOR, {
       to: { email: p.email, name: p.full_name }, subject: v.subject, body: v.body,
       dealId, personId: v.person_id, organizationId: p.organization_id,
