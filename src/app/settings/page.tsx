@@ -23,6 +23,7 @@ const SECTIONS: { href: string; title: string; text: string; icon: IconName; eve
   { href: "/trash", icon: "trash", everyone: true, title: "Papelera", text: "Lo borrado en los últimos 30 días: deals, leads, contactos y empresas. Se puede recuperar." },
   { href: "/settings/export", icon: "download", title: "Exportar datos", text: "Descarga en CSV deals, leads, empresas, contactos, actividades y el registro de la IA." },
   { href: "/settings/forms", icon: "leads", title: "Formularios web y chat", text: "Formularios alojados en el CRM para vuestra web, con chat con IA opcional." },
+  { href: "/settings/agents", icon: "spark", title: "Agentes externos (MCP)", text: "Conecta Grok Bot u otro agente para que consulte el CRM y proponga acciones con tus permisos." },
   { href: "/settings/api", icon: "plug", title: "Conectar formularios", text: "Cómo enviar leads desde la web, webinars, Zapier o Make." },
 ];
 

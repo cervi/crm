@@ -54,7 +54,7 @@ export const actionLabel = (t: string) =>
 
 export const AGENTS: { value: AgentKind; label: string; help: string }[] = [
   { value: "assistant", label: "Asistente del CRM", help: "Las reglas automáticas y, más adelante, la IA integrada." },
-  { value: "external", label: "Agentes externos", help: "Grok Bot u otros agentes conectados por MCP (siguiente fase)." },
+  { value: "external", label: "Agentes externos", help: "Grok Bot u otros agentes conectados por MCP (Ajustes → Agentes externos)." },
 ];
 
 const RANK: Record<Autonomy, number> = { off: 0, ask: 1, auto: 2 };

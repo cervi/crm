@@ -1110,6 +1110,61 @@ if (KEY) {
   check(trash.includes("Papelera"), "/trash muestra la papelera");
 }
 
+// ------------------------------------------------------------- Agentes externos por MCP
+{
+  const key = "crm_clave-de-agente-de-pruebas-0123456789";
+  const keyRO = "crm_clave-de-solo-lectura-de-pruebas-0123";
+  const h = (k) => createHash("sha256").update(k).digest("hex");
+  await sql`INSERT INTO agent_keys (name, key_hash, prefix, can_write) VALUES ('Grok Bot', ${h(key)}, 'crm_clave', true), ('Lector', ${h(keyRO)}, 'crm_clave', false)
+            ON CONFLICT (key_hash) DO NOTHING`;
+  let rid = 0;
+  const rpc = async (method, params, k = key) => {
+    const r = await fetch(`${BASE}/api/v1/mcp`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${k}` },
+                                                   body: JSON.stringify({ jsonrpc: "2.0", id: ++rid, method, params }) });
+    return { status: r.status, body: r.status === 202 ? null : await r.json() };
+  };
+  const call = async (name, args, k) => {
+    const r = await rpc("tools/call", { name, arguments: args }, k);
+    const text = r.body?.result?.content?.[0]?.text ?? "";
+    let data = null; try { data = JSON.parse(text); } catch { /* texto de error */ }
+    return { isError: Boolean(r.body?.result?.isError), text, data };
+  };
+  check((await rpc("initialize", {}, "crm_inventada-0000000000000000000000")).status === 401, "MCP: sin clave válida → 401");
+  const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "1" } });
+  check(init.body?.result?.serverInfo?.name === "crm" && init.body.result.protocolVersion === "2025-06-18" && init.body.result.capabilities.tools,
+        "MCP: initialize", JSON.stringify(init.body));
+  check((await fetch(`${BASE}/api/v1/mcp`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+                                              body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) })).status === 202,
+        "MCP: las notificaciones no tienen respuesta (202)");
+  const tl = await rpc("tools/list", {});
+  const names = (tl.body?.result?.tools ?? []).map((t) => t.name);
+  check(["buscar", "ver_deal", "listar_deals", "proponer_tarea", "proponer_mover_fase"].every((n) => names.includes(n)), "MCP: lista de herramientas", names.join(","));
+  const roNames = ((await rpc("tools/list", {}, keyRO)).body?.result?.tools ?? []).map((t) => t.name);
+  check(roNames.includes("buscar") && !roNames.includes("proponer_nota"), "MCP: una clave de solo lectura no ve las acciones");
+  const b = await call("buscar", { texto: "paco" });
+  check(Array.isArray(b.data) && b.data.some((x) => x.tipo === "deal" && x.nombre.includes("Paco")), "MCP: buscar", b.text.slice(0, 120));
+  const vd = await call("ver_deal", { deal_id: DEAL_OPEN });
+  check(vd.data?.titulo === "Paco — ampliación de servicio" && Array.isArray(vd.data.fases_del_pipeline) && vd.data.resumen?.siguiente_paso,
+        "MCP: ver_deal con resumen y siguiente paso", vd.text.slice(0, 160));
+  await sql`UPDATE ai_permissions SET autonomy = 'ask' WHERE actor = 'external' AND action_type = 'add_note'`;
+  const p1 = await call("proponer_nota", { deal_id: DEAL_OPEN, texto: "Nota de Grok (ask)", motivo: "Resumen de la llamada" });
+  const [x1] = await sql`SELECT actor, agent_name, status, mode FROM automation_actions WHERE id = ${p1.data?.propuesta_id ?? null}`;
+  check(p1.data?.estado === "pendiente" && x1?.actor === "external" && x1.agent_name === "Grok Bot" && x1.status === "pending",
+        "MCP: con «Preguntar», la acción del agente queda en la bandeja", JSON.stringify({ p1: p1.data, x1 }));
+  await sql`UPDATE ai_permissions SET autonomy = 'auto' WHERE actor = 'external' AND action_type = 'add_note'`;
+  const p2 = await call("proponer_nota", { deal_id: DEAL_OPEN, texto: "Nota de Grok (auto)" });
+  const [nn] = await sql`SELECT count(*)::int AS n FROM notes WHERE deal_id = ${DEAL_OPEN} AND content = 'Nota de Grok (auto)'`;
+  check(p2.data?.estado === "hecho" && nn.n === 1, "MCP: con «Sola», el agente la hace directamente", JSON.stringify(p2.data));
+  await sql`UPDATE ai_permissions SET autonomy = 'off' WHERE actor = 'external' AND action_type = 'move_stage'`;
+  const p3 = await call("proponer_mover_fase", { deal_id: DEAL_OPEN, fase: "Propuesta enviada" });
+  check(p3.isError && p3.text.includes("no tienen permiso"), "MCP: sin permiso, el agente no puede", p3.text);
+  const p4 = await call("proponer_nota", { deal_id: DEAL_OPEN, texto: "x" }, keyRO);
+  check(p4.isError, "MCP: una clave de solo lectura no puede actuar");
+  await sql`UPDATE ai_permissions SET autonomy = 'ask' WHERE actor = 'external'`;
+  const ag = await (await get("/settings/agents")).text();
+  check(ag.includes("Agentes externos (MCP)") && ag.includes("Grok Bot") && ag.includes("/api/v1/mcp"), "/settings/agents lista las claves y cómo conectarlas");
+}
+
 // ------------------------------------------------------------- Reservas y semana
 {
   check((await fetch(`${BASE}/book/no-existe`)).status === 404, "reservas: una página que no existe → 404 (sin pedir sesión)");

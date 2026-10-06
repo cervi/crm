@@ -980,3 +980,4 @@ a.btn.small svg { width: 14px; height: 14px; }
 .item.unread { border-left: 3px solid var(--accent); }
 .dup-table { width: 100%; margin-bottom: 8px; } .dup-table td:first-child, .dup-table td:nth-child(2) { width: 70px; text-align: center; }
 .csv-preview th select { margin-top: 4px; width: 100%; min-width: 120px; font-weight: 400; } .csv-preview td { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.key-box { padding: 6px 10px; background: var(--panel); border-radius: var(--r-sm); word-break: break-all; }
