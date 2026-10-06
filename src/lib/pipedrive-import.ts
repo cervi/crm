@@ -274,8 +274,8 @@ const look = (m: Map<string, string>, v: number | string | null) => (v === null 
 /** Inserta o actualiza por pipedrive_id; devuelve si era nuevo. */
 async function upsert(db: Db, table: string, pdId: number | string, values: Record<string, unknown>): Promise<{ id: string; created: boolean }> {
   const [row] = await db<{ id: string; created: boolean }[]>`
-    INSERT INTO ${db(table)} ${db({ ...values, pipedrive_id: pdId } as Record<string, never>)}
-    ON CONFLICT (pipedrive_id) DO UPDATE SET ${db(values as Record<string, never>)}
+    INSERT INTO ${db(table)} ${db({ ...values, pipedrive_id: pdId } as unknown as Record<string, never>)}
+    ON CONFLICT (pipedrive_id) DO UPDATE SET ${db(values as unknown as Record<string, never>)}
     RETURNING id, (xmax = 0) AS created`;
   return row;
 }
