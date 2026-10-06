@@ -79,6 +79,8 @@ const env = {
   PIPEDRIVE_API_URL: MOCK, // Pipedrive simulado: token «token-pipedrive-de-pruebas-0123456789»
   GOOGLE_AUTH_URL: `${MOCK}/o/oauth2/v2/auth`, GOOGLE_TOKEN_URL: `${MOCK}/token`, GOOGLE_API_BASE: MOCK,
   NEXT_TELEMETRY_DISABLED: "1",
+  // La pantalla de entrada muestra este acceso (solo en la demo).
+  DEMO_LOGIN_HINT: `${DEMO_LOGIN.email} / ${DEMO_LOGIN.password}`,
 };
 
 const children = [];

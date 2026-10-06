@@ -12,6 +12,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { next } = await searchParams;
   if (await currentUser()) redirect(safeNext(next));
   if (await needsSetup()) redirect("/setup");
+  // Solo en la demo local (npm run demo): el acceso de prueba, a la vista.
+  const demo = process.env.NODE_ENV !== "production" ? process.env.DEMO_LOGIN_HINT : undefined;
   return (
     <main className="auth-card">
       <div className="auth-brand"><Icon name="deals" />CRM</div>
@@ -23,6 +25,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <label className="field"><span className="label">Contraseña</span>
           <input name="password" type="password" autoComplete="current-password" required /></label>
       </ActionForm>
+      {demo && <p className="callout good">Demo: entra con <strong>{demo}</strong></p>}
       <p className="meta">¿Olvidaste la contraseña? Pide a un administrador que te ponga una nueva.</p>
     </main>
   );
