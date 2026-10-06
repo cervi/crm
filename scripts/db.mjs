@@ -43,6 +43,8 @@ async function seed() {
 async function test() {
   notices.length = 0;
   try {
+    // Los resultados llegan como NOTICE: hay que verlos aunque antes se silenciaran.
+    await sql.unsafe("SET client_min_messages = notice");
     await sql.unsafe(await file("db/tests/core_test.sql"));
   } catch (err) {
     notices.filter((n) => n.startsWith("OK")).forEach((n) => console.log(n));
@@ -52,6 +54,11 @@ async function test() {
   }
   const ok = notices.filter((n) => n.startsWith("OK"));
   ok.forEach((n) => console.log(n));
+  if (ok.length === 0) {
+    console.error("✗ no se ha recibido ninguna comprobación");
+    process.exitCode = 1;
+    return;
+  }
   console.log(`✓ ${ok.length} comprobaciones superadas`);
 }
 
