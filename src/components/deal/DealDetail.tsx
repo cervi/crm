@@ -88,7 +88,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     listEnrollments({ dealId }), listSequences(),
   ]);
   const [lines, catalog, proposals_] = await Promise.all([dealLines(dealId), listProducts(), listProposals(dealId)]);
-  const [insights, plan] = await Promise.all([getInsights(dealId), getClosePlan(dealId)]);
+  const [insights, closePlan] = await Promise.all([getInsights(dealId), getClosePlan(dealId)]);
   const views = new Map(await Promise.all(proposals_.filter((p) => p.view_count > 0).map(async (p) => [p.id, await proposalViews(p.id)] as const)));
   const opens = await opensFor(emails.filter((e) => e.direction === "out" && e.open_count > 0).map((e) => e.id));
   // La salud se recalcula en cada revisión; si está vieja (o no existe), aquí mismo.
@@ -576,25 +576,25 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             </section>
           )}
 
-          {(isOpen || plan) && (
+          {(isOpen || closePlan) && (
             <section className="close-plan" aria-label="Plan de cierre">
               <h2 className="section-title">Plan de cierre
-                {plan && plan.steps.length > 0 && <span className="muted">{plan.steps.filter((x) => x.done).length}/{plan.steps.length}</span>}
+                {closePlan && closePlan.steps.length > 0 && <span className="muted">{closePlan.steps.filter((x) => x.done).length}/{closePlan.steps.length}</span>}
                 <span className="spacer" />
-                {plan && plan.steps.length > 0 && (plan.shared
+                {closePlan && closePlan.steps.length > 0 && (closePlan.shared
                   ? <form action={sharePlanAction.bind(null, dealId, false, back)}><button className="link-btn" type="submit">Dejar de compartir</button></form>
                   : <form action={sharePlanAction.bind(null, dealId, true, back)}><button className="link-btn" type="submit">Compartir con el cliente</button></form>)}
               </h2>
-              {plan?.shared && <p className="meta" style={{ marginTop: 0 }}>El cliente lo ve (sin poder cambiarlo) en <code>{closePlanUrl(plan.token)}</code></p>}
-              {(!plan || plan.steps.length === 0) && (
+              {closePlan?.shared && <p className="meta" style={{ marginTop: 0 }}>El cliente lo ve (sin poder cambiarlo) en <code>{closePlanUrl(closePlan.token)}</code></p>}
+              {(!closePlan || closePlan.steps.length === 0) && (
                 <div className="next-prompt">
                   <p><strong>¿Qué falta para la firma?</strong> <span className="muted">Pasos con fecha y responsable, acordados con el cliente: así nada se para en compras o en legal.</span></p>
                   {isOpen && <ActionForm action={generatePlanAction.bind(null, dealId, back)} submitLabel="Crear un plan de partida" pendingLabel="Creando…" secondary className="form inline" />}
                 </div>
               )}
-              {plan && plan.steps.length > 0 && (
+              {closePlan && closePlan.steps.length > 0 && (
                 <ol className="plan-steps">
-                  {plan.steps.map((st) => (
+                  {closePlan.steps.map((st) => (
                     <li key={st.id} className={[st.done && "done", st.overdue && "overdue"].filter(Boolean).join(" ")}>
                       <form action={togglePlanStepAction.bind(null, dealId, st.id, back)}>
                         <button type="submit" className="plan-check" aria-label={st.done ? `Marcar «${st.title}» como pendiente` : `Marcar «${st.title}» como hecho`}>{st.done ? "✓" : ""}</button>
