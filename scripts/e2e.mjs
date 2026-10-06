@@ -821,8 +821,10 @@ if (process.env.MOCK_URL) {
   }
 
   const r7 = await custom("Deal parado sin plan", { kind: "deal_idle", days: 5 }, { kind: "notify", message: "{deal} lleva días sin movimiento" }, "ask");
+  // En una fase que no pide sesión (si no, otra regla le crearía antes la tarea de agendarla).
+  const [free] = await sql`SELECT id, pipeline_id FROM stages WHERE required_activity_type IS NULL AND is_active ORDER BY position LIMIT 1`;
   const [idle] = await sql`INSERT INTO deals (title, pipeline_id, stage_id, created_at, stage_entered_at)
-                           VALUES ('Deal olvidado', ${P.ampl}, ${st0.id}, now() - interval '10 days', now() - interval '10 days') RETURNING id`;
+                           VALUES ('Deal olvidado', ${free.pipeline_id}, ${free.id}, now() - interval '10 days', now() - interval '10 days') RETURNING id`;
   await run();
   const a7 = (await actionsOf(r7)).filter((x) => x.title === "Deal olvidado lleva días sin movimiento");
   check(a7.length === 1 && a7[0].status === "pending", "regla general: deal sin movimiento ni nada programado → pide una decisión", JSON.stringify(a7));
