@@ -610,6 +610,37 @@ await step("tablero: las tarjetas marcan las propuestas de la IA pendientes", as
   if (n > 0) await card.locator(".badge.ai").filter({ hasText: String(n) }).waitFor();
 });
 
+await step("Customer Success: dirección por defecto y responsable por empresa", async () => {
+  await page.goto("/settings/automations");
+  const rule = page.getByRole("article", { name: "Deal ganado: enviar el resumen a Customer Success" });
+  await rule.getByText("Falta el email de Customer Success por defecto").waitFor();
+  await rule.getByText("Ajustes de la regla").click();
+  await rule.getByLabel("Email de Customer Success por defecto").fill("cs@aikit.example");
+  await rule.getByRole("button", { name: "Guardar" }).click();
+  await rule.getByText("Falta el email de Customer Success por defecto").waitFor({ state: "detached" });
+  const [r] = await sql`SELECT params FROM automation_rules WHERE key = 'won_handoff_email'`;
+  expect(r.params.cs_email === "cs@aikit.example", JSON.stringify(r.params));
+  await page.goto("/organizations/60000000-0000-0000-0000-000000000001/edit");
+  await page.getByLabel("Responsable de CS").fill("Lucía CS");
+  await page.getByLabel("Email del responsable de CS").fill("lucia@aikit.example");
+  await submit("Guardar cambios");
+  await page.waitForURL(/\/organizations\/60000000-0000-0000-0000-000000000001$/);
+  await page.getByText("lucia@aikit.example").waitFor();
+});
+
+await step("ganar un deal deja en la bandeja el correo de traspaso a su responsable de CS", async () => {
+  await page.goto(`/deals/${PACO_OPEN}`);
+  await submit("Ganado");
+  await page.getByText(/^Ganado el/).waitFor();
+  await page.goto("/inbox");
+  await submit("Revisar ahora");
+  const card = page.locator("article.proposal", { hasText: "Enviar el traspaso de «Paco — ampliación de servicio» a Customer Success" });
+  await card.waitFor();
+  expect(await card.getByLabel("Para").inputValue() === "lucia@aikit.example", "destinatario incorrecto");
+  expect((await card.getByLabel("Texto").inputValue()).startsWith("Hola Lucía CS"), "saludo incorrecto");
+  await shot("traspaso-cs");
+});
+
 await step("capturas de las pantallas principales", async () => {
   for (const [name, path] of [["tablero", "/pipelines/10000000-0000-0000-0000-000000000001"], ["empresa", "/organizations/60000000-0000-0000-0000-000000000001"],
                               ["leads", "/leads?status=all"], ["actividades", "/activities"], ["contacto", "/persons/70000000-0000-0000-0000-000000000001"],

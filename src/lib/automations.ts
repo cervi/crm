@@ -74,6 +74,7 @@ export type Rule = {
 
 /** Qué acción produce cada regla incluida. */
 export const RULE_ACTION: Record<string, ActionType> = {
+  won_handoff_email: "draft_email",
   meeting_recap: "draft_email",
   advance_after_session: "move_stage",
   offer_session_slots: "draft_email",
@@ -84,10 +85,17 @@ export const RULE_ACTION: Record<string, ActionType> = {
   won_handoff: "create_task",
 };
 
-type ParamSpec = { key: string; label: string; kind: "days" | "number" | "text" | "textarea"; help?: string };
+type ParamSpec = { key: string; label: string; kind: "days" | "number" | "text" | "textarea" | "email"; help?: string; optional?: boolean };
 
 /** Parámetros ajustables de cada regla. */
 export const RULE_PARAMS: Record<string, ParamSpec[]> = {
+  won_handoff_email: [
+    { key: "cs_email", label: "Email de Customer Success por defecto", kind: "email", optional: true,
+      help: "Se usa cuando la empresa no tiene su propio responsable de CS (en la ficha de la empresa)." },
+    { key: "cs_name", label: "Nombre para el saludo", kind: "text", optional: true, help: "Por ejemplo «equipo» o el nombre de la persona." },
+    { key: "subject", label: "Asunto", kind: "text" },
+    { key: "body", label: "Texto", kind: "textarea", help: "Puedes usar {deal}, {empresa}, {cs_nombre}, {responsable}, {resumen} (el resumen del traspaso) y {enlace} (la ficha en el CRM)." },
+  ],
   offer_session_slots: [
     { key: "grace_days", label: "Días de margen al entrar en la fase", kind: "days" },
     { key: "cooldown_days", label: "No repetir antes de (días)", kind: "days" },
@@ -183,8 +191,13 @@ export async function updateRuleParams(ruleId: string, data: Record<string, unkn
       const min = spec.kind === "days" ? 0 : 1;
       if (!Number.isFinite(n) || n < min || n > 365) throw new UserError(`«${spec.label}» debe ser un número entre ${min} y 365.`);
       next[spec.key] = spec.kind === "days" ? Math.round(n) : n;
+    } else if (spec.kind === "email") {
+      const s = String(raw).trim().toLowerCase();
+      if (s && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) throw new UserError(`«${spec.label}» no es un email válido.`);
+      next[spec.key] = s;
     } else {
       const s = String(raw).trim();
+      if (!s && spec.optional) { next[spec.key] = ""; continue; }
       if (!s) throw new UserError(`«${spec.label}» no puede quedar vacío.`);
       if (s.length > 5000) throw new UserError(`«${spec.label}» es demasiado largo.`);
       next[spec.key] = s;
@@ -259,13 +272,30 @@ export type RunContext = {
   mailbox: boolean;
   /** Texto con los próximos huecos libres del calendario del responsable (se calcula una vez por revisión). */
   slotsFor: (ownerId: string | null) => Promise<string>;
+  /** Resumen de traspaso a CS de un deal (con IA si está configurada), una vez por revisión. */
+  handoffFor: (dealId: string) => Promise<HandoffSummary | null>;
 };
+
+type HandoffSummary = NonNullable<Awaited<ReturnType<typeof handoffSummary>>> & { ai: boolean };
 
 export async function buildContext(): Promise<RunContext> {
   const [rules, permissions, mailbox] = await Promise.all([listRules(), listPermissions(), hasActiveMailbox()]);
   const cache = new Map<string, Promise<string>>();
+  const handoffs = new Map<string, Promise<HandoffSummary | null>>();
   return {
     rules, permissions, mailbox,
+    handoffFor(dealId) {
+      if (!handoffs.has(dealId)) {
+        handoffs.set(dealId, (async () => {
+          const summary = await handoffSummary(dealId);
+          if (!summary) return null;
+          // Con IA, el resumen lo redacta el modelo; los datos de siempre quedan debajo.
+          const ai = await generate("handoff", { datos_del_deal: summary.text });
+          return ai ? { ...summary, text: `${ai}\n\n— Datos del CRM —\n${summary.text}`.slice(0, 4900), ai: true } : { ...summary, ai: false };
+        })());
+      }
+      return handoffs.get(dealId)!;
+    },
     slotsFor(ownerId) {
       const key = ownerId ?? "";
       if (!cache.has(key)) cache.set(key, senderFor(ownerId).then((c) => slotsText(c)));
@@ -482,14 +512,46 @@ const EVENT_HANDLERS: Record<string, EventHandler> = {
     stillValid: () => sql`d.status = 'open' AND d.stage_id::text = x.payload->>'from_stage_id'`,
   },
 
+  // Deal ganado: el resumen del traspaso, por correo al responsable de CS.
+  won_handoff_email: {
+    events: ["deal.won"],
+    async handle(rule, e, ctx) {
+      const [d] = await sql<{ title: string; organization_name: string | null; cs_manager_name: string | null; cs_manager_email: string | null;
+                             owner_id: string | null; owner_name: string | null }[]>`
+        SELECT d.title, o.name AS organization_name, o.cs_manager_name, o.cs_manager_email, d.owner_id, u.name AS owner_name
+        FROM deals d LEFT JOIN organizations o ON o.id = d.organization_id LEFT JOIN users u ON u.id = d.owner_id
+        WHERE d.id = ${e.entity_id} AND d.status = 'won'`;
+      if (!d) return null;
+      const fromCompany = Boolean(d.cs_manager_email);
+      const to = d.cs_manager_email || str(rule.params.cs_email, "");
+      if (!to) return null; // sin dirección de CS no hay a quién enviarlo (se avisa en Ajustes)
+      const summary = await ctx.handoffFor(e.entity_id);
+      if (!summary) return null;
+      const csName = (fromCompany ? d.cs_manager_name : null) || str(rule.params.cs_name, "") || "equipo";
+      const vars = {
+        deal: d.title, empresa: d.organization_name ?? "sin empresa", cs_nombre: csName, responsable: d.owner_name ?? "",
+        resumen: summary.text, enlace: `${(process.env.APP_URL || "").replace(/\/$/, "")}/deals/${e.entity_id}`,
+      };
+      const subjectT = str(rule.params.subject, "Nuevo cliente: {empresa} — {deal}");
+      const bodyT = str(rule.params.body, "Hola {cs_nombre},\n\n{resumen}\n\n{enlace}");
+      return {
+        dealId: e.entity_id,
+        title: `Enviar el traspaso de «${d.title}» a Customer Success`,
+        reason: `Deal ganado. Destinatario: ${fromCompany ? `${d.cs_manager_name ?? to}, responsable de CS de ${d.organization_name}` : "la dirección de CS por defecto"}.${summary.ai ? " Resumen redactado por la IA." : ""}`,
+        payload: {
+          to, to_name: fromCompany ? d.cs_manager_name : str(rule.params.cs_name, "") || null, person_id: null,
+          subject: renderTemplate(subjectT, vars), body: renderTemplate(bodyT, vars),
+        },
+      };
+    },
+    stillValid: () => sql`d.status = 'won'`,
+  },
+
   won_handoff: {
     events: ["deal.won"],
-    async handle(rule, e) {
-      const summary = await handoffSummary(e.entity_id);
+    async handle(rule, e, ctx) {
+      const summary = await ctx.handoffFor(e.entity_id);
       if (!summary) return null;
-      // Con IA, el resumen lo redacta el modelo; los datos de siempre quedan debajo.
-      const ai = await generate("handoff", { datos_del_deal: summary.text });
-      if (ai) summary.text = `${ai}\n\n— Datos del CRM —\n${summary.text}`.slice(0, 4900);
       return {
         dealId: e.entity_id,
         title: `Traspaso a Customer Success: ${summary.title}`,

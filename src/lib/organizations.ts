@@ -44,6 +44,8 @@ export type Organization = {
   address: string | null;
   owner_id: string | null;
   owner_name: string | null;
+  cs_manager_name: string | null;
+  cs_manager_email: string | null;
   custom: Record<string, unknown>;
   created_at: Date;
 };
@@ -51,7 +53,7 @@ export type Organization = {
 export async function getOrganization(id: string, db: Db = sql): Promise<Organization | null> {
   const [org] = await db<Organization[]>`
     SELECT o.id, o.name, o.domain, o.website, o.industry, o.employee_count, o.country, o.city,
-           o.address, o.owner_id, u.name AS owner_name, o.custom, o.created_at
+           o.address, o.owner_id, u.name AS owner_name, o.cs_manager_name, o.cs_manager_email, o.custom, o.created_at
     FROM organizations o LEFT JOIN users u ON u.id = o.owner_id
     WHERE o.id = ${id} AND o.deleted_at IS NULL`;
   return org ?? null;
@@ -87,6 +89,8 @@ const orgSchema = z.object({
   city: optText(100),
   address: optText(500),
   owner_id: optId,
+  cs_manager_name: optText(200),
+  cs_manager_email: optional(z.email({ message: "El email del responsable de Customer Success no es válido" })),
 });
 export type OrganizationInput = z.infer<typeof orgSchema>;
 
@@ -103,6 +107,8 @@ function clean(input: OrganizationInput) {
     city: input.city ?? null,
     address: input.address ?? null,
     owner_id: input.owner_id ?? null,
+    cs_manager_name: input.cs_manager_name ?? null,
+    cs_manager_email: input.cs_manager_email?.toLowerCase() ?? null,
   };
 }
 

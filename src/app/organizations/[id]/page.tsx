@@ -66,6 +66,9 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
               <div className="dl-row"><dt>Empleados</dt><dd>{org.employee_count ?? "—"}</dd></div>
               <div className="dl-row"><dt>Ubicación</dt><dd>{[org.city, org.country].filter(Boolean).join(", ") || "—"}</dd></div>
               <div className="dl-row"><dt>Responsable</dt><dd>{org.owner_name ?? "—"}</dd></div>
+              <div className="dl-row"><dt>Customer Success</dt><dd>{org.cs_manager_email
+                ? <>{org.cs_manager_name ?? org.cs_manager_email}{org.cs_manager_name && <span className="meta"> · {org.cs_manager_email}</span>}</>
+                : <span className="muted">Dirección de CS por defecto</span>}</dd></div>
               <div className="dl-row"><dt>Alta</dt><dd>{date(org.created_at)}</dd></div>
               <CustomFieldValues defs={defs} values={org.custom} users={users} />
             </dl>

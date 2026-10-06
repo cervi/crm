@@ -154,6 +154,11 @@ export default async function AutomationsSettingsPage() {
                   ) : <span>Últimos 90 días: sin actividad</span>}
                 </div>
                 {tip && <p className="callout good" style={{ margin: "10px 0 0" }}>{tip}</p>}
+                {r.key === "won_handoff_email" && r.autonomy !== "off" && !String(r.params.cs_email ?? "") && (
+                  <p className="callout" style={{ margin: "10px 0 0" }}>
+                    Falta el email de Customer Success por defecto (en «Ajustes de la regla»). Mientras, solo se envía a las empresas que tengan su responsable de CS en su ficha.
+                  </p>
+                )}
                 {specs.length > 0 && (
                   <details className="rule-params">
                     <summary className="meta">Ajustes de la regla</summary>
@@ -164,8 +169,10 @@ export default async function AutomationsSettingsPage() {
                             <span className="label">{s.label}</span>
                             {s.kind === "textarea"
                               ? <textarea name={s.key} rows={6} defaultValue={String(r.params[s.key] ?? "")} />
-                              : <input name={s.key} type={s.kind === "text" ? "text" : "number"} step={s.kind === "number" ? "0.5" : "1"}
-                                       min={s.kind === "days" ? 0 : 1} defaultValue={String(r.params[s.key] ?? "")} />}
+                              : s.kind === "text" || s.kind === "email"
+                                ? <input name={s.key} type={s.kind} defaultValue={String(r.params[s.key] ?? "")} />
+                                : <input name={s.key} type="number" step={s.kind === "number" ? "0.5" : "1"}
+                                         min={s.kind === "days" ? 0 : 1} defaultValue={String(r.params[s.key] ?? "")} />}
                             {s.help && <span className="meta">{s.help}</span>}
                           </label>
                         ))}

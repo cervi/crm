@@ -38,6 +38,15 @@ export function OrganizationForm({ action, org, defs, users, submitLabel }: {
         <label className="field span-2"><span className="label">Dirección</span><input name="address" defaultValue={org?.address ?? ""} /></label>
         <OwnerSelect users={users} value={org?.owner_id} />
       </div>
+      <fieldset className="fieldset">
+        <legend>Customer Success</legend>
+        <div className="grid-2">
+          <label className="field"><span className="label">Responsable de CS</span>
+            <input name="cs_manager_name" defaultValue={org?.cs_manager_name ?? ""} placeholder="Quién llevará la cuenta" /></label>
+          <label className="field"><span className="label">Email del responsable de CS</span>
+            <input name="cs_manager_email" type="email" defaultValue={org?.cs_manager_email ?? ""} placeholder="Si se deja vacío, se usa la dirección de CS por defecto" /></label>
+        </div>
+      </fieldset>
       <CustomFieldInputs defs={defs} values={org?.custom} users={users} />
     </ActionForm>
   );

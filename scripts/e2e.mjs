@@ -519,6 +519,47 @@ if (process.env.MOCK_URL) {
                            JOIN activities a ON a.id = (x.result->>'activity_id')::uuid WHERE r.key = 'won_handoff' AND x.deal_id = ${won.id}`;
     check(ho?.note.startsWith("(IA) Traspaso") && ho.note.includes("— Datos del CRM —"), "traspaso a CS redactado por la IA, con los datos debajo", ho?.note?.slice(0, 80));
 
+    // Traspaso por correo a Customer Success: responsable de la empresa o dirección por defecto.
+    const winDeal = async (id) => {
+      await sql`UPDATE deals SET status = 'won' WHERE id = ${id}`;
+      await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type) VALUES ('deal', ${id}, 'deal.won', 'user')`;
+    };
+    const csMail = async (id) => (await sql`SELECT x.status, x.mode, x.payload, x.result FROM automation_actions x JOIN automation_rules r ON r.id = x.rule_id
+                                             WHERE r.key = 'won_handoff_email' AND x.deal_id = ${id}`)[0];
+    await sql`UPDATE automation_rules SET params = params || ${sql.json({ cs_email: "cs@aikit.example", cs_name: "equipo de CS" })}
+              WHERE key = 'won_handoff_email'`;
+    const [dA, dB, dC] = await sql`SELECT ods.id, ods.organization_id FROM open_deals_status ods
+                                   WHERE ods.organization_id IS NOT NULL AND ods.id <> ${DEAL_OPEN}
+                                     AND ods.organization_id NOT IN (SELECT organization_id FROM deals WHERE id = ${DEAL_OPEN})
+                                   ORDER BY ods.id LIMIT 3`;
+    await sql`UPDATE organizations SET cs_manager_name = 'Lucía CS', cs_manager_email = 'lucia@aikit.example' WHERE id = ${dA.organization_id}`;
+    await sql`UPDATE organizations SET cs_manager_name = NULL, cs_manager_email = NULL WHERE id IN (${dB.organization_id}, ${dC.organization_id})`;
+    const llmBefore = (await (await fetch(`${MOCK}/__state`)).json()).llm.filter((c) => c.task === "handoff").length;
+    await winDeal(dA.id);
+    await winDeal(dB.id);
+    await run();
+    const llmAfter = (await (await fetch(`${MOCK}/__state`)).json()).llm.filter((c) => c.task === "handoff").length;
+    const mA = await csMail(dA.id), mB = await csMail(dB.id);
+    check(mA?.status === "pending" && mA.payload.to === "lucia@aikit.example" && mA.payload.body.startsWith("Hola Lucía CS")
+          && mA.payload.body.includes("(IA) Traspaso") && mA.payload.subject.startsWith("Nuevo cliente:"),
+          "traspaso por correo: al responsable de CS de la empresa, con el resumen (en «Preguntar»)", JSON.stringify(mA?.payload).slice(0, 200));
+    check(mB?.payload.to === "cs@aikit.example" && mB.payload.body.startsWith("Hola equipo de CS"),
+          "traspaso por correo: sin responsable en la empresa, a la dirección de CS por defecto", JSON.stringify(mB?.payload?.to));
+    check(llmAfter - llmBefore === 2, "el resumen del traspaso se pide a la IA una sola vez por deal (tarea y correo)", `${llmAfter - llmBefore}`);
+    // En «Sola», sale por correo directamente.
+    await sql`UPDATE ai_permissions SET autonomy = 'auto' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
+    await sql`UPDATE automation_rules SET autonomy = 'auto' WHERE key = 'won_handoff_email'`;
+    await winDeal(dC.id);
+    await run();
+    const mC = await csMail(dC.id);
+    const sentCs = (await (await fetch(`${MOCK}/__state`)).json()).gsent.filter((m) => m.to === "cs@aikit.example");
+    check(mC?.status === "done" && mC.mode === "auto" && mC.result.sent && sentCs.some((m) => m.subject.startsWith("Nuevo cliente:")),
+          "traspaso por correo en «Sola»: se envía al ganar", JSON.stringify({ st: mC?.status, n: sentCs.length }));
+    await sql`UPDATE ai_permissions SET autonomy = 'ask' WHERE actor = 'assistant' AND action_type = 'draft_email'`;
+    await sql`UPDATE automation_rules SET autonomy = 'ask' WHERE key = 'won_handoff_email'`;
+    const orgPage = await (await get(`/organizations/${dA.organization_id}`)).text();
+    check(orgPage.includes("Customer Success") && orgPage.includes("Lucía CS"), "la ficha de la empresa muestra su responsable de CS");
+
     // Parte del día por correo (a quien tenga cuenta conectada), una vez al día.
     // (Puede que ya saliera el de hoy sin IA en una revisión anterior: se empieza de cero.)
     await sql`DELETE FROM digest_log`;
