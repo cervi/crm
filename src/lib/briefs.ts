@@ -79,7 +79,9 @@ export function dealSignals(where: postgres.PendingQuery<postgres.Row[]> = sql`t
     LIMIT ${limit}`;
 }
 
-export type NextStep = { text: string; priority: 1 | 2 | 3 | 4; why: string };
+export type StepKind = "unanswered" | "unmarked" | "overdue" | "pending_ai" | "missing_session" | "rotten" | "nothing" | "prepare";
+/** El siguiente paso: qué, por qué, su prioridad (1 = urgente) y la fecha que lo marca, si la hay. */
+export type NextStep = { kind: StepKind; text: string; priority: 1 | 2 | 3 | 4; why: string; at: Date | null };
 
 const daysAgo = (d: Date | null) => (d ? Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000)) : null);
 const ago = (d: Date | null) => {
@@ -90,28 +92,28 @@ const ago = (d: Date | null) => {
 /** El siguiente paso más útil según las señales, con su prioridad (1 = urgente). */
 export function nextStep(s: Signals): NextStep {
   if (s.unanswered_subject) {
-    return { priority: 1, text: `Responde a ${s.unanswered_from ?? "tu contacto"}: «${s.unanswered_subject}»`, why: `Te escribió ${ago(s.unanswered_at)} y no hay respuesta.` };
+    return { kind: "unanswered", at: s.unanswered_at, priority: 1, text: `Responde a ${s.unanswered_from ?? "tu contacto"}: «${s.unanswered_subject}»`, why: `Te escribió ${ago(s.unanswered_at)} y no hay respuesta.` };
   }
   if (s.unmarked_subject) {
-    return { priority: 1, text: `Marca cómo fue «${s.unmarked_subject}»`, why: `La ${activityLabel(s.unmarked_type).toLowerCase()} fue ${ago(s.unmarked_at)} y no tiene resultado.` };
+    return { kind: "unmarked", at: s.unmarked_at, priority: 1, text: `Marca cómo fue «${s.unmarked_subject}»`, why: `La ${activityLabel(s.unmarked_type).toLowerCase()} fue ${ago(s.unmarked_at)} y no tiene resultado.` };
   }
   if (s.overdue_subject) {
-    return { priority: 1, text: `Completa «${s.overdue_subject}»`, why: `Vencida ${ago(s.overdue_at)}${s.overdue_count > 1 ? ` (y ${s.overdue_count - 1} más)` : ""}.` };
+    return { kind: "overdue", at: s.overdue_at, priority: 1, text: `Completa «${s.overdue_subject}»`, why: `Vencida ${ago(s.overdue_at)}${s.overdue_count > 1 ? ` (y ${s.overdue_count - 1} más)` : ""}.` };
   }
   if (s.pending_ai > 0) {
-    return { priority: 2, text: `Revisa ${s.pending_ai === 1 ? "la propuesta" : `las ${s.pending_ai} propuestas`} de la IA`, why: "Están esperando tu decisión en la bandeja." };
+    return { kind: "pending_ai", at: null, priority: 2, text: `Revisa ${s.pending_ai === 1 ? "la propuesta" : `las ${s.pending_ai} propuestas`} de la IA`, why: "Están esperando tu decisión en la bandeja." };
   }
   if (s.required_activity_type && !s.has_upcoming_session) {
     const session = activityLabel(s.required_activity_type).toLowerCase();
-    return { priority: 2, text: `Agenda la ${session}`, why: `La fase «${s.stage_name}» la requiere y no hay ninguna agendada.` };
+    return { kind: "missing_session", at: null, priority: 2, text: `Agenda la ${session}`, why: `La fase «${s.stage_name}» la requiere y no hay ninguna agendada.` };
   }
   if (s.rotten_after_days !== null && s.days_in_stage > s.rotten_after_days) {
-    return { priority: 2, text: "Retoma el contacto", why: `Lleva ${s.days_in_stage} días en «${s.stage_name}» (el límite es ${s.rotten_after_days}).` };
+    return { kind: "rotten", at: null, priority: 2, text: "Retoma el contacto", why: `Lleva ${s.days_in_stage} días en «${s.stage_name}» (el límite es ${s.rotten_after_days}).` };
   }
   if (!s.next_subject) {
-    return { priority: 3, text: "Programa el siguiente paso", why: "No hay nada agendado." };
+    return { kind: "nothing", at: null, priority: 3, text: "Programa el siguiente paso", why: "No hay nada agendado." };
   }
-  return { priority: 4, text: `Prepara «${s.next_subject}»`, why: `${activityLabel(s.next_type)} el ${date(s.next_at)}.` };
+  return { kind: "prepare", at: s.next_at, priority: 4, text: `Prepara «${s.next_subject}»`, why: `${activityLabel(s.next_type)} el ${date(s.next_at)}.` };
 }
 
 /** Riesgos visibles en las señales. */
@@ -131,6 +133,8 @@ export function risks(s: Signals, extra: { noShows: number; contactsWithEmail: n
 export type Brief = {
   resumen: string; siguiente_paso: string; por_que: string; riesgos: string[]; prioridad: NextStep["priority"];
   source: "ai" | "rules"; generated_at: Date | null; stale: boolean;
+  /** El paso según las reglas del CRM y las señales del deal (para explicar cuándo y cómo). */
+  step: NextStep; signals: Signals;
 };
 
 type Facts = Awaited<ReturnType<typeof dealFacts>>;
@@ -184,6 +188,7 @@ function ruleBrief(f: NonNullable<Facts>): Brief {
     por_que: step.why,
     riesgos: risks(s, { noShows: f.noShows, contacts: f.contacts.length, contactsWithEmail: f.contacts.filter((c) => c.email).length }),
     prioridad: step.priority,
+    step, signals: s,
     source: "rules",
     generated_at: null,
     stale: false,

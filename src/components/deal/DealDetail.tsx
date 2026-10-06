@@ -13,6 +13,7 @@ import { senderFor } from "@/lib/mailbox";
 import { PROVIDERS } from "@/lib/integrations";
 import { documentKind, listDocuments } from "@/lib/documents";
 import { getDealBrief } from "@/lib/briefs";
+import { planNextStep } from "@/lib/next-step";
 import { aiReady, getAiSettings } from "@/lib/ai";
 import { regenerateBriefAction } from "@/app/actions/ai";
 import { addDocumentAction, removeDocumentAction } from "@/app/actions/documents";
@@ -63,6 +64,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   const canSend = sender !== null;
   const provider = sender ? PROVIDERS[sender.provider] : null;
   const reachable = participants.filter((p) => p.email);
+  const firstContact = participants.find((p) => p.is_primary) ?? participants[0];
+  const plan = brief ? await planNextStep(dealId, brief.signals, brief.step, { name: firstContact?.full_name ?? null, email: firstContact?.email ?? null }) : null;
 
   const isOpen = deal.status === "open";
   const currentPos = stages.find((s) => s.id === deal.stage_id)?.position ?? 0;
@@ -257,9 +260,27 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 )}
               </div>
               <p>{brief.resumen}</p>
-              <div className={`brief-next p${brief.prioridad}`}>
+              <div className={`brief-next p${brief.prioridad}`} tabIndex={0} aria-describedby={plan ? "step-plan" : undefined}>
                 <span className="label">Siguiente paso</span>
-                <div><strong>{brief.siguiente_paso}</strong>{brief.source === "rules" && <span className="muted"> {brief.por_que}</span>}</div>
+                <div className="brief-next-text"><strong>{brief.siguiente_paso}</strong></div>
+                {plan && (
+                  <>
+                    <span className={`step-when who-${plan.who}`} title="Pasa el ratón para ver los detalles">
+                      {plan.whenShort}<Icon name="info" />
+                    </span>
+                    <div className="step-plan" role="tooltip" id="step-plan">
+                      {brief.source === "ai" && brief.step.text !== brief.siguiente_paso && (
+                        <p className="meta" style={{ margin: "0 0 8px" }}>Según la actividad del deal: <strong>{brief.step.text}</strong></p>
+                      )}
+                      <dl>
+                        <div><dt>Cuándo</dt><dd>{plan.when}</dd></div>
+                        <div><dt>Quién</dt><dd><span className={`who-dot who-${plan.who}`} />{plan.whoText}</dd></div>
+                        <div><dt>Cómo</dt><dd>{plan.how.length === 1 ? plan.how[0] : <ul>{plan.how.map((h) => <li key={h}>{h}</li>)}</ul>}</dd></div>
+                        <div><dt>Por qué</dt><dd>{plan.why}</dd></div>
+                      </dl>
+                    </div>
+                  </>
+                )}
               </div>
               {brief.riesgos.length > 0 && <ul className="brief-risks">{brief.riesgos.map((r) => <li key={r}>{r}</li>)}</ul>}
             </section>

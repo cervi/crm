@@ -753,3 +753,28 @@ a.btn.small svg { width: 14px; height: 14px; }
 .rule-when, .rule-then { display: grid; gap: 12px; }
 .custom-rule-desc { margin: 4px 0 0; font-size: 13.5px; }
 .new-rule { border-style: dashed; }
+
+/* ---------------------------------------------------------------- Siguiente paso: cuándo y detalles al pasar el ratón */
+.brief-next { position: relative; align-items: center; cursor: default; outline: none; }
+.brief-next:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.brief-next-text { flex: 1; min-width: 0; }
+.step-when {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; font-weight: 650;
+  padding: 3px 9px; border-radius: 999px; background: var(--panel); color: var(--text-2); border: 1px solid var(--border);
+}
+.step-when svg { width: 13px; height: 13px; stroke: var(--muted); }
+.step-when.who-ai_auto, .step-when.who-ai_ask { color: var(--accent-ink); border-color: var(--accent-soft); }
+.step-plan {
+  display: none; position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--r); box-shadow: 0 12px 32px rgba(0, 0, 0, .18);
+  padding: 12px 14px; font-size: 13.5px; color: var(--text); text-transform: none; letter-spacing: normal; font-weight: 400;
+}
+.brief-next:hover .step-plan, .brief-next:focus-within .step-plan { display: block; }
+.step-plan dl { margin: 0; display: grid; gap: 8px; }
+.step-plan dl > div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; }
+.step-plan dt { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; padding-top: 1px; }
+.step-plan dd { margin: 0; }
+.step-plan ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.who-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); vertical-align: 1px; }
+.who-dot.who-ai_auto { background: var(--accent); }
+.who-dot.who-ai_ask { background: var(--warn); }

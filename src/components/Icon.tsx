@@ -22,6 +22,7 @@ const PATHS = {
   chevron: "M6 9l6 6 6-6",
   up: "M6 15l6-6 6 6",
   expand: "M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7",
+  info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8h.01",
   download: "M12 4v11M7 10l5 5 5-5M5 20h14",
   home: "M3 11l9-7 9 7M5 9.5V20h5v-6h4v6h5V9.5",
   inbox: "M3 13h5l2 3h4l2-3h5M5.5 5h13L21 13v6H3v-6z",
