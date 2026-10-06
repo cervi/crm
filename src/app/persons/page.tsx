@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportLink } from "@/components/ExportLink";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
 import { listPersons } from "@/lib/persons";
@@ -14,6 +15,7 @@ export default async function PersonsPage({ searchParams }: { searchParams: Prom
       <div className="page-head">
         <h1>Contactos</h1>
         <span className="spacer" />
+        <ExportLink dataset="persons" params={{ q }} />
         <Link href="/persons/new" className="btn"><Icon name="plus" />Nuevo contacto</Link>
       </div>
       <form className="toolbar">

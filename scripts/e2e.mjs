@@ -589,6 +589,53 @@ if (process.env.MOCK_URL) {
   }
 }
 
+// ------------------------------------------------------------- Exportar a CSV
+{
+  const csv = async (path) => {
+    const res = await get(path);
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { res, bom: buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf, text: buf.toString("utf8").replace(/^﻿/, "") };
+  };
+  const d = await csv(`/api/export/deals?pipeline=${P.ampl}&status=open`);
+  const [head, ...lines] = d.text.trim().split("\r\n");
+  check(d.res.status === 200 && d.res.headers.get("content-type").startsWith("text/csv") && d.bom
+        && /attachment; filename="deals-\d{4}-\d{2}-\d{2}\.csv"/.test(d.res.headers.get("content-disposition") ?? ""),
+        "CSV de deals: descarga UTF-8 con BOM y nombre con fecha", d.res.headers.get("content-disposition"));
+  check(head.startsWith("Deal;Empresa;Contacto principal") && head.includes("Competidor principal")
+        && lines.some((l) => l.startsWith("Paco — ampliación de servicio;Paco S.L.;Ana García;ana@paco.example;Ampliaciones;Necesidad detectada;Abierto;4000;EUR")),
+        "CSV de deals: columnas, campos personalizados y filtros del tablero", `${head.slice(0, 80)} | ${lines[0]?.slice(0, 120)}`);
+  const comma = await csv(`/api/export/deals?pipeline=${P.ampl}&status=open&sep=,`);
+  check(comma.text.startsWith("Deal,Empresa,"), "CSV con separador coma");
+
+  const leadsCsv = await csv("/api/export/leads?status=all&q=ana");
+  check(leadsCsv.text.split("\r\n")[0].startsWith("Lead;Contacto;Email") && leadsCsv.text.includes("Ana García"), "CSV de leads con búsqueda");
+  const orgCsv = await csv("/api/export/organizations?q=paco");
+  check(orgCsv.text.includes("Segmento") && orgCsv.text.includes("Paco S.L.") && !orgCsv.text.includes("Empresa Demo"), "CSV de empresas con filtro y campos personalizados");
+  const personsCsv = await csv(`/api/export/persons?organization=${ORG}`);
+  check(personsCsv.text.includes("ana@paco.example") && personsCsv.text.split("\r\n").length < 10, "CSV de contactos de una empresa");
+  const actCsv = await csv("/api/export/activities?view=done");
+  check(actCsv.text.startsWith("Tipo;Asunto;Fecha") && actCsv.text.includes("No se presentó"), "CSV de actividades hechas");
+  const hist = await csv(`/api/export/deal-history?deal=${DEAL_OPEN}`);
+  check(hist.res.status === 200 && hist.text.startsWith("Fecha;Tipo;Título") && /filename="historia-paco-ampliacion-de-servicio/.test(hist.res.headers.get("content-disposition")),
+        "CSV de la historia de un deal", hist.res.headers.get("content-disposition"));
+  check((await csv("/api/export/ai-log")).text.startsWith("Propuesta el;Ejecutada el;Estado"), "CSV del registro de la IA");
+  const [w] = await sql`SELECT id FROM dashboard_widgets ORDER BY position LIMIT 1`;
+  const wc = await csv(`/api/export/widget?id=${w.id}`);
+  check(wc.res.status === 200 && wc.text.split("\r\n").length >= 2, "CSV de un widget de dashboard", wc.text.slice(0, 80));
+
+  // Celdas que Excel interpretaría como fórmula: se neutralizan.
+  await sql`INSERT INTO organizations (name, industry) VALUES ('Fórmula S.L.', '=HYPERLINK("http://x","clic")')`;
+  const inj = await csv("/api/export/organizations?q=rmula");
+  check(inj.text.includes(`"'=HYPERLINK(""http://x"",""clic"")"`), "CSV: las fórmulas se neutralizan y las comillas se escapan", inj.text.split("\r\n")[1]);
+
+  check((await get("/api/export/nada")).status === 404 && (await get("/api/export/deal-history")).status === 400, "exportación desconocida → 404; sin deal → 400");
+  const anon = await fetch(`${BASE}/api/export/deals`, { redirect: "manual" });
+  check(anon.status === 401, "la exportación exige iniciar sesión", String(anon.status));
+  const leadsPage = await (await get("/leads?status=all&source=webinar")).text();
+  check(leadsPage.includes("/api/export/leads?status=all&amp;source=webinar") || leadsPage.includes("/api/export/leads?status=all&source=webinar"),
+        "el botón de exportar de leads lleva los filtros de la pantalla");
+}
+
 await sql.end();
 console.log(`\n${failed === 0 ? "✓" : "✗"} ${passed} correctas, ${failed} fallidas`);
 process.exit(failed === 0 ? 0 : 1);

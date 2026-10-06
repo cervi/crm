@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportLink } from "@/components/ExportLink";
 import { leadSources, listLeads } from "@/lib/leads";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
@@ -25,6 +26,7 @@ export default async function LeadsPage({ searchParams }: {
           {rows.length} · {FUNNEL_STAGES.map((f) => `${f.label} ${byFunnel(f.value)}`).join(" · ")}
         </span>
         <span className="spacer" />
+        <ExportLink dataset="leads" params={{ q: sp.q, status, source: sp.source, funnel: sp.funnel }} />
         <Link href="/settings/api" className="btn secondary"><Icon name="plug" />Conectar formularios</Link>
         <Link href="/leads/new" className="btn"><Icon name="plus" />Nuevo lead</Link>
       </div>

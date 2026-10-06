@@ -641,6 +641,23 @@ await step("ganar un deal deja en la bandeja el correo de traspaso a su responsa
   await shot("traspaso-cs");
 });
 
+await step("exportar contactos a CSV desde el listado y cambiar el separador", async () => {
+  await page.goto("/persons?q=ana");
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Exportar CSV" }).click()]);
+  expect(/^contactos-\d{4}-\d{2}-\d{2}\.csv$/.test(download.suggestedFilename()), download.suggestedFilename());
+  const fs = await import("node:fs/promises");
+  const text = await fs.readFile(await download.path(), "utf8");
+  expect(text.startsWith("﻿Nombre completo;") && text.includes("ana@paco.example"), text.slice(0, 80));
+  await page.goto("/settings/export");
+  await page.locator("select[name=separator]").selectOption(",");
+  await submit("Guardar");
+  await page.waitForTimeout(400);
+  const [d2] = await Promise.all([page.waitForEvent("download"), page.locator(".export-list li", { hasText: "Empresas" }).getByRole("link").click()]);
+  const t2 = await fs.readFile(await d2.path(), "utf8");
+  expect(t2.startsWith("﻿Empresa,Dominio,"), t2.slice(0, 40));
+  await sql`UPDATE app_settings SET csv_separator = ';'`;
+});
+
 await step("capturas de las pantallas principales", async () => {
   for (const [name, path] of [["tablero", "/pipelines/10000000-0000-0000-0000-000000000001"], ["empresa", "/organizations/60000000-0000-0000-0000-000000000001"],
                               ["leads", "/leads?status=all"], ["actividades", "/activities"], ["contacto", "/persons/70000000-0000-0000-0000-000000000001"],

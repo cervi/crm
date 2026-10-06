@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportLink } from "@/components/ExportLink";
 import { notFound } from "next/navigation";
 import { getOrganization, organizationContacts } from "@/lib/organizations";
 import { listDeals } from "@/lib/deals";
@@ -52,6 +53,8 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
           <div><h1>{org.name}</h1>{org.domain && <div className="meta">{org.domain}</div>}</div>
         </div>
         <span className="spacer" />
+        <ExportLink dataset="deals" params={{ organization: id }} label="Exportar deals" />
+        <ExportLink dataset="persons" params={{ organization: id }} label="Exportar contactos" />
         <Link href={`/deals/new?organization=${id}`} className="btn secondary">Nuevo deal</Link>
         <Link href={`/organizations/${id}/edit`} className="btn secondary">Editar</Link>
       </div>

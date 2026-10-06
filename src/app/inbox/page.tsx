@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportLink } from "@/components/ExportLink";
 import { countPending, getSettings, listActions } from "@/lib/automations";
 import { hasActiveMailbox } from "@/lib/mailbox";
 import { dateTime } from "@/lib/format";
@@ -41,6 +42,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       <nav className="tabs">
         <Link href="/inbox" aria-current={view === "pending" ? "page" : undefined}>Pendientes {pending > 0 && <span className="count">{pending}</span>}</Link>
         <Link href="/inbox?view=log" aria-current={view === "log" ? "page" : undefined}>Registro</Link>
+        {view === "log" && <span className="tabs-end"><ExportLink dataset="ai-log" label="Exportar CSV" small /></span>}
       </nav>
 
       {view === "pending" ? (

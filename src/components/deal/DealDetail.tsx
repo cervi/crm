@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportLink } from "../ExportLink";
 import { dealParticipants, getDeal, listLostReasons, stageHistory } from "@/lib/deals";
 import { listStages } from "@/lib/pipelines";
 import { listActivitiesFor } from "@/lib/activities";
@@ -363,7 +364,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
           </section>
 
           <section>
-            <h2 className="section-title">Historia</h2>
+            <h2 className="section-title">Historia <span className="spacer" /><ExportLink dataset="deal-history" params={{ deal: dealId }} label="Exportar CSV" small /></h2>
             <HistoryFeed items={items} />
           </section>
         </div>

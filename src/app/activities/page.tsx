@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportLink } from "@/components/ExportLink";
 import { listActivities, type Activity } from "@/lib/activities";
 import { listUsers } from "@/lib/users";
 import { activityLabel, dateTime, outcomeLabel } from "@/lib/format";
@@ -30,7 +31,11 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
 
   return (
     <main className="page">
-      <div className="page-head"><h1>Actividades</h1></div>
+      <div className="page-head">
+        <h1>Actividades</h1>
+        <span className="spacer" />
+        <ExportLink dataset="activities" params={{ view, owner }} />
+      </div>
       <nav className="tabs">
         <Link href={qs("pending")} aria-current={view === "pending" ? "page" : undefined}>Pendientes</Link>
         <Link href={qs("done")} aria-current={view === "done" ? "page" : undefined}>Hechas</Link>

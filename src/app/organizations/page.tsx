@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportLink } from "@/components/ExportLink";
 import { listOrganizations } from "@/lib/organizations";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
@@ -15,6 +16,7 @@ export default async function OrganizationsPage({ searchParams }: { searchParams
       <div className="page-head">
         <h1>Empresas</h1>
         <span className="spacer" />
+        <ExportLink dataset="organizations" params={{ q }} />
         <Link href="/organizations/new" className="btn"><Icon name="plus" />Nueva empresa</Link>
       </div>
       <form className="toolbar">

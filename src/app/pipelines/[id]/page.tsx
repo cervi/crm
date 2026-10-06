@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportLink } from "@/components/ExportLink";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import {
@@ -66,6 +67,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
           pipelines={pipelines.map((p) => ({ value: p.id, label: p.name }))}
           users={users.filter((u) => u.kind === "human").map((u) => ({ value: u.id, label: u.name }))}
           sorts={Object.entries(BOARD_SORTS).map(([value, label]) => ({ value, label }))}
+          actions={<ExportLink dataset="deals" params={{ pipeline: id, owner: ownerId, status: view === "board" ? "open" : status }} label="Exportar" />}
           summary={
             <>
               <strong>{money(total)}</strong> · {count} deal{count === 1 ? "" : "s"}

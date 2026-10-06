@@ -14,10 +14,12 @@ type Props = {
   sorts: Opt[];
   view: "board" | "list";
   summary: React.ReactNode;
+  /** Botones extra al final de la barra (p. ej. «Exportar CSV»). */
+  actions?: React.ReactNode;
 };
 
 /** Barra del tablero: vista, nuevo deal, pipeline, edición, responsable y orden. */
-export function PipelineToolbar({ pipelineId, pipelines, users, sorts, view, summary }: Props) {
+export function PipelineToolbar({ pipelineId, pipelines, users, sorts, view, summary, actions }: Props) {
   const router = useRouter();
   const path = usePathname();
   const params = useSearchParams();
@@ -54,6 +56,7 @@ export function PipelineToolbar({ pipelineId, pipelines, users, sorts, view, sum
       <Link href={`/deals/new?pipeline=${pipelineId}`} className="btn"><Icon name="plus" />Deal</Link>
       <span className="spacer" />
       <span className="board-count">{summary}</span>
+      {actions}
 
       <div className="menu-wrap" ref={ref}>
         <button type="button" className="btn secondary" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>

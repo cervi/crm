@@ -72,6 +72,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ id: 
                 <summary aria-label={`Opciones de ${w.title}`}>···</summary>
                 <div className="menu">
                   <Link href={`/dashboards/${id}/widgets/${w.id}`}>Editar</Link>
+                  <a href={`/api/export/widget?id=${w.id}`} download>Exportar CSV</a>
                   {i > 0 && <form action={moveWidgetAction.bind(null, id, w.id, "up")}><button>Mover antes</button></form>}
                   {i < widgets.length - 1 && <form action={moveWidgetAction.bind(null, id, w.id, "down")}><button>Mover después</button></form>}
                   <form action={deleteWidgetAction.bind(null, id, w.id)}><button className="danger-text">Eliminar</button></form>
