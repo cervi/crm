@@ -1,49 +1,201 @@
-import { sql } from "./db";
+import { z } from "zod";
+import { sql, transaction } from "./db";
+import { UserError } from "./errors";
+import { checkbox, optional, optText, parse, text } from "./validation";
+import { ACTIVITY_TYPES } from "./format";
 
-export type Pipeline = { id: string; name: string };
+export type Pipeline = { id: string; name: string; description: string | null; is_active: boolean; position: number };
+export type Stage = {
+  id: string;
+  pipeline_id: string;
+  name: string;
+  position: number;
+  win_probability: number | null;
+  rotten_after_days: number | null;
+  required_activity_type: string | null;
+  deals: number;
+};
+
+export async function listPipelines(includeInactive = false): Promise<Pipeline[]> {
+  return sql<Pipeline[]>`
+    SELECT id, name, description, is_active, position FROM pipelines
+    WHERE ${includeInactive} OR is_active ORDER BY position, name`;
+}
+
+export async function getPipeline(id: string): Promise<Pipeline | null> {
+  const [p] = await sql<Pipeline[]>`
+    SELECT id, name, description, is_active, position FROM pipelines WHERE id = ${id}`;
+  return p ?? null;
+}
+
+export async function listStages(pipelineId: string): Promise<Stage[]> {
+  return sql<Stage[]>`
+    SELECT s.id, s.pipeline_id, s.name, s.position, s.win_probability, s.rotten_after_days,
+           s.required_activity_type,
+           (SELECT count(*)::int FROM deals d WHERE d.stage_id = s.id AND d.deleted_at IS NULL) AS deals
+    FROM stages s WHERE s.pipeline_id = ${pipelineId} AND s.is_active ORDER BY s.position`;
+}
+
+/** Todas las fases activas de todos los pipelines (para selectores). */
+export async function listAllStages() {
+  return sql<{ id: string; pipeline_id: string; name: string; position: number }[]>`
+    SELECT s.id, s.pipeline_id, s.name, s.position FROM stages s
+    JOIN pipelines p ON p.id = s.pipeline_id
+    WHERE s.is_active AND p.is_active ORDER BY p.position, s.position`;
+}
 
 export type BoardDeal = {
   id: string;
   title: string;
   organization_name: string | null;
+  person_name: string | null;
+  owner_name: string | null;
   value: string | null;
   currency: string;
   days_in_stage: number;
   is_rotten: boolean;
   has_upcoming_session: boolean;
+  next_activity_at: Date | null;
 };
 
 export type BoardStage = {
   id: string;
   name: string;
   position: number;
+  rotten_after_days: number | null;
   total_value: string;
   deals: BoardDeal[];
 };
 
-export async function listPipelines(): Promise<Pipeline[]> {
-  return sql<Pipeline[]>`
-    SELECT id, name FROM pipelines WHERE is_active ORDER BY position, name`;
-}
-
-// Tablero de un pipeline: fases en orden, cada una con sus deals abiertos.
-export async function getBoard(pipelineId: string): Promise<BoardStage[]> {
+/** Tablero de un pipeline: fases en orden, cada una con sus deals abiertos. */
+export async function getBoard(pipelineId: string, ownerId?: string | null): Promise<BoardStage[]> {
   return sql<BoardStage[]>`
-    SELECT s.id, s.name, s.position,
+    SELECT s.id, s.name, s.position, s.rotten_after_days,
            coalesce(sum(o.value), 0)::text AS total_value,
            coalesce(
              json_agg(json_build_object(
                'id', o.id, 'title', o.title, 'organization_name', org.name,
+               'person_name', pp.full_name, 'owner_name', u.name,
                'value', o.value::text, 'currency', o.currency,
                'days_in_stage', o.days_in_stage, 'is_rotten', o.is_rotten,
-               'has_upcoming_session', o.has_upcoming_session
-             ) ORDER BY o.days_in_stage DESC) FILTER (WHERE o.id IS NOT NULL),
+               'has_upcoming_session', o.has_upcoming_session,
+               'next_activity_at', na.due_at
+             ) ORDER BY o.is_rotten DESC, o.days_in_stage DESC) FILTER (WHERE o.id IS NOT NULL),
              '[]'
            ) AS deals
     FROM stages s
-    LEFT JOIN open_deals_status o ON o.stage_id = s.id
+    LEFT JOIN open_deals_status o ON o.stage_id = s.id AND (${ownerId ?? null}::uuid IS NULL OR o.owner_id = ${ownerId ?? null}::uuid)
     LEFT JOIN organizations org ON org.id = o.organization_id
+    LEFT JOIN users u ON u.id = o.owner_id
+    LEFT JOIN LATERAL (
+      SELECT p.full_name FROM deal_participants dp JOIN persons p ON p.id = dp.person_id
+      WHERE dp.deal_id = o.id ORDER BY dp.is_primary DESC LIMIT 1
+    ) pp ON true
+    LEFT JOIN LATERAL (
+      SELECT min(a.due_at) AS due_at FROM activities a WHERE a.deal_id = o.id AND NOT a.done
+    ) na ON true
     WHERE s.pipeline_id = ${pipelineId} AND s.is_active
     GROUP BY s.id
     ORDER BY s.position`;
+}
+
+// ---------------------------------------------------------------------------
+// Administración
+
+const pipelineSchema = z.object({
+  name: text("El nombre", 100),
+  description: optText(500),
+  is_active: checkbox,
+});
+
+export async function createPipeline(data: unknown): Promise<string> {
+  const v = parse(pipelineSchema.extend({ stages: optText(4000) }), data);
+  return transaction(async (tx) => {
+    const [{ next }] = await tx<{ next: number }[]>`SELECT coalesce(max(position), 0) + 1 AS next FROM pipelines`;
+    const [p] = await tx<{ id: string }[]>`
+      INSERT INTO pipelines (name, description, position) VALUES (${v.name}, ${v.description ?? null}, ${next})
+      RETURNING id`;
+    const names = (v.stages ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+    const stageNames = names.length ? names : ["Nuevo", "En curso", "Propuesta", "Negociación"];
+    for (const [i, name] of stageNames.entries()) {
+      await tx`INSERT INTO stages (pipeline_id, name, position) VALUES (${p.id}, ${name.slice(0, 100)}, ${i + 1})`;
+    }
+    return p.id;
+  });
+}
+
+export async function updatePipeline(id: string, data: unknown) {
+  const v = parse(pipelineSchema, data);
+  if (!v.is_active) {
+    const [{ open }] = await sql<{ open: number }[]>`
+      SELECT count(*)::int AS open FROM deals WHERE pipeline_id = ${id} AND status = 'open' AND deleted_at IS NULL`;
+    if (open > 0) throw new UserError(`No se puede desactivar: tiene ${open} deal(s) abiertos.`);
+  }
+  await sql`UPDATE pipelines SET name = ${v.name}, description = ${v.description ?? null}, is_active = ${v.is_active}
+            WHERE id = ${id}`;
+}
+
+const activityTypes = ACTIVITY_TYPES.map((a) => a.value) as [string, ...string[]];
+const stageSchema = z.object({
+  name: text("El nombre", 100),
+  win_probability: optional(z.coerce.number().int().min(0).max(100, "La probabilidad va de 0 a 100")),
+  rotten_after_days: optional(z.coerce.number().int().min(1, "Los días deben ser 1 o más")),
+  required_activity_type: optional(z.enum(activityTypes)),
+});
+
+export async function addStage(pipelineId: string, data: unknown) {
+  const v = parse(stageSchema, data);
+  await sql`
+    INSERT INTO stages (pipeline_id, name, position, win_probability, rotten_after_days, required_activity_type)
+    SELECT ${pipelineId}, ${v.name}, coalesce(max(position), 0) + 1, ${v.win_probability ?? null},
+           ${v.rotten_after_days ?? null}, ${v.required_activity_type ?? null}
+    FROM stages WHERE pipeline_id = ${pipelineId}`;
+}
+
+export async function updateStage(stageId: string, data: unknown) {
+  const v = parse(stageSchema, data);
+  await sql`
+    UPDATE stages SET name = ${v.name}, win_probability = ${v.win_probability ?? null},
+           rotten_after_days = ${v.rotten_after_days ?? null},
+           required_activity_type = ${v.required_activity_type ?? null}
+    WHERE id = ${stageId}`;
+}
+
+/** Sube o baja una fase intercambiando su posición con la vecina. */
+export async function moveStage(stageId: string, direction: "up" | "down") {
+  await transaction(async (tx) => {
+    const [s] = await tx<{ pipeline_id: string; position: number }[]>`
+      SELECT pipeline_id, position FROM stages WHERE id = ${stageId}`;
+    if (!s) throw new UserError("La fase no existe.");
+    const [n] = direction === "up"
+      ? await tx<{ id: string; position: number }[]>`
+          SELECT id, position FROM stages WHERE pipeline_id = ${s.pipeline_id} AND is_active AND position < ${s.position}
+          ORDER BY position DESC LIMIT 1`
+      : await tx<{ id: string; position: number }[]>`
+          SELECT id, position FROM stages WHERE pipeline_id = ${s.pipeline_id} AND is_active AND position > ${s.position}
+          ORDER BY position LIMIT 1`;
+    if (!n) return;
+    // La unicidad de la posición se comprueba al final de la transacción.
+    await tx`SET CONSTRAINTS ALL DEFERRED`;
+    await tx`UPDATE stages SET position = ${n.position} WHERE id = ${stageId}`;
+    await tx`UPDATE stages SET position = ${s.position} WHERE id = ${n.id}`;
+  });
+}
+
+/** Elimina una fase sin deals (si tiene deals, hay que moverlos antes). */
+export async function deleteStage(stageId: string) {
+  await transaction(async (tx) => {
+    const [s] = await tx<{ pipeline_id: string; deals: number; history: number; siblings: number }[]>`
+      SELECT s.pipeline_id,
+             (SELECT count(*)::int FROM deals d WHERE d.stage_id = s.id) AS deals,
+             (SELECT count(*)::int FROM deal_stage_history h WHERE h.to_stage_id = s.id OR h.from_stage_id = s.id) AS history,
+             (SELECT count(*)::int FROM stages x WHERE x.pipeline_id = s.pipeline_id AND x.is_active) AS siblings
+      FROM stages s WHERE s.id = ${stageId}`;
+    if (!s) throw new UserError("La fase no existe.");
+    if (s.deals > 0) throw new UserError(`La fase tiene ${s.deals} deal(s). Muévelos a otra fase antes de eliminarla.`);
+    if (s.siblings <= 1) throw new UserError("Un pipeline necesita al menos una fase.");
+    // Si aparece en el historial de algún deal, se desactiva en vez de borrarse.
+    if (s.history > 0) await tx`UPDATE stages SET is_active = false, position = position + 100000 WHERE id = ${stageId}`;
+    else await tx`DELETE FROM stages WHERE id = ${stageId}`;
+  });
 }
