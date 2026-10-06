@@ -34,7 +34,7 @@ export function BulkSelectAll() {
 }
 
 /** Barra que aparece al marcar deals: cambiar responsable, fase, ganar/perder o crear una actividad para todos. */
-export function DealBulkBar({ users, stages, reasons, types }: { users: Opt[]; stages: Opt[]; reasons: Opt[]; types: Opt[] }) {
+export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: { users: Opt[]; stages: Opt[]; reasons: Opt[]; types: Opt[]; sequences?: Opt[] }) {
   const router = useRouter();
   const [count, setCount] = useState(0);
   const [op, setOp] = useState("");
@@ -76,6 +76,7 @@ export function DealBulkBar({ users, stages, reasons, types }: { users: Opt[]; s
             <option value="owner">Cambiar responsable</option>
             <option value="stage">Mover a otra fase</option>
             <option value="activity">Programar una actividad</option>
+            {sequences.length > 0 && <option value="sequence">Añadir a una secuencia</option>}
             <option value="won">Marcar como ganados</option>
             <option value="lost">Marcar como perdidos</option>
           </select>
@@ -89,6 +90,12 @@ export function DealBulkBar({ users, stages, reasons, types }: { users: Opt[]; s
             <select name="stage_id" aria-label="Fase" required defaultValue="">
               <option value="" disabled>Fase…</option>
               {stages.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          )}
+          {op === "sequence" && (
+            <select name="sequence_id" aria-label="Secuencia" required defaultValue="">
+              <option value="" disabled>Secuencia…</option>
+              {sequences.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
             </select>
           )}
           {op === "lost" && (

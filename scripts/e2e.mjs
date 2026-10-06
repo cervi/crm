@@ -428,6 +428,29 @@ if (process.env.MOCK_URL) {
     const [pe2] = await sql`SELECT status, sent_at, external_ref FROM emails WHERE id = ${pe.id}`;
     check(rs.scheduled?.sent === 1 && pe2.status === "sent" && pe2.external_ref && (await mock("/__state")).sent.length === nBefore + 1,
           "correo: el programado se envía cuando llega su hora", JSON.stringify({ sch: rs.scheduled, pe2 }));
+    // Secuencia: el primer paso sale por Outlook y al responder se para.
+    const [seq] = await sql`SELECT id FROM sequences WHERE name = 'Seguimiento tras la propuesta'`;
+    const [en] = await sql`INSERT INTO sequence_enrollments (sequence_id, deal_id, person_id, user_id, next_step, next_run_at, enrolled_by)
+                           VALUES (${seq.id}, ${DEAL_OPEN}, ${PERSON}, ${OWNER}, 0, now() - interval '1 minute', ${ADMIN_ID}) RETURNING id`;
+    const sBefore = (await mock("/__state")).sent.length;
+    const rq = await run();
+    const [en1] = await sql`SELECT status, next_step, next_run_at, error FROM sequence_enrollments WHERE id = ${en.id}`;
+    const [se] = await sql`SELECT subject, body FROM emails WHERE enrollment_id = ${en.id}`;
+    const inDays = en1.next_run_at ? Math.round((new Date(en1.next_run_at) - Date.now()) / 86400000) : null;
+    check(rq.sequences?.sent === 1 && (await mock("/__state")).sent.length === sBefore + 1 && se?.subject === "¿Qué te ha parecido la propuesta?"
+          && se.body.startsWith("Hola Ana,") && se.body.includes("(hora de Madrid)") && en1.status === "active" && en1.next_step === 1 && inDays === 3,
+          "secuencia: el primer paso sale por Outlook con los datos del deal y el siguiente queda en 3 días", JSON.stringify({ seq: rq.sequences, en1, subject: se?.subject }));
+    const seqPage = await (await get(`/sequences/${seq.id}`)).text();
+    check(seqPage.includes("Seguimiento tras la propuesta") && seqPage.includes("Ana García") && seqPage.includes("En marcha") && seqPage.includes("Paso 4"),
+          "/sequences/<id> muestra los pasos y quién está en marcha");
+    await sql`INSERT INTO emails (direction, status, deal_id, person_id, from_email, subject, body, sent_at)
+              VALUES ('in', 'sent', ${DEAL_OPEN}, ${PERSON}, 'ana@paco.example', 'Re: propuesta', 'Sí, hablamos el jueves', now())`;
+    await run();
+    const [en2] = await sql`SELECT status, stopped_reason FROM sequence_enrollments WHERE id = ${en.id}`;
+    check(en2.status === "stopped" && en2.stopped_reason === "Respondió", "secuencia: al responder el contacto, se para sola", JSON.stringify(en2));
+    const list = await (await get("/sequences")).text();
+    check(list.includes("Seguimiento tras la propuesta") && list.includes("Respondieron"), "/sequences lista las secuencias con sus resultados");
+
     const page = await (await get(`/deals/${DEAL_OPEN}`)).text();
     check(page.includes("Correos") && page.includes("Programado de prueba") && page.includes("Abierto") && page.includes("Seguir aperturas y clics")
           && page.includes("Seguimiento tras la demo"), "correo: la ficha muestra la conversación, las aperturas y las plantillas");

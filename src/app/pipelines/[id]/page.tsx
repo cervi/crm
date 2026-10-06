@@ -11,6 +11,7 @@ import { listLostReasons } from "@/lib/deals";
 import { activeActivityTypes } from "@/lib/activity-types";
 import { requireUser } from "@/lib/auth";
 import { listViews, normalizeQuery } from "@/lib/views";
+import { listSequences } from "@/lib/sequences";
 import { deleteViewAction, saveViewAction } from "@/app/actions/views";
 import { ActionForm } from "@/components/ActionForm";
 import { ColumnPicker } from "@/components/ColumnPicker";
@@ -55,10 +56,10 @@ export default async function PipelinePage({ params, searchParams }: { params: P
   const listData = view === "list"
     ? await Promise.all([
         listPipelineDeals(id, { ownerId, status, sort: listSort, dir, ...filters }), listFieldDefinitions("deal"),
-        listViews("deals", me.id), listStages(id), listLostReasons(), activeActivityTypes(),
+        listViews("deals", me.id), listStages(id), listLostReasons(), activeActivityTypes(), listSequences(),
       ])
     : null;
-  const [rows, defs, views, pipelineStages, reasons, types] = listData ?? [[], [], [], [], [], []];
+  const [rows, defs, views, pipelineStages, reasons, types, seqs] = listData ?? [[], [], [], [], [], [], []];
   const columns = parseDealColumns(sp.cols, defs.map((d) => d.key));
   const currentQuery = normalizeQuery("deals", sp);
   const filtered = Boolean(filters.q || filters.stageId || filters.flag || filters.min !== null || filters.max !== null);
@@ -169,7 +170,8 @@ export default async function PipelinePage({ params, searchParams }: { params: P
               users={users.filter((u) => u.kind === "human").map((u) => ({ value: u.id, label: u.name }))}
               stages={pipelineStages.map((st) => ({ value: st.id, label: st.name }))}
               reasons={reasons.map((r) => ({ value: r.id, label: r.label }))}
-              types={types.map((t) => ({ value: t.key, label: t.label }))} />
+              types={types.map((t) => ({ value: t.key, label: t.label }))}
+              sequences={seqs.filter((q) => q.is_active && q.steps > 0).map((q) => ({ value: q.id, label: q.name }))} />
 
             <div className="table-wrap">
               <table>

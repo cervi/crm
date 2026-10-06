@@ -37,6 +37,8 @@ import { renderTemplate } from "@/lib/automations";
 import { publicBase } from "@/lib/email-track";
 import { requireUser } from "@/lib/auth";
 import { cancelScheduledEmailAction } from "@/app/actions/mailbox";
+import { listEnrollments, listSequences } from "@/lib/sequences";
+import { enrollAction, stopEnrollmentAction } from "@/app/actions/sequences";
 
 type PanelNav = { closeHref: string; fullHref: string; prevHref: string | null; nextHref: string | null };
 
@@ -67,10 +69,12 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     activeActivityTypes(),
   ]);
   const me = await requireUser();
-  const [emails, templates, vars, [appSettings]] = await Promise.all([
+  const [emails, templates, vars, [appSettings], enrollments, allSequences] = await Promise.all([
     listEmails({ dealId }), listTemplates(me.id), templateVars(dealId),
     sql<{ email_tracking: boolean }[]>`SELECT email_tracking FROM app_settings LIMIT 1`,
+    listEnrollments({ dealId }), listSequences(),
   ]);
+  const sequences = allSequences.filter((q) => q.is_active && q.steps > 0);
   const composerTemplates = templates.map((t) => ({
     id: t.id, name: t.name, subject: renderTemplate(t.subject, vars), body: renderTemplate(t.body, vars),
   }));
@@ -256,6 +260,45 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 <label className="field"><span className="label">Título</span><input name="title" placeholder="Propuesta, presentación…" /></label>
               </ActionForm>
             </details>
+          </section>
+
+          <section className="side-section deal-sequences" aria-label="Secuencias">
+            <h3>Secuencias <span className="muted">{enrollments.filter((e) => e.status === "active").length}</span></h3>
+            {enrollments.length > 0 && (
+              <ul>
+                {enrollments.slice(0, 5).map((e) => (
+                  <li key={e.id}>
+                    <Link href={`/sequences/${e.sequence_id}`}>{e.sequence_name}</Link>
+                    <span className="meta">
+                      {e.person_name} · {e.status === "active"
+                        ? `paso ${Math.min(e.next_step + 1, e.steps)} de ${e.steps}${e.next_run_at ? `, ${dateTime(e.next_run_at)}` : ""}`
+                        : e.stopped_reason ?? (e.status === "completed" ? "terminada" : "con error")}
+                    </span>
+                    {e.status === "active" && (
+                      <form action={stopEnrollmentAction.bind(null, e.id, back)}><button type="submit" className="link-btn">Parar</button></form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {isOpen && sequences.length > 0 && participants.length > 0 && (
+              <details>
+                <summary className="meta">+ Añadir a una secuencia</summary>
+                <ActionForm action={enrollAction.bind(null, dealId, back)} submitLabel="Añadir" resetOnSuccess secondary>
+                  <label className="field"><span className="label">Secuencia</span>
+                    <select name="sequence_id" required defaultValue="">
+                      <option value="" disabled>Elige…</option>
+                      {sequences.map((q) => <option key={q.id} value={q.id}>{q.name} ({q.steps} pasos)</option>)}
+                    </select></label>
+                  {participants.length > 1 && (
+                    <label className="field"><span className="label">Contacto</span>
+                      <select name="person_id" defaultValue={primary?.person_id ?? participants[0].person_id}>
+                        {participants.map((p) => <option key={p.person_id} value={p.person_id}>{p.full_name}</option>)}
+                      </select></label>
+                  )}
+                </ActionForm>
+              </details>
+            )}
           </section>
         </aside>
 

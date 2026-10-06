@@ -849,6 +849,27 @@ await step("lista de deals: filtrar, guardar la vista y cambiar el responsable d
             WHERE id IN ('90000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000003')`;
 });
 
+await step("secuencias: crear una, añadir un paso y meter al contacto de un deal; luego pararla", async () => {
+  await page.goto("/sequences");
+  await page.getByLabel("Nombre").fill(`Reactivar ${stamp}`);
+  await submit("Crear y añadir pasos");
+  await page.waitForURL(/\/sequences\/[0-9a-f-]{36}$/);
+  const add = page.locator("section", { has: page.getByRole("heading", { name: "Añadir un paso" }) });
+  await add.getByLabel("Días tras añadirlo").fill("0");
+  await add.getByLabel("Asunto").fill("¿Retomamos {deal}?");
+  await add.getByRole("button", { name: "Añadir paso" }).click();
+  await page.getByRole("listitem", { name: "Paso 1" }).getByText("¿Retomamos {deal}?").waitFor();
+  await page.goto(`/deals/${PACO_OPEN}`);
+  const side = page.getByRole("region", { name: "Secuencias" });
+  await side.getByText("+ Añadir a una secuencia").click();
+  await side.getByLabel("Secuencia").selectOption({ label: `Reactivar ${stamp} (1 pasos)` });
+  await side.getByRole("button", { name: "Añadir" }).click();
+  await side.getByRole("link", { name: `Reactivar ${stamp}` }).waitFor();
+  await shot("secuencia-en-deal");
+  await side.locator("li", { hasText: `Reactivar ${stamp}` }).getByRole("button", { name: "Parar" }).click();
+  await side.locator("li", { hasText: `Reactivar ${stamp}` }).getByText("Parada a mano").waitFor();
+});
+
 await step("dar acceso a un comercial, que entra, cambia su contraseña temporal y no ve los ajustes de admin", async () => {
   await page.goto("/settings/users");
   const card = page.getByRole("article", { name: "Usuario Customer Success" });

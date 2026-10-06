@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { sql, transaction } from "./db";
 import { createActivity } from "./activities";
+import { enroll } from "./sequences";
 import { loseDeal, moveDealToStage, winDeal } from "./deals";
 import { UserError, toUserMessage } from "./errors";
 import { recordEvent, type Actor } from "./events";
@@ -17,6 +18,7 @@ const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("owner"), owner_id: z.union([id, z.literal("")]) }),
   z.object({ op: z.literal("stage"), stage_id: id }),
   z.object({ op: z.literal("won") }),
+  z.object({ op: z.literal("sequence"), sequence_id: id }),
   z.object({ op: z.literal("lost"), lost_reason_id: id, lost_note: optText(1000) }),
   z.object({
     op: z.literal("activity"), type: z.string().trim().min(1), subject: text("El asunto", 300),
@@ -71,6 +73,7 @@ export async function bulkDeals(actor: Actor, ids: unknown, data: unknown): Prom
           break;
         }
         case "won": await winDeal(actor, dealId); break;
+        case "sequence": await enroll(actor, v.sequence_id, dealId); break;
         case "lost": await loseDeal(actor, dealId, { lost_reason_id: v.lost_reason_id, lost_note: v.lost_note }); break;
         case "activity": {
           const [p] = await sql<{ person_id: string }[]>`

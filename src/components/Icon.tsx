@@ -28,6 +28,7 @@ const PATHS = {
   inbox: "M3 13h5l2 3h4l2-3h5M5.5 5h13L21 13v6H3v-6z",
   spark: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z",
   sort: "M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4",
+  send: "M21 3L10 14M21 3l-7 18-4-7-7-4z",
 } as const;
 
 export type IconName = keyof typeof PATHS;

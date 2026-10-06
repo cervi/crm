@@ -884,3 +884,10 @@ a.btn.small svg { width: 14px; height: 14px; }
 .week-item.overdue { background: var(--bad-soft); }
 @media (max-width: 900px) { .week-grid { grid-template-columns: 1fr; } .week-day { min-height: 0; } }
 .rule-conditions { margin-top: 10px; } .rule-conditions summary { cursor: pointer; }
+
+/* Secuencias */
+.seq-steps { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 10px; counter-reset: step; }
+.seq-step { margin: 0; border-left: 3px solid var(--accent); }
+.deal-sequences ul { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.deal-sequences li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.deal-sequences li form { margin-left: auto; }
