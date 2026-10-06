@@ -903,10 +903,11 @@ await step("formulario web: crearlo en Ajustes y que un visitante lo envíe", as
 
 await step("productos en un deal (el importe se recalcula) y propuesta que el cliente abre y acepta", async () => {
   await page.goto("/settings/products");
-  await page.getByLabel("Nombre").fill(`Licencia ${stamp}`);
-  await page.getByLabel("Precio (€)").fill("1200");
-  await page.getByLabel("Cobro").selectOption("yearly");
-  await submit("Añadir producto");
+  const add = page.locator("section", { has: page.getByRole("heading", { name: "Nuevo producto" }) });
+  await add.getByLabel("Nombre").fill(`Licencia ${stamp}`);
+  await add.getByLabel("Precio (€)").fill("1200");
+  await add.getByLabel("Cobro").selectOption("yearly");
+  await add.getByRole("button", { name: "Añadir producto" }).click();
   await page.getByRole("article", { name: `Producto Licencia ${stamp}` }).waitFor();
   const [open] = await sql`SELECT d.id FROM deals d WHERE d.status = 'open' AND d.deleted_at IS NULL
                            AND EXISTS (SELECT 1 FROM deal_participants dp WHERE dp.deal_id = d.id) ORDER BY d.created_at DESC LIMIT 1`;
