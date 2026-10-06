@@ -1,4 +1,5 @@
-import { json, type Db } from "./db";
+import { json, safely, type Db } from "./db";
+import { notifyForEvent } from "./notifications";
 
 export type EntityType = "organization" | "person" | "lead" | "deal" | "activity" | "note";
 export type Actor = { type: "user" | "ai_agent" | "system" | "integration"; id: string | null };
@@ -26,6 +27,9 @@ export async function recordEvent(
   await db`
     INSERT INTO events (entity_type, entity_id, event_type, actor_type, actor_id, payload)
     VALUES (${entityType}, ${entityId}, ${eventType}, ${actor.type}, ${actor.id}, ${json(payload)})`;
+  // Los avisos no deben romper nunca la acción que los provoca: dentro de una
+  // transacción van en un «savepoint», para que un fallo no la anule.
+  await safely(db, "avisos", (d) => notifyForEvent(d, actor, entityType, entityId, eventType, payload));
 }
 
 export type TimelineEvent = {
@@ -69,6 +73,8 @@ const LABELS: Record<string, string> = {
   "sequence.enrolled": "Añadido a una secuencia",
   "lead.assigned": "Asignado automáticamente",
   "proposal.created": "Propuesta creada",
+  "deal.deleted": "Deal borrado", "deal.restored": "Deal recuperado de la papelera",
+  "person.merged": "Fusionado con duplicados", "organization.merged": "Fusionada con duplicados",
   "proposal.viewed": "El cliente abrió la propuesta",
   "proposal.accepted": "Propuesta aceptada por el cliente",
   "proposal.declined": "Propuesta rechazada por el cliente",

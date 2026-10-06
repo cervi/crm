@@ -940,6 +940,47 @@ await step("productos en un deal (el importe se recalcula) y propuesta que el cl
   await page.getByRole("region", { name: "Productos y propuestas" }).getByText("Aceptada por Cliente UI").waitFor();
 });
 
+await step("mención en una nota avisa; borrar un lead y recuperarlo; fusionar duplicados", async () => {
+  // Mención: «@Customer Success» en una nota del deal.
+  const [open] = await sql`SELECT id FROM deals WHERE status = 'open' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`;
+  await page.goto(`/deals/${open.id}`);
+  await page.locator(".composer textarea[name=content]").fill(`@Customer Success revisa esto ${stamp}`);
+  await submit("Guardar nota");
+  await page.getByText(`revisa esto ${stamp}`).first().waitFor();
+  const [n] = await sql`SELECT count(*)::int AS n FROM notifications WHERE kind = 'mention' AND body LIKE ${`%revisa esto ${stamp}%`}
+                          AND user_id = (SELECT id FROM users WHERE name = 'Customer Success')`;
+  expect(n.n === 1, "no llegó el aviso de la mención");
+
+  // Papelera.
+  const [lead] = await sql`SELECT id, title FROM leads WHERE deleted_at IS NULL AND status = 'open' ORDER BY created_at DESC LIMIT 1`;
+  await page.goto(`/leads/${lead.id}`);
+  await page.getByRole("button", { name: "Borrar", exact: true }).click();
+  await page.waitForURL(/\/leads$/);
+  await page.goto("/trash");
+  const row = page.getByRole("row", { name: new RegExp(lead.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
+  await row.getByRole("button", { name: "Recuperar" }).click();
+  await row.waitFor({ state: "detached" });
+  const [back] = await sql`SELECT deleted_at FROM leads WHERE id = ${lead.id}`;
+  expect(back.deleted_at === null, "no se recuperó el lead");
+
+  // Duplicados.
+  const [org] = await sql`INSERT INTO organizations (name) VALUES (${`Gemelos ${stamp} S.L.`}) RETURNING id`;
+  const [a] = await sql`INSERT INTO persons (first_name, last_name) VALUES ('Luis', ${`Gemelo ${stamp}`}) RETURNING id`;
+  const [b] = await sql`INSERT INTO persons (first_name, last_name) VALUES ('luis', ${`gemelo ${stamp}`}) RETURNING id`;
+  await sql`INSERT INTO person_organizations (person_id, organization_id, status) VALUES (${a.id}, ${org.id}, 'current'), (${b.id}, ${org.id}, 'current')`;
+  await sql`INSERT INTO person_emails (person_id, email, is_primary) VALUES (${b.id}, ${`luis.${stamp}@gemelos.example`}, true)`;
+  await sql`INSERT INTO notes (content, person_id) VALUES ('Nota del duplicado', ${b.id})`;
+  await page.goto("/duplicates");
+  const card = page.getByRole("article", { name: new RegExp(`Duplicados Luis Gemelo ${stamp}`, "i") });
+  await card.getByRole("button", { name: /Fusionar/ }).click();
+  await card.waitFor({ state: "detached" });
+  const survivors = await sql`SELECT id FROM persons WHERE id IN (${a.id}, ${b.id}) AND deleted_at IS NULL`;
+  const keep = survivors[0]?.id;
+  const [moved] = await sql`SELECT (SELECT count(*)::int FROM person_emails WHERE person_id = ${keep}) AS emails,
+                                   (SELECT count(*)::int FROM notes WHERE person_id = ${keep}) AS notes`;
+  expect(survivors.length === 1 && moved.emails === 1 && moved.notes === 1, `fusión: ${JSON.stringify({ survivors, moved })}`);
+});
+
 await step("dar acceso a un comercial, que entra, cambia su contraseña temporal y no ve los ajustes de admin", async () => {
   await page.goto("/settings/users");
   const card = page.getByRole("article", { name: "Usuario Customer Success" });

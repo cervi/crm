@@ -37,6 +37,7 @@ import { renderTemplate } from "@/lib/automations";
 import { publicBase } from "@/lib/email-track";
 import { requireUser } from "@/lib/auth";
 import { cancelScheduledEmailAction } from "@/app/actions/mailbox";
+import { trashAction } from "@/app/actions/trash";
 import { listEnrollments, listSequences } from "@/lib/sequences";
 import { enrollAction, stopEnrollmentAction } from "@/app/actions/sequences";
 import { BILLING_LABELS, dealLines, listProducts } from "@/lib/products";
@@ -164,6 +165,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               <ActionForm action={reopenDealAction.bind(null, dealId)} submitLabel="Reabrir" secondary className="form inline" />
             )}
             <Link href={`/deals/${dealId}/edit`} className="btn secondary">Editar</Link>
+            <ActionForm action={trashAction.bind(null, "deal", dealId)} submitLabel="Borrar" pendingLabel="…" secondary className="form inline deal-trash" />
           </div>
         </div>
 
@@ -353,7 +355,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             note={
               <ActionForm action={createNoteAction.bind(null, back)} submitLabel="Guardar nota" resetOnSuccess>
                 <input type="hidden" name="deal_id" value={dealId} />
-                <textarea name="content" rows={3} required placeholder="Escribe una nota…" aria-label="Nota" />
+                <textarea name="content" rows={3} required placeholder="Escribe una nota… (con @Nombre avisas a alguien del equipo)" aria-label="Nota" />
               </ActionForm>
             }
             activity={

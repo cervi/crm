@@ -1024,6 +1024,8 @@ if (KEY) {
   check(leadPage.includes("Ha pedido una demo o reunión") && leadPage.includes("/ 100"), "ficha del lead: la puntuación con sus motivos");
   const asg = await (await get("/settings/assignment")).text();
   check(asg.includes("Reparto automático: activado") && asg.includes("webinar-e2e"), "/settings/assignment muestra las reglas");
+  const [na] = await sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${MEMBER_ID} AND kind = 'assigned'`;
+  check(na.n >= 1, "avisos: a quien le asignan un lead le llega un aviso", JSON.stringify(na));
   await sql`UPDATE app_settings SET assignment_enabled = false`;
 }
 
@@ -1063,6 +1065,49 @@ if (KEY) {
   check((await fetch(`${BASE}/p/no-existe-0123456789abcdef`)).status === 404, "propuesta: un enlace inventado → 404");
   const prod = await (await get("/settings/products")).text();
   check(prod.includes("Productos") && prod.includes("Nuevo producto"), "/settings/products");
+}
+
+// ------------------------------------------------------------- Avisos, importar CSV, duplicados
+{
+  // Abrir una propuesta avisa al responsable del deal.
+  const [own] = await sql`SELECT owner_id FROM deals WHERE id = ${DEAL_OPEN}`;
+  const [pn] = await sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${own.owner_id} AND kind = 'proposal.viewed'`;
+  check(pn.n >= 1, "avisos: el responsable sabe que el cliente abrió la propuesta", JSON.stringify(pn));
+  const nl = await (await get("/api/notifications")).json();
+  check(Array.isArray(nl.items) && typeof nl.unread === "number", "avisos: la campana lista los avisos", JSON.stringify(nl).slice(0, 100));
+  const mr = await (await get("/api/notifications", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).json();
+  check(mr.unread === 0, "avisos: marcar todo como leído", JSON.stringify(mr));
+  check((await fetch(`${BASE}/api/notifications`)).status === 401, "avisos: sin sesión → 401");
+
+  // CSV: vista previa con las columnas reconocidas e importación.
+  const csvText = "\uFEFFNombre completo;Email;Empresa;Cargo;Teléfono;Notas\r\n"
+    + "Elena CSV;elena.csv@csv-uno.example;CSV Uno S.L.;Directora;600111222;\"Vino de la feria; muy interesada\"\r\n"
+    + "Pablo CSV;pablo.csv@csv-dos.example;CSV Dos;;;\r\n"
+    + "Sin Email;no-es-un-email;;;;\r\n";
+  const imp = (body) => get("/api/import/csv", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+  const pv = await imp({ text: csvText, step: "preview" });
+  check(pv.total === 3 && pv.mapping.join(",") === "full_name,email,company,job_title,phone,message" && pv.sample[0][5] === "Vino de la feria; muy interesada",
+        "CSV: reconoce las columnas por su título (también con «;» dentro de comillas)", JSON.stringify(pv.mapping));
+  const ir = await imp({ text: csvText, mapping: pv.mapping, mode: "leads", source: "feria e2e" });
+  const [el] = await sql`SELECT l.source, p.full_name, o.name AS org, (SELECT content FROM notes n WHERE n.lead_id = l.id LIMIT 1) AS note
+                         FROM leads l JOIN persons p ON p.id = l.person_id LEFT JOIN organizations o ON o.id = l.organization_id
+                         JOIN person_emails pe ON pe.person_id = p.id WHERE pe.email = 'elena.csv@csv-uno.example'`;
+  check(ir.created === 2 && ir.skipped === 1 && ir.errors[0]?.row === 4 && el?.source === "feria e2e" && el.org === "CSV Uno S.L." && el.note?.includes("feria"),
+        "CSV: importa los leads con su empresa y notas, y dice qué filas no", JSON.stringify({ ir, el }));
+  const ir2 = await imp({ text: csvText, mapping: pv.mapping, mode: "contacts" });
+  check(ir2.created === 0 && ir2.updated === 2, "CSV: volver a importar no duplica contactos", JSON.stringify(ir2));
+
+  // Duplicados: dos contactos con el mismo nombre en la misma empresa.
+  const [org] = await sql`INSERT INTO organizations (name) VALUES ('Duplis S.L.') RETURNING id`;
+  const [a] = await sql`INSERT INTO persons (first_name, last_name) VALUES ('Marta', 'Doble') RETURNING id`;
+  const [b] = await sql`INSERT INTO persons (first_name, last_name) VALUES ('marta', 'doble') RETURNING id`;
+  await sql`INSERT INTO person_organizations (person_id, organization_id, status) VALUES (${a.id}, ${org.id}, 'current'), (${b.id}, ${org.id}, 'current')`;
+  const dup = await (await get("/duplicates")).text();
+  check(dup.includes("Marta Doble") && dup.includes("Fusionar (2)"), "duplicados: detecta contactos repetidos");
+  const dupOrg = await (await get("/duplicates?kind=organization")).text();
+  check(dupOrg.includes("Duplicados"), "duplicados: pestaña de empresas");
+  const trash = await (await get("/trash")).text();
+  check(trash.includes("Papelera"), "/trash muestra la papelera");
 }
 
 // ------------------------------------------------------------- Reservas y semana

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { trashAction } from "@/app/actions/trash";
 import { notFound } from "next/navigation";
 import { getPerson, personContactInfo } from "@/lib/persons";
 import { listDeals } from "@/lib/deals";
@@ -64,6 +65,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         <span className="spacer" />
         <Link href={`/deals/new?person=${id}${current[0] ? `&organization=${current[0].organization_id}` : ""}`} className="btn secondary">Nuevo deal</Link>
         <Link href={`/persons/${id}/edit`} className="btn secondary">Editar</Link>
+        <ActionForm action={trashAction.bind(null, "person", id)} submitLabel="Borrar" pendingLabel="…" secondary className="form inline" />
       </div>
 
       <div className="split">

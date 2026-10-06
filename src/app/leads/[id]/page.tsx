@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { trashAction } from "@/app/actions/trash";
 import { ScoreBadge, ScoreReasons } from "@/components/ScoreBadge";
 import { recomputeScores } from "@/lib/scoring";
 import { notFound } from "next/navigation";
@@ -51,6 +52,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         {lead.status === "open" && (
           <ActionForm action={archiveLeadAction.bind(null, id)} submitLabel="Archivar" secondary className="form inline" />
         )}
+        <ActionForm action={trashAction.bind(null, "lead", id)} submitLabel="Borrar" pendingLabel="…" secondary className="form inline" />
       </div>
 
       <div className="split">

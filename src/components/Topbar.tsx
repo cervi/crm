@@ -7,6 +7,7 @@ import { GlobalSearch } from "./GlobalSearch";
 import { Icon } from "./Icon";
 import { NAV_ITEMS } from "./Nav";
 import { logoutAction } from "@/app/actions/auth";
+import { NotificationBell } from "./NotificationBell";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -41,7 +42,7 @@ function useMenu() {
 export type TopbarUser = { name: string; email: string; role: "admin" | "member" | "viewer" };
 const ROLE: Record<TopbarUser["role"], string> = { admin: "Administrador", member: "Comercial", viewer: "Solo lectura" };
 
-export function Topbar({ theme: initialTheme, user: me }: { theme: Theme; user: TopbarUser }) {
+export function Topbar({ theme: initialTheme, user: me, unread = 0 }: { theme: Theme; user: TopbarUser; unread?: number }) {
   const path = usePathname();
   const section = NAV_ITEMS.find((i) => i.match.some((m) => path === m || path.startsWith(`${m}/`)))?.label
     ?? (path.startsWith("/search") ? "Búsqueda" : "");
@@ -63,6 +64,7 @@ export function Topbar({ theme: initialTheme, user: me }: { theme: Theme; user: 
       <div className="topbar-section">{section}</div>
       <GlobalSearch />
       <div className="topbar-actions">
+        <NotificationBell initialUnread={unread} />
         <div className="menu-wrap" ref={add.ref}>
           <button type="button" className="icon-btn" aria-label="Crear" aria-expanded={add.open} onClick={() => add.setOpen((o) => !o)}>
             <Icon name="plus" />

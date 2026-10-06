@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { trashAction } from "@/app/actions/trash";
+import { ActionForm } from "@/components/ActionForm";
 import { ExportLink } from "@/components/ExportLink";
 import { notFound } from "next/navigation";
 import { getOrganization, organizationContacts } from "@/lib/organizations";
@@ -57,6 +59,7 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
         <ExportLink dataset="persons" params={{ organization: id }} label="Exportar contactos" />
         <Link href={`/deals/new?organization=${id}`} className="btn secondary">Nuevo deal</Link>
         <Link href={`/organizations/${id}/edit`} className="btn secondary">Editar</Link>
+        <ActionForm action={trashAction.bind(null, "organization", id)} submitLabel="Borrar" pendingLabel="…" secondary className="form inline" />
       </div>
 
       <div className="split">

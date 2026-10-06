@@ -1,8 +1,23 @@
 import { z } from "zod";
-import { sql, transaction } from "./db";
+import { safely, sql, transaction } from "./db";
 import { recordEvent, type Actor, type EntityType } from "./events";
 import { UserError } from "./errors";
 import { optId, parse, text } from "./validation";
+import { notifyMentions } from "./notifications";
+import type { Db } from "./db";
+
+/** Dónde está la nota (para el aviso de una mención). */
+async function mentionTarget(db: Db, [type, id]: [EntityType, string]): Promise<[string, string]> {
+  let rows: { t: string }[] = [];
+  let path = "deals";
+  switch (type) {
+    case "deal": rows = await db<{ t: string }[]>`SELECT title AS t FROM deals WHERE id = ${id}`; break;
+    case "lead": rows = await db<{ t: string }[]>`SELECT title AS t FROM leads WHERE id = ${id}`; path = "leads"; break;
+    case "person": rows = await db<{ t: string }[]>`SELECT full_name AS t FROM persons WHERE id = ${id}`; path = "persons"; break;
+    case "organization": rows = await db<{ t: string }[]>`SELECT name AS t FROM organizations WHERE id = ${id}`; path = "organizations"; break;
+  }
+  return [`una nota de «${rows[0]?.t ?? ""}»`, `/${path}/${id}`];
+}
 
 export type Note = {
   id: string;
@@ -55,6 +70,8 @@ export async function createNote(actor: Actor, data: unknown): Promise<string> {
     await recordEvent(tx, actor, target[0], target[1], "note.created", {
       note_id: row.id, excerpt: v.content.slice(0, 140),
     });
+    const [label, link] = await mentionTarget(tx, target);
+    await safely(tx, "menciones", (d) => notifyMentions(d, actor, v.content, link, label));
     return row.id;
   });
 }

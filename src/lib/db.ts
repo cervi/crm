@@ -23,3 +23,16 @@ export function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
 }
 
 export const json = (value: unknown) => sql.json(value as postgres.JSONValue);
+
+/**
+ * Ejecuta algo secundario (avisos, registros) sin que un fallo anule la
+ * transacción en curso: dentro de una transacción va en un «savepoint».
+ */
+export async function safely(db: Db, label: string, fn: (d: Db) => Promise<unknown>) {
+  const tx = db as Db & { savepoint?: (f: (sp: Db) => Promise<unknown>) => Promise<unknown> };
+  try {
+    await (typeof tx.savepoint === "function" ? tx.savepoint((sp) => fn(sp)) : fn(db));
+  } catch (err) {
+    console.error(`[${label}]`, err);
+  }
+}
