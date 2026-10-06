@@ -25,6 +25,8 @@ export GOOGLE_AUTH_URL="http://127.0.0.1:${MOCK_PORT}/o/oauth2/v2/auth" GOOGLE_T
 export TOKEN_ENCRYPTION_KEY="clave-de-cifrado-de-pruebas-0123456789abcdef"
 # Los webhooks de las pruebas van al simulador local.
 export ALLOW_PRIVATE_WEBHOOKS=1
+# Las webs de empresas (enriquecimiento) también; y sin consultas DNS para verificar emails.
+export ENRICH_URL_TEMPLATE="http://127.0.0.1:${MOCK_PORT}/web/{domain}" EMAIL_VERIFY_DNS=off
 
 pids=()
 cleanup() { for p in "${pids[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$DATA_DIR"; }
