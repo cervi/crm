@@ -868,7 +868,7 @@ const CUSTOM_SCAN: Scanner = async (rule, ctx) => {
           AND NOT EXISTS (SELECT 1 FROM activities p WHERE p.deal_id = d.id AND NOT p.done AND p.due_at >= now())
         GROUP BY d.id
         HAVING greatest(d.created_at, d.stage_entered_at, max(a.done_at), max(a.created_at)) < now() - make_interval(days => ${Math.max(1, t.days)})
-        ORDER BY 2 LIMIT 100`;
+        ORDER BY 2 DESC LIMIT 300`;
       for (const r of rows) {
         push(await customCandidate(rule, ctx, { dealId: r.id, onceKey: `idle:${new Date(r.last_touch).toISOString()}` },
           `El deal no tiene movimiento desde el ${dateText(r.last_touch)} ni nada programado.`));

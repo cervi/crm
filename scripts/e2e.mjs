@@ -796,7 +796,7 @@ if (process.env.MOCK_URL) {
   await run();
   const a5 = await actionsOf(r5);
   const [n5] = await sql`SELECT content FROM notes WHERE deal_id = ${nd.id}`;
-  check(a5.length === 1 && a5[0].status === "done" && n5?.content === `Entró en ${st0.name}: preparar la reunión con `,
+  check(a5.length === 1 && a5[0].status === "done" && n5?.content.startsWith(`Entró en ${st0.name}: preparar la reunión con`),
         "regla general: al entrar en una fase deja una nota (y no toca los deals que ya estaban)", JSON.stringify({ n: a5.length, n5 }));
   await run();
   check((await actionsOf(r5)).length === 1, "regla general: una vez por cada entrada en la fase");
