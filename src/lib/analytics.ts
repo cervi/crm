@@ -172,22 +172,29 @@ function periodRange(period: string, now = new Date()): Range {
   }
 }
 
-/** Periodo anterior de la misma duración (para comparar un número). */
+/**
+ * Periodo anterior comparable. En los periodos de calendario en curso (este
+ * mes, trimestre o año) se compara hasta el mismo punto del periodo anterior,
+ * para no enfrentar un periodo a medias con uno completo.
+ */
 function previousRange(period: string, r: Range, now = new Date()): Range | null {
   if (!r.start) return null;
-  const end = r.end ?? now;
-  if (period === "this_month" || period === "last_month") {
-    return { start: new Date(r.start.getFullYear(), r.start.getMonth() - 1, 1), end: r.start };
+  const shift = (months: number) => new Date(r.start!.getFullYear(), r.start!.getMonth() - months, r.start!.getDate());
+  const calendar: Record<string, number> = { this_month: 1, last_month: 1, this_quarter: 3, this_year: 12 };
+  if (period in calendar) {
+    const start = shift(calendar[period]);
+    const inProgress = r.end !== null && r.end > now;
+    const end = inProgress ? new Date(start.getTime() + (now.getTime() - r.start.getTime())) : r.start;
+    return { start, end };
   }
-  if (period === "this_quarter") return { start: new Date(r.start.getFullYear(), r.start.getMonth() - 3, 1), end: r.start };
-  if (period === "this_year") return { start: new Date(r.start.getFullYear() - 1, 0, 1), end: r.start };
+  const end = r.end ?? now;
   const span = end.getTime() - r.start.getTime();
   return { start: new Date(r.start.getTime() - span), end: r.start };
 }
 
 const PREVIOUS_LABEL: Record<string, string> = {
-  "7d": "7 días anteriores", "30d": "30 días anteriores", "90d": "90 días anteriores", "12m": "12 meses anteriores",
-  this_month: "mes pasado", last_month: "mes anterior", this_quarter: "trimestre anterior", this_year: "año pasado",
+  "7d": "los 7 días anteriores", "30d": "los 30 días anteriores", "90d": "los 90 días anteriores", "12m": "los 12 meses anteriores",
+  this_month: "el mismo punto del mes pasado", last_month: "el mes anterior", this_quarter: "el mismo punto del trimestre anterior", this_year: "el mismo punto del año pasado",
 };
 
 type Q = postgres.PendingQuery<postgres.Row[]>;
