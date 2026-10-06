@@ -209,6 +209,23 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Cuentas de cliente: Paco S.L. es cliente (contrato anual que renueva en unos 100 días),
+-- con datos de uso. «Ampliaciones» es el pipeline de expansión de CS.
+UPDATE pipelines SET kind = 'expansion' WHERE id = '10000000-0000-0000-0000-000000000003';
+DELETE FROM pipelines p WHERE p.kind = 'expansion' AND p.id <> '10000000-0000-0000-0000-000000000003'
+  AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.pipeline_id = p.id);
+UPDATE deals SET deal_type = 'upsell', origin = 'cs' WHERE pipeline_id = '10000000-0000-0000-0000-000000000003';
+UPDATE organizations SET cs_owner_id = '00000000-0000-0000-0000-000000000003' WHERE id = '60000000-0000-0000-0000-000000000001';
+INSERT INTO contracts (id, organization_id, deal_id, name, start_date, renewal_date, annual_value, seats, cs_owner_id) VALUES
+  ('c0000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000001',
+   'Paco — contrato anual', current_date - 265, current_date + 100, 12000, 20, '00000000-0000-0000-0000-000000000003');
+INSERT INTO contract_items (contract_id, product_id, quantity, unit_price)
+SELECT 'c0000000-0000-0000-0000-000000000001', product_id, quantity, unit_price FROM deal_products WHERE deal_id = '90000000-0000-0000-0000-000000000001';
+UPDATE deals SET contract_id = 'c0000000-0000-0000-0000-000000000001' WHERE id = '90000000-0000-0000-0000-000000000001';
+INSERT INTO account_usage (organization_id, metric, value, at, source)
+SELECT '60000000-0000-0000-0000-000000000001', m.metric, m.base + (g * m.step), now() - make_interval(days => 60 - g * 7), 'demo'
+FROM generate_series(0, 8) g, (VALUES ('licencias_en_uso', 12, 1), ('usuarios_activos', 10, 1)) AS m(metric, base, step);
+
 -- Los datos de ejemplo son historia: no deben disparar automatizaciones.
 UPDATE events SET processed_at = now() WHERE processed_at IS NULL;
 

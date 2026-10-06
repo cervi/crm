@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PIPELINE_KINDS } from "@/lib/pipelines";
 import { notFound } from "next/navigation";
 import { getPipeline, listStages } from "@/lib/pipelines";
 import { activityTypes } from "@/lib/activity-types";
@@ -52,6 +53,8 @@ export default async function PipelineSettingsPage({ params }: { params: Promise
           <ActionForm action={updatePipelineAction.bind(null, id)} submitLabel="Guardar" className="form inline">
             <label className="field" style={{ flex: 1 }}><span className="label">Nombre</span><input name="name" required defaultValue={pipeline.name} /></label>
             <label className="field" style={{ flex: 2 }}><span className="label">Descripción</span><input name="description" defaultValue={pipeline.description ?? ""} /></label>
+            <label className="field"><span className="label">Tipo</span>
+              <select name="kind" defaultValue={pipeline.kind}>{Object.entries(PIPELINE_KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
             <label className="checkbox"><input type="checkbox" name="is_active" defaultChecked={pipeline.is_active} /> Activo</label>
           </ActionForm>
         </section>

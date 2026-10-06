@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { sql, json, transaction, type Db } from "./db";
 import { recordEvent, type Actor } from "./events";
+import { applyContractOutcome } from "./contract-outcome";
 import { UserError } from "./errors";
 import { id, optDate, optId, optMoney, optText, optional, parse, text } from "./validation";
 
@@ -31,6 +32,10 @@ export type Deal = {
   lost_note: string | null;
   custom: Record<string, unknown>;
   created_at: Date;
+  deal_type: "new" | "upsell" | "cross_sell" | "renewal" | "onboarding";
+  origin: "sales" | "cs";
+  contract_id: string | null;
+  pipeline_kind: "sales" | "onboarding" | "renewal" | "expansion";
 };
 
 export async function getDeal(dealId: string, db: Db = sql): Promise<Deal | null> {
@@ -41,7 +46,7 @@ export async function getDeal(dealId: string, db: Db = sql): Promise<Deal | null
            d.stage_entered_at,
            floor(extract(epoch FROM now() - d.stage_entered_at) / 86400)::int AS days_in_stage,
            s.rotten_after_days, d.won_at, d.lost_at, d.lost_reason_id, lr.label AS lost_reason,
-           d.lost_note, d.custom, d.created_at
+           d.lost_note, d.custom, d.created_at, d.deal_type, d.origin, d.contract_id, p.kind AS pipeline_kind
     FROM deals d
     JOIN pipelines p ON p.id = d.pipeline_id
     JOIN stages s ON s.id = d.stage_id
@@ -169,7 +174,11 @@ export async function createDeal(
   return opts.db ? run(opts.db) : transaction(run);
 }
 
-const updateSchema = dealSchema.omit({ person_id: true }).extend({ stage_id: id });
+const updateSchema = dealSchema.omit({ person_id: true }).extend({
+  stage_id: id,
+  deal_type: optional(z.enum(["new", "upsell", "cross_sell", "renewal", "onboarding"])),
+  origin: optional(z.enum(["sales", "cs"])),
+});
 
 export async function updateDeal(actor: Actor, dealId: string, data: unknown, custom: Record<string, unknown>) {
   const v = parse(updateSchema, data);
@@ -188,6 +197,8 @@ export async function updateDeal(actor: Actor, dealId: string, data: unknown, cu
         owner_id: v.owner_id ?? null,
         source: v.source ?? null,
         custom: json(custom),
+        deal_type: v.deal_type ?? before.deal_type,
+        origin: v.origin ?? before.origin,
       })} WHERE id = ${dealId}`;
     if (before.pipeline_id !== v.pipeline_id) {
       await recordEvent(tx, actor, "deal", dealId, "deal.pipeline_changed", {
@@ -242,6 +253,8 @@ export async function winDeal(actor: Actor, dealId: string) {
     await recordEvent(tx, actor, "deal", dealId, "deal.won", {
       value: d.value, organization_id: d.organization_id, pipeline_id: d.pipeline_id,
     });
+    // Renovaciones y ampliaciones: el contrato del cliente se actualiza.
+    await applyContractOutcome(tx, dealId, "won");
   });
 }
 
@@ -280,6 +293,7 @@ export async function loseDeal(actor: Actor, dealId: string, data: unknown) {
       reason: reason.label, note: v.lost_note ?? null, follow_up_activity_id: followUpId,
       follow_up_days: reason.followup_days,
     });
+    await applyContractOutcome(tx, dealId, "lost");
     return { followUpDays: reason.followup_days };
   });
 }

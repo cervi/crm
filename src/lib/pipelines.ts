@@ -4,7 +4,7 @@ import { UserError } from "./errors";
 import { checkbox, optional, optText, parse, text } from "./validation";
 import { assertActivityType } from "./activity-types";
 
-export type Pipeline = { id: string; name: string; description: string | null; is_active: boolean; position: number };
+export type Pipeline = { id: string; name: string; description: string | null; is_active: boolean; position: number; kind: "sales" | "onboarding" | "renewal" | "expansion" };
 export type Stage = {
   id: string;
   pipeline_id: string;
@@ -18,13 +18,13 @@ export type Stage = {
 
 export async function listPipelines(includeInactive = false): Promise<Pipeline[]> {
   return sql<Pipeline[]>`
-    SELECT id, name, description, is_active, position FROM pipelines
+    SELECT id, name, description, is_active, position, kind FROM pipelines
     WHERE ${includeInactive} OR is_active ORDER BY position, name`;
 }
 
 export async function getPipeline(id: string): Promise<Pipeline | null> {
   const [p] = await sql<Pipeline[]>`
-    SELECT id, name, description, is_active, position FROM pipelines WHERE id = ${id}`;
+    SELECT id, name, description, is_active, position, kind FROM pipelines WHERE id = ${id}`;
   return p ?? null;
 }
 
@@ -249,7 +249,9 @@ const pipelineSchema = z.object({
   name: text("El nombre", 100),
   description: optText(500),
   is_active: checkbox,
+  kind: optional(z.enum(["sales", "onboarding", "renewal", "expansion"])),
 });
+export const PIPELINE_KINDS = { sales: "Ventas", onboarding: "Onboarding (CS)", renewal: "Renovaciones (CS)", expansion: "Expansión (CS)" } as const;
 
 export async function createPipeline(data: unknown): Promise<string> {
   const v = parse(pipelineSchema.extend({ stages: optText(4000) }), data);
@@ -274,7 +276,8 @@ export async function updatePipeline(id: string, data: unknown) {
       SELECT count(*)::int AS open FROM deals WHERE pipeline_id = ${id} AND status = 'open' AND deleted_at IS NULL`;
     if (open > 0) throw new UserError(`No se puede desactivar: tiene ${open} deal(s) abiertos.`);
   }
-  await sql`UPDATE pipelines SET name = ${v.name}, description = ${v.description ?? null}, is_active = ${v.is_active}
+  await sql`UPDATE pipelines SET name = ${v.name}, description = ${v.description ?? null}, is_active = ${v.is_active},
+                   kind = coalesce(${v.kind ?? null}, kind)
             WHERE id = ${id}`;
 }
 

@@ -33,7 +33,7 @@ import { bookingPageLink } from "./booking";
 
 export type Autonomy = "off" | "ask" | "auto";
 export type AgentKind = "assistant" | "external";
-export type ExecutableAction = "create_task" | "add_note" | "draft_email" | "move_stage" | "update_deal" | "webhook";
+export type ExecutableAction = "create_task" | "add_note" | "draft_email" | "move_stage" | "update_deal" | "webhook" | "create_deal";
 export type ActionType = ExecutableAction | "notify";
 export type ActionStatus = "pending" | "done" | "dismissed" | "expired" | "failed" | "undone";
 
@@ -50,6 +50,7 @@ export const ACTION_TYPES: { value: ExecutableAction; label: string; help: strin
   { value: "move_stage", label: "Mover deals de fase", help: "Avanzar o retroceder un deal en su pipeline." },
   { value: "update_deal", label: "Editar deals", help: "Cambiar título, importe, fecha de cierre o responsable." },
   { value: "webhook", label: "Avisar a otras herramientas", help: "Llamar a un webhook (Zapier, Make, Slack, n8n…) con los datos del deal." },
+  { value: "create_deal", label: "Crear deals de cliente", help: "Onboarding (con su contrato), renovaciones y oportunidades de expansión para Customer Success." },
 ];
 export const actionLabel = (t: string) =>
   t === "notify" ? "Pedir una decisión" : ACTION_TYPES.find((a) => a.value === t)?.label ?? t;
@@ -132,6 +133,10 @@ export const RULE_ACTION: Record<string, ActionType> = {
   stale_deal_escalate: "notify",
   won_handoff: "create_task",
   inbound_first_reply: "draft_email",
+  won_onboarding: "create_deal",
+  onboarding_survey: "draft_email",
+  renewal_deal: "create_deal",
+  qbr_prepare: "create_task",
   call_next_steps: "create_task",
   call_deal_update: "update_deal",
   multithread: "create_task",
@@ -180,6 +185,11 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
   won_handoff: [
     { key: "due_days", label: "Plazo de la tarea (días)", kind: "days" },
   ],
+  won_onboarding: [
+    { key: "plan", label: "Plan de onboarding (un hito por línea)", kind: "textarea", help: "Los hitos del onboarding de cada cliente nuevo, repartidos en 45 días. Customer Success los puede cambiar en cada cliente." },
+  ],
+  renewal_deal: [{ key: "days_before", label: "Días antes del vencimiento", kind: "days" }],
+  qbr_prepare: [{ key: "every_days", label: "Cada (días)", kind: "days" }],
   inbound_first_reply: [
     { key: "max_age_hours", label: "Solo leads de las últimas (horas)", kind: "number" },
     { key: "subject", label: "Asunto", kind: "text" },
@@ -288,9 +298,9 @@ export async function setPaused(paused: boolean) {
 // Propuestas
 
 type Candidate = {
-  /** El deal (o el lead, si `subject` es «lead») sobre el que actúa. */
+  /** El deal (o el lead o la empresa, según `subject`) sobre el que actúa. */
   dealId: string;
-  subject?: "lead";
+  subject?: "lead" | "organization";
   title: string;
   reason: string;
   payload: Record<string, unknown> & { stage_id?: string; activity_id?: string; once_key?: string };
@@ -395,6 +405,48 @@ const missingSession = (grace: number) => sql`
   ods.required_activity_type IS NOT NULL AND NOT ods.has_upcoming_session AND ods.days_in_stage >= ${grace}`;
 
 const SCANNERS: Record<string, Scanner> = {
+  // Contratos que vencen pronto: deal de renovación.
+  async renewal_deal(rule) {
+    const days = num(rule.params.days_before, 120);
+    const rows = await sql<{ id: string; organization_id: string; organization: string; renewal_date: string; annual_value: string; health: number | null }[]>`
+      SELECT c.id, c.organization_id, o.name AS organization, c.renewal_date::text, c.annual_value::text, h.score AS health
+      FROM contracts c JOIN organizations o ON o.id = c.organization_id AND o.deleted_at IS NULL
+      LEFT JOIN account_health h ON h.organization_id = c.organization_id
+      WHERE c.status = 'active' AND c.renewal_date IS NOT NULL AND c.renewal_date <= current_date + ${days}
+        AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.contract_id = c.id AND d.deal_type = 'renewal' AND d.status = 'open' AND d.deleted_at IS NULL)
+      LIMIT 200`;
+    return rows.map((c) => ({
+      dealId: c.organization_id, subject: "organization" as const,
+      title: `Preparar la renovación de ${c.organization} (${dateText(new Date(`${c.renewal_date}T12:00:00`))})`,
+      reason: `El contrato de ${money(c.annual_value)} al año vence el ${dateText(new Date(`${c.renewal_date}T12:00:00`))}.${c.health !== null ? ` Salud de la cuenta: ${c.health}/100.` : ""}`,
+      payload: { kind: "renewal", contract_id: c.id, once_key: `renewal:${c.id}:${c.renewal_date}` },
+    }));
+  },
+
+  // Revisión periódica con cada cliente (QBR).
+  async qbr_prepare(rule) {
+    const every = num(rule.params.every_days, 90);
+    const rows = await sql<{ id: string; name: string; cs_owner_id: string | null }[]>`
+      SELECT o.id, o.name, o.cs_owner_id FROM organizations o
+      WHERE o.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM contracts c WHERE c.organization_id = o.id AND c.status = 'active' AND c.start_date < current_date - 30)
+        AND NOT EXISTS (SELECT 1 FROM automation_actions x WHERE x.rule_id = ${rule.id} AND x.subject_type = 'organization' AND x.subject_id = o.id
+                          AND x.status IN ('pending', 'done') AND x.created_at > now() - make_interval(days => ${every}))
+        AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.organization_id = o.id AND d.deal_type = 'onboarding' AND d.status = 'open')
+      LIMIT 100`;
+    const { qbrSummary } = await import("./accounts");
+    const out: Candidate[] = [];
+    for (const o of rows) {
+      out.push({
+        dealId: o.id, subject: "organization",
+        title: `Agendar la revisión trimestral (QBR) con ${o.name}`,
+        reason: `Hace más de ${every} días de la última revisión con ${o.name}.`,
+        payload: { type: "meeting", subject: `QBR con ${o.name}`, note: await qbrSummary(o.id), due_in_days: 7, owner_id: o.cs_owner_id, organization_id: o.id },
+      });
+    }
+    return out;
+  },
+
   // Lead nuevo de la web que encaja (o sin perfil): primer correo en minutos.
   async inbound_first_reply(rule, ctx) {
     if (!ctx.mailbox) return [];
@@ -577,6 +629,52 @@ async function contactFor(personId: string | null, d: DealContact) {
 }
 
 const EVENT_HANDLERS: Record<string, EventHandler> = {
+  // Deal de venta ganado: el cliente arranca (contrato, onboarding, plan y ficha del kick-off).
+  won_onboarding: {
+    events: ["deal.won"],
+    async handle(rule, e) {
+      const [d] = await sql<{ id: string; title: string; organization: string | null; kind: string; deal_type: string }[]>`
+        SELECT d.id, d.title, o.name AS organization, p.kind, d.deal_type FROM deals d JOIN pipelines p ON p.id = d.pipeline_id
+        LEFT JOIN organizations o ON o.id = d.organization_id
+        WHERE d.id = ${e.entity_id} AND d.status = 'won' AND d.organization_id IS NOT NULL`;
+      if (!d || d.kind !== "sales" || d.deal_type !== "new") return null;
+      return {
+        dealId: d.id, title: `Poner en marcha a ${d.organization}: contrato y onboarding`,
+        reason: `«${d.title}» ganado. Se crea el contrato con sus productos y el onboarding con su plan y la ficha del kick-off.`,
+        payload: { kind: "onboarding", plan: str(rule.params.plan, ""), once_key: `onboarding:${d.id}` },
+      };
+    },
+    stillValid: () => sql`d.status = 'won'`,
+  },
+
+  // Onboarding terminado: encuesta corta de satisfacción.
+  onboarding_survey: {
+    events: ["deal.won"],
+    async handle(_rule, e) {
+      const [d] = await sql<{ id: string; organization_id: string | null; organization: string | null; owner_name: string | null; deal_type: string }[]>`
+        SELECT d.id, d.organization_id, o.name AS organization, u.name AS owner_name, d.deal_type FROM deals d
+        LEFT JOIN organizations o ON o.id = d.organization_id LEFT JOIN users u ON u.id = d.owner_id WHERE d.id = ${e.entity_id}`;
+      if (!d || d.deal_type !== "onboarding") return null;
+      const [p] = await sql<{ person_id: string; full_name: string; email: string | null }[]>`
+        SELECT p.id AS person_id, p.full_name, (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC LIMIT 1) AS email
+        FROM deal_participants dp JOIN persons p ON p.id = dp.person_id AND p.deleted_at IS NULL
+        WHERE dp.deal_id = ${d.id} ORDER BY dp.is_primary DESC LIMIT 1`;
+      if (!p?.email) return null;
+      const { createSurvey } = await import("./accounts");
+      const link = await createSurvey("onboarding", d.organization_id, d.id, p.person_id);
+      return {
+        dealId: d.id, title: `Pedir a ${p.full_name} su valoración del onboarding`,
+        reason: `El onboarding de ${d.organization ?? "este cliente"} ha terminado.`,
+        payload: {
+          to: p.email, to_name: p.full_name, person_id: p.person_id, once_key: `survey:${d.id}`,
+          subject: "¿Qué tal ha ido la puesta en marcha?",
+          body: `Hola ${firstName(p.full_name)},\n\nYa habéis terminado la puesta en marcha. ¿Nos ayudas con una sola pregunta? Del 0 al 10, ¿cómo de probable es que nos recomiendes? Te lleva 10 segundos:\n\n${link}\n\nGracias,\n${d.owner_name ?? ""}`,
+        },
+      };
+    },
+    stillValid: () => sql`d.status = 'won'`,
+  },
+
   // Sesión marcada como «No se presentó»: correo para reagendar.
   no_show_rebook: {
     events: ["activity.completed"],
@@ -1122,7 +1220,7 @@ async function alreadyHandled(rule: Rule, c: Candidate) {
 async function propose(rule: Rule, mode: "ask" | "auto", c: Candidate): Promise<"proposed" | "executed" | "failed" | "exists"> {
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO automation_actions ${sql({
-      actor: "assistant", rule_id: rule.id, subject_type: c.subject ?? "deal", subject_id: c.dealId, deal_id: c.subject === "lead" ? null : c.dealId,
+      actor: "assistant", rule_id: rule.id, subject_type: c.subject ?? "deal", subject_id: c.dealId, deal_id: c.subject ? null : c.dealId,
       action_type: ruleAction(rule), title: c.title, reason: c.reason, payload: json(c.payload), mode,
     })}
     ON CONFLICT (rule_id, subject_type, subject_id) WHERE status = 'pending' DO NOTHING
@@ -1311,6 +1409,7 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
         type: str(p.type, "task"), subject: e.subject ?? str(p.subject, a.title), note: e.note ?? (p.note as string | undefined),
         due_at: dueAt(p.due_in_days), deal_id: a.deal_id ?? undefined,
         person_id: (p.person_id as string | null) ?? undefined, owner_id: (p.owner_id as string | null) ?? undefined,
+        organization_id: (p.organization_id as string | null) ?? undefined,
       });
       return { activity_id: activityId };
     }
@@ -1394,6 +1493,22 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
       if (!res.ok) throw new UserError(`${hostOf(url)} respondió con un error (${res.status}).`);
       return { status: res.status, url };
     }
+    case "create_deal": {
+      const acc = await import("./accounts");
+      if (p.kind === "onboarding") {
+        if (!a.deal_id) throw new UserError("La propuesta no tiene deal.");
+        return acc.startOnboarding(AI_ACTOR, a.deal_id, str(p.plan, ""));
+      }
+      if (p.kind === "renewal") return acc.createRenewal(AI_ACTOR, str(p.contract_id, ""));
+      if (p.kind === "expansion") {
+        return acc.createExpansion(AI_ACTOR, {
+          organization_id: str(p.organization_id, ""), type: p.type === "cross_sell" ? "cross_sell" : "upsell", title: str(p.title, a.title),
+          value: typeof p.value === "number" ? p.value : null, product_id: (p.product_id as string | null) ?? null,
+          quantity: typeof p.quantity === "number" ? p.quantity : null, note: (p.note as string | null) ?? null,
+        });
+      }
+      throw new UserError("Tipo de deal no válido.");
+    }
     case "notify":
       return {};
   }
@@ -1438,6 +1553,15 @@ export async function undoAction(actionId: string, actor: Actor = UI_ACTOR) {
     case "add_note":
       await sql`DELETE FROM notes WHERE id = ${String(r.note_id)}`;
       break;
+    case "create_deal": {
+      // Se borra lo creado mientras siga sin trabajo encima (a la papelera, recuperable).
+      const [d] = await sql<{ status: string; done: number }[]>`
+        SELECT status, (SELECT count(*)::int FROM activities WHERE deal_id = ${String(r.deal_id)} AND done) AS done FROM deals WHERE id = ${String(r.deal_id)}`;
+      if (d && (d.status !== "open" || d.done > 0)) throw new UserError("Ya se ha trabajado en ese deal: bórralo a mano si hace falta.");
+      await sql`UPDATE deals SET deleted_at = now(), deleted_by = ${actor.id} WHERE id = ${String(r.deal_id)}`;
+      if (r.contract_created) await sql`DELETE FROM contracts WHERE id = ${String(r.contract_id)}`;
+      break;
+    }
     case "move_stage": {
       const [d] = await sql<{ stage_id: string; status: string }[]>`SELECT stage_id, status FROM deals WHERE id = ${a.deal_id}`;
       if (!d || d.status !== "open" || d.stage_id !== r.to_stage_id) {
@@ -1464,7 +1588,7 @@ export type InboxItem = {
   action_type: ActionType; title: string; reason: string; payload: Record<string, unknown>; status: ActionStatus;
   mode: "ask" | "auto"; result: Record<string, unknown> | null; error: string | null;
   deal_id: string | null; deal_title: string | null; organization_name: string | null;
-  lead_id: string | null; lead_title: string | null;
+  lead_id: string | null; lead_title: string | null; account_id: string | null; account_name: string | null;
   created_at: Date; decided_at: Date | null; executed_at: Date | null;
 };
 
@@ -1472,11 +1596,12 @@ export async function listActions({ view, dealId, limit = 200 }: { view: "pendin
   return sql<InboxItem[]>`
     SELECT x.id, x.actor, x.agent_name, r.key AS rule_key, r.name AS rule_name, x.action_type, x.title, x.reason,
            x.payload, x.status, x.mode, x.result, x.error, x.deal_id, d.title AS deal_title,
-           o.name AS organization_name, l.id AS lead_id, l.title AS lead_title, x.created_at, x.decided_at, x.executed_at
+           o.name AS organization_name, l.id AS lead_id, l.title AS lead_title, ao.id AS account_id, ao.name AS account_name, x.created_at, x.decided_at, x.executed_at
     FROM automation_actions x
     LEFT JOIN automation_rules r ON r.id = x.rule_id
     LEFT JOIN deals d ON d.id = x.deal_id
     LEFT JOIN leads l ON x.subject_type = 'lead' AND l.id = x.subject_id
+    LEFT JOIN organizations ao ON x.subject_type = 'organization' AND ao.id = x.subject_id
     LEFT JOIN organizations o ON o.id = d.organization_id
     WHERE ${view === "pending" ? sql`x.status = 'pending'` : sql`x.status <> 'pending'`}
       AND (${dealId ?? null}::uuid IS NULL OR x.deal_id = ${dealId ?? null}::uuid)

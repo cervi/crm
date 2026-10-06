@@ -13,6 +13,7 @@ export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: Ic
   { href: "/leads", match: ["/leads"], label: "Leads", icon: "leads" },
   { href: "/campaigns", match: ["/campaigns"], label: "Campañas de outbound", icon: "target" },
   { href: "/activities", match: ["/activities"], label: "Actividades", icon: "activities" },
+  { href: "/accounts", match: ["/accounts"], label: "Clientes (Customer Success)", icon: "users" },
   { href: "/organizations", match: ["/organizations"], label: "Empresas", icon: "organizations" },
   { href: "/persons", match: ["/persons"], label: "Contactos", icon: "persons" },
   { href: "/reports", match: ["/reports", "/dashboards"], label: "Informes y dashboards", icon: "dashboards" },

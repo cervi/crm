@@ -48,12 +48,15 @@ export type Organization = {
   cs_manager_email: string | null;
   custom: Record<string, unknown>;
   created_at: Date;
+  cs_owner_id: string | null;
+  description: string | null;
 };
 
 export async function getOrganization(id: string, db: Db = sql): Promise<Organization | null> {
   const [org] = await db<Organization[]>`
     SELECT o.id, o.name, o.domain, o.website, o.industry, o.employee_count, o.country, o.city,
-           o.address, o.owner_id, u.name AS owner_name, o.cs_manager_name, o.cs_manager_email, o.custom, o.created_at
+           o.address, o.owner_id, u.name AS owner_name, o.cs_manager_name, o.cs_manager_email, o.custom, o.created_at,
+           o.cs_owner_id, o.description
     FROM organizations o LEFT JOIN users u ON u.id = o.owner_id
     WHERE o.id = ${id} AND o.deleted_at IS NULL`;
   return org ?? null;

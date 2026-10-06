@@ -1,4 +1,5 @@
 import { ActionForm } from "./ActionForm";
+import { DEAL_TYPE_LABEL, ORIGIN_LABEL } from "@/lib/deal-types";
 import { CustomFieldInputs } from "./CustomFieldInputs";
 import { EntityPicker } from "./EntityPicker";
 import { OwnerSelect } from "./forms";
@@ -39,6 +40,18 @@ export function DealForm({ action, deal, defs, users, pipelines, stages, submitL
         <OwnerSelect users={users} value={deal ? deal.owner_id : defaults?.ownerId} />
         <label className="field"><span className="label">Origen</span>
           <input name="source" defaultValue={deal?.source ?? ""} placeholder="webinar, formulario demo, referido…" /></label>
+        {deal && (
+          <>
+            <label className="field"><span className="label">Tipo de deal</span>
+              <select name="deal_type" defaultValue={deal.deal_type}>
+                {Object.entries(DEAL_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select></label>
+            <label className="field"><span className="label">Lo trajo</span>
+              <select name="origin" defaultValue={deal.origin}>
+                {Object.entries(ORIGIN_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select></label>
+          </>
+        )}
       </div>
       <CustomFieldInputs defs={defs} values={deal?.custom} users={users} />
     </ActionForm>

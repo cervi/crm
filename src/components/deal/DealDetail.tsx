@@ -34,6 +34,8 @@ import { Icon } from "../Icon";
 import { ComposerTabs, EmailComposerFields, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
 import { listEmails, listTemplates, opensFor, templateVars } from "@/lib/emails";
 import { getHealth, recomputeHealth } from "@/lib/health";
+import { DEAL_TYPE_LABEL } from "@/lib/deal-types";
+import { startOnboardingAction } from "@/app/actions/accounts";
 import { getInsights } from "@/lib/deal-agent";
 import { closePlanUrl, getClosePlan, SIDE_LABEL } from "@/lib/close-plan";
 import {
@@ -153,6 +155,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             <h1>{deal.title}</h1>
             <div className="deal-sub">
               <span className={`badge ${deal.status}`}>{STATUS_LABELS[deal.status]}</span>
+              {deal.deal_type !== "new" && <span className="badge ai" title={deal.origin === "cs" ? "Lo lleva Customer Success" : undefined}>{DEAL_TYPE_LABEL[deal.deal_type]}</span>}
               <strong>{money(deal.value, deal.currency)}</strong>
               {health && <a href="#senales" className="health-link"><HealthBadge score={health.score} signals={health.signals} /></a>}
               {deal.organization_id && <Link href={`/organizations/${deal.organization_id}`}>{deal.organization_name}</Link>}
@@ -202,7 +205,18 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             );
           })}
         </nav>
-        {deal.status === "won" && <p className="callout good">Ganado el {date(deal.won_at)}.</p>}
+        {deal.status === "won" && (
+          <p className="callout good">
+            Ganado el {date(deal.won_at)}.
+            {deal.contract_id && deal.organization_id && <> <Link href={`/organizations/${deal.organization_id}`}>Ver el cliente y su contrato</Link>.</>}
+          </p>
+        )}
+        {deal.status === "won" && deal.pipeline_kind === "sales" && deal.deal_type === "new" && !deal.contract_id && deal.organization_id && (
+          <div className="callout">
+            ¿Ya es cliente? Crea su contrato y su onboarding (con el plan de hitos y la ficha del kick-off).
+            <ActionForm action={startOnboardingAction.bind(null, dealId, back)} submitLabel="Poner en marcha al cliente" pendingLabel="Creando…" secondary className="form inline" />
+          </div>
+        )}
         {deal.status === "lost" && (
           <p className="callout bad">Perdido el {date(deal.lost_at)}: {deal.lost_reason ?? "sin motivo"}{deal.lost_note && `. ${deal.lost_note}`}</p>
         )}
@@ -578,7 +592,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
 
           {(isOpen || closePlan) && (
             <section className="close-plan" aria-label="Plan de cierre">
-              <h2 className="section-title">Plan de cierre
+              <h2 className="section-title">{deal.deal_type === "onboarding" ? "Plan de onboarding" : "Plan de cierre"}
                 {closePlan && closePlan.steps.length > 0 && <span className="muted">{closePlan.steps.filter((x) => x.done).length}/{closePlan.steps.length}</span>}
                 <span className="spacer" />
                 {closePlan && closePlan.steps.length > 0 && (closePlan.shared

@@ -18,6 +18,7 @@ import { NotePanel } from "@/components/NotePanel";
 import { CustomFieldValues } from "@/components/CustomFieldValues";
 import { Avatar } from "@/components/Avatar";
 import { Timeline } from "@/components/Timeline";
+import { AccountPanel } from "@/components/AccountPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,7 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
             <h2>Datos</h2>
             <dl className="dl">
               <div className="dl-row"><dt>Web</dt><dd>{org.website ? <a href={org.website.startsWith("http") ? org.website : `https://${org.website}`} target="_blank" rel="noreferrer">{org.website}</a> : "—"}</dd></div>
+              {org.description && <div className="dl-row"><dt>A qué se dedica</dt><dd>{org.description}</dd></div>}
               <div className="dl-row"><dt>Sector</dt><dd>{org.industry ?? "—"}</dd></div>
               <div className="dl-row"><dt>Empleados</dt><dd>{org.employee_count ?? "—"}</dd></div>
               <div className="dl-row"><dt>Ubicación</dt><dd>{[org.city, org.country].filter(Boolean).join(", ") || "—"}</dd></div>
@@ -121,6 +123,7 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
         </div>
 
         <div className="stack">
+          <AccountPanel orgId={id} csOwnerId={org.cs_owner_id} users={users} />
           <section className="panel">
             <h2>Deals</h2>
             {deals.length === 0 ? <p className="muted">Todavía no hay deals.</p> : (

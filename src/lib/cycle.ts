@@ -9,6 +9,7 @@ import { recomputeHealth } from "./health";
 import { runCallExtraction, runMeetingPrep } from "./deal-agent";
 import { runEnrichment, runQualification } from "./icp";
 import { runCampaignPrepare, runCampaignReplies } from "./campaigns";
+import { recomputeAccountHealth } from "./accounts";
 
 /**
  * Revisión periódica completa: primero la importación de Pipedrive (si hay
@@ -36,5 +37,7 @@ export async function runCycle() {
   const prepared = await runMeetingPrep().catch((err) => { console.error("[preparación]", err); return null; });
   // Salud de los deals, con lo que acaba de entrar (correos, reuniones…).
   const health = await recomputeHealth().catch((err) => { console.error("[salud]", err); return 0; });
-  return { ...result, scheduled, sequences, scored, assigned, health, agents: { enriched, qualified, prepared_contacts, replies, extracted, prepared } };
+  // Salud de las cuentas de cliente (con la de sus onboardings y renovaciones).
+  const accounts = await recomputeAccountHealth().catch((err) => { console.error("[salud de cuentas]", err); return 0; });
+  return { ...result, scheduled, sequences, scored, assigned, health, accounts, agents: { enriched, qualified, prepared_contacts, replies, extracted, prepared } };
 }
