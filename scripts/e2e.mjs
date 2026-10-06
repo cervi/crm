@@ -788,6 +788,50 @@ if (process.env.MOCK_URL) {
   check((await actionsOf(r4)).length === 0, "una fase de otro pipeline no se aplica al deal");
   await sql`UPDATE automation_rules SET autonomy = 'off' WHERE id IN (${r1}, ${r2}, ${r3}, ${r4})`;
 
+  // ---- Automatizaciones generales: disparadores de deal, condiciones y nuevas acciones.
+  const [st0] = await sql`SELECT id, name FROM stages WHERE pipeline_id = ${P.ampl} ORDER BY position LIMIT 1`;
+  const r5 = await custom("Al entrar en la fase", { kind: "deal_stage", stage_id: st0.id, days: 0 },
+                          { kind: "add_note", content: "Entró en {fase}: preparar la reunión con {nombre}" }, "auto");
+  const [nd] = await sql`INSERT INTO deals (title, pipeline_id, stage_id, value, owner_id) VALUES ('Deal recién llegado', ${P.ampl}, ${st0.id}, 5000, ${ADMIN_ID}) RETURNING id`;
+  await run();
+  const a5 = await actionsOf(r5);
+  const [n5] = await sql`SELECT content FROM notes WHERE deal_id = ${nd.id}`;
+  check(a5.length === 1 && a5[0].status === "done" && n5?.content === `Entró en ${st0.name}: preparar la reunión con `,
+        "regla general: al entrar en una fase deja una nota (y no toca los deals que ya estaban)", JSON.stringify({ n: a5.length, n5 }));
+  await run();
+  check((await actionsOf(r5)).length === 1, "regla general: una vez por cada entrada en la fase");
+
+  const MOCKU = process.env.MOCK_URL;
+  if (MOCKU) {
+    const r6 = await custom("Ganado grande → Slack", { kind: "deal_won", filter: { min_value: 1000 } },
+                            { kind: "webhook", url: `${MOCKU}/__webhook` }, "auto");
+    const [small] = await sql`INSERT INTO deals (title, pipeline_id, stage_id, value) VALUES ('Deal pequeño', ${P.ampl}, ${st0.id}, 10) RETURNING id`;
+    for (const d of [nd.id, small.id]) {
+      await sql`UPDATE deals SET status = 'won', won_at = now() WHERE id = ${d}`;
+      await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, payload) VALUES ('deal', ${d}, 'deal.won', 'user', '{}')`;
+    }
+    await run();
+    const a6 = await actionsOf(r6);
+    const hooks = (await (await fetch(`${MOCKU}/__state`)).json()).webhooks;
+    const hook = hooks.find((h) => h.deal?.id === nd.id);
+    check(a6.length === 1 && a6[0].status === "done" && hook?.event === "deal_won" && hook.deal.title === "Deal recién llegado" && hook.deal.value === 5000
+          && !hooks.some((h) => h.deal?.id === small.id),
+          "regla general: al ganar un deal grande avisa por webhook (y no a los pequeños)", JSON.stringify({ a6: a6.length, hook }));
+    await sql`UPDATE automation_rules SET autonomy = 'off' WHERE id = ${r6}`;
+  }
+
+  const r7 = await custom("Deal parado sin plan", { kind: "deal_idle", days: 5 }, { kind: "notify", message: "{deal} lleva días sin movimiento" }, "ask");
+  const [idle] = await sql`INSERT INTO deals (title, pipeline_id, stage_id, created_at, stage_entered_at)
+                           VALUES ('Deal olvidado', ${P.ampl}, ${st0.id}, now() - interval '10 days', now() - interval '10 days') RETURNING id`;
+  await run();
+  const a7 = (await actionsOf(r7)).filter((x) => x.title === "Deal olvidado lleva días sin movimiento");
+  check(a7.length === 1 && a7[0].status === "pending", "regla general: deal sin movimiento ni nada programado → pide una decisión", JSON.stringify(a7));
+  await sql`INSERT INTO activities (type, subject, deal_id, due_at) VALUES ('call', 'Llamar', ${idle.id}, now() + interval '1 day')`;
+  await run();
+  const a7b = (await actionsOf(r7)).filter((x) => x.title === "Deal olvidado lleva días sin movimiento");
+  check(a7b[0]?.status === "expired", "regla general: al programar algo, la propuesta caduca", a7b[0]?.status);
+  await sql`UPDATE automation_rules SET autonomy = 'off' WHERE id IN (${r5}, ${r7})`;
+
   const conf = await (await get("/settings/automations")).text();
   check(conf.includes("Tus reglas") && conf.includes("Tras el kick-off") && conf.includes("Nueva regla"), "/settings/automations muestra las reglas personalizadas");
 }

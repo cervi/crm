@@ -883,3 +883,4 @@ a.btn.small svg { width: 14px; height: 14px; }
 .week-item.done strong { text-decoration: line-through; }
 .week-item.overdue { background: var(--bad-soft); }
 @media (max-width: 900px) { .week-grid { grid-template-columns: 1fr; } .week-day { min-height: 0; } }
+.rule-conditions { margin-top: 10px; } .rule-conditions summary { cursor: pointer; }

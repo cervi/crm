@@ -35,6 +35,12 @@ export default async function AutomationsSettingsPage() {
   const stageOptions = [...new Set(stageRows.map((r) => r.pipeline))].map((pipeline) => ({
     pipeline, options: stageRows.filter((r) => r.pipeline === pipeline).map((r) => ({ value: r.id, label: r.name })),
   }));
+  const [pipelineRows, userRows] = await Promise.all([
+    sql<{ id: string; name: string }[]>`SELECT id, name FROM pipelines WHERE is_active ORDER BY position, name`,
+    sql<{ id: string; name: string }[]>`SELECT id, name FROM users WHERE kind = 'human' AND is_active ORDER BY name`,
+  ]);
+  const pipelineOptions = pipelineRows.map((p) => ({ value: p.id, label: p.name }));
+  const userOptions = userRows.map((u) => ({ value: u.id, label: u.name }));
   const NO_MAILBOX = "Para que envíe correos sola, conecta tu cuenta en Ajustes → Correo, calendario y documentos.";
   const perm = (actor: string, action: string) => permissions.find((p) => p.actor === actor && p.action_type === action);
   const levelLabel = (v: string) => AUTONOMY_LEVELS.find((l) => l.value === v)?.label ?? v;
@@ -231,7 +237,7 @@ export default async function AutomationsSettingsPage() {
                 {tip && <p className="callout good" style={{ margin: "10px 0 0" }}>{tip}</p>}
                 <details className="rule-params">
                   <summary className="meta">Editar la regla</summary>
-                  <CustomRuleForm action={updateCustomRuleAction.bind(null, r.id)} types={typeOptions} stages={stageOptions}
+                  <CustomRuleForm action={updateCustomRuleAction.bind(null, r.id)} types={typeOptions} stages={stageOptions} pipelines={pipelineOptions} users={userOptions}
                                   initial={{ name: r.name, trigger: r.trigger ?? undefined, action: r.action ?? undefined }} submitLabel="Guardar" />
                   <ActionForm action={deleteCustomRuleAction.bind(null, r.id)} submitLabel="Borrar la regla" pendingLabel="…" danger className="form inline" />
                 </details>
@@ -240,7 +246,7 @@ export default async function AutomationsSettingsPage() {
           })}
           <article className="panel rule new-rule" aria-label="Nueva regla">
             <h3>Nueva regla</h3>
-            <CustomRuleForm action={createCustomRuleAction} types={typeOptions} stages={stageOptions} submitLabel="Crear regla" withAutonomy />
+            <CustomRuleForm action={createCustomRuleAction} types={typeOptions} stages={stageOptions} pipelines={pipelineOptions} users={userOptions} submitLabel="Crear regla" withAutonomy />
           </article>
         </div>
       </section>

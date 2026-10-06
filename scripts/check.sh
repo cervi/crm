@@ -23,6 +23,8 @@ export GOOGLE_CLIENT_ID="cliente-google-de-pruebas" GOOGLE_CLIENT_SECRET="secret
 export PIPEDRIVE_API_URL="http://127.0.0.1:${MOCK_PORT}"
 export GOOGLE_AUTH_URL="http://127.0.0.1:${MOCK_PORT}/o/oauth2/v2/auth" GOOGLE_TOKEN_URL="http://127.0.0.1:${MOCK_PORT}/token" GOOGLE_API_BASE="http://127.0.0.1:${MOCK_PORT}"
 export TOKEN_ENCRYPTION_KEY="clave-de-cifrado-de-pruebas-0123456789abcdef"
+# Los webhooks de las pruebas van al simulador local.
+export ALLOW_PRIVATE_WEBHOOKS=1
 
 pids=()
 cleanup() { for p in "${pids[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$DATA_DIR"; }

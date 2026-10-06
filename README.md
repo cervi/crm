@@ -65,6 +65,7 @@ Variables (ver `.env.example`):
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL 13 o superior. |
 | `SETUP_CODE` | Código para crear el primer administrador en `/setup` (solo se pide en producción y solo mientras nadie tenga contraseña). Después, el resto del equipo se da de alta en Ajustes → Usuarios y permisos. También se puede crear un usuario desde la terminal: `node scripts/db.mjs user EMAIL CONTRASEÑA admin`. |
+| `ALLOW_PRIVATE_WEBHOOKS` | Opcional. Con `1`, los webhooks de las automatizaciones pueden apuntar a direcciones internas o `http://` (por defecto, en producción solo `https://` públicas). |
 | `INBOUND_API_KEYS` | Claves de la API de entrada, separadas por comas (mínimo 16 caracteres). |
 | `TZ` | Zona horaria de las fechas (por defecto `Europe/Madrid`). |
 | `AUTOMATIONS_INTERVAL_MINUTES` | Cada cuántos minutos revisa la IA los deals (15 por defecto; `0` lo desactiva). |

@@ -41,7 +41,7 @@ function reset() {
         from: { emailAddress: { address: "news@otro.example" } }, toRecipients: [{ emailAddress: { address: ME.mail } }],
         receivedDateTime: new Date(Date.now() - 2 * D).toISOString(), sentDateTime: new Date(Date.now() - 2 * D).toISOString() },
     ],
-    gsent: [], gevents: [], llm: [], pd: pipedriveData(), pdCalls: 0,
+    gsent: [], gevents: [], llm: [], webhooks: [], pd: pipedriveData(), pdCalls: 0,
     gmessages: [
       gmsg("g1", 10, { From: "Ana García <ana@paco.example>", To: GME.email, Subject: "Re: propuesta" }, "Lo vemos con dirección."),
       gmsg("g2", 11, { From: `Jesús <${GME.email}>`, To: "\"Ana García\" <ana@paco.example>", Subject: "Propuesta" }, "Te adjunto la propuesta.", ["SENT"]),
@@ -115,7 +115,12 @@ createServer(async (req, res) => {
   const p = url.pathname;
   try {
     // --- Utilidades de prueba
-    if (p === "/__state") return send(res, 200, { sent: state.sent, events: state.events, gsent: state.gsent, gevents: state.gevents, llm: state.llm });
+    if (p === "/__state") return send(res, 200, { sent: state.sent, events: state.events, gsent: state.gsent, gevents: state.gevents, llm: state.llm, webhooks: state.webhooks });
+    // Webhook de las automatizaciones (Zapier, Make… simulado). /__webhook/fail responde con error.
+    if (p.startsWith("/__webhook") && req.method === "POST") {
+      state.webhooks.push(JSON.parse(await body(req)));
+      return p.endsWith("/fail") ? send(res, 500, { error: "fallo simulado" }) : send(res, 200, { ok: true });
+    }
 
     // --- Pipedrive (API v1 y v2)
     if (p === "/__pd_touch") {

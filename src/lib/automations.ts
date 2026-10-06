@@ -31,7 +31,7 @@ import { sendDueDigests } from "./digest";
 
 export type Autonomy = "off" | "ask" | "auto";
 export type AgentKind = "assistant" | "external";
-export type ExecutableAction = "create_task" | "add_note" | "draft_email" | "move_stage" | "update_deal";
+export type ExecutableAction = "create_task" | "add_note" | "draft_email" | "move_stage" | "update_deal" | "webhook";
 export type ActionType = ExecutableAction | "notify";
 export type ActionStatus = "pending" | "done" | "dismissed" | "expired" | "failed" | "undone";
 
@@ -46,7 +46,8 @@ export const ACTION_TYPES: { value: ExecutableAction; label: string; help: strin
   { value: "add_note", label: "Escribir notas", help: "Notas en la ficha del deal." },
   { value: "draft_email", label: "Enviar correos", help: "Desde tu correo conectado (Outlook o Gmail). Sin cuenta conectada, solo prepara borradores." },
   { value: "move_stage", label: "Mover deals de fase", help: "Avanzar o retroceder un deal en su pipeline." },
-  { value: "update_deal", label: "Editar deals", help: "Cambiar título, importe o fecha de cierre." },
+  { value: "update_deal", label: "Editar deals", help: "Cambiar título, importe, fecha de cierre o responsable." },
+  { value: "webhook", label: "Avisar a otras herramientas", help: "Llamar a un webhook (Zapier, Make, Slack, n8n…) con los datos del deal." },
 ];
 export const actionLabel = (t: string) =>
   t === "notify" ? "Pedir una decisión" : ACTION_TYPES.find((a) => a.value === t)?.label ?? t;
@@ -74,6 +75,7 @@ export type Rule = {
   is_custom: boolean;
   trigger: CustomTrigger | null;
   action: CustomAction | null;
+  created_at: Date;
 };
 
 // ---------------------------------------------------------------------------
@@ -81,17 +83,32 @@ export type Rule = {
 // resultado) o sigue sin hacerse N días después, haz tal cosa».
 
 export type Outcome = "any" | "held" | "no_show" | "rescheduled" | "cancelled";
-export type CustomTrigger =
+/** Condiciones opcionales: solo deals de un pipeline, desde un importe o de un responsable. */
+export type RuleFilter = { pipeline_id?: string | null; min_value?: number | null; owner_id?: string | null };
+export type CustomTrigger = (
   | { kind: "activity_done"; activity_type: string | null; outcome: Outcome }
-  | { kind: "activity_overdue"; activity_type: string | null; days: number };
+  | { kind: "activity_overdue"; activity_type: string | null; days: number }
+  | { kind: "deal_stage"; stage_id: string; days: number }
+  | { kind: "deal_created"; days: number }
+  | { kind: "deal_idle"; days: number }
+  | { kind: "deal_won" }
+  | { kind: "deal_lost" }
+  | { kind: "email_opened" }
+  | { kind: "email_received" }
+  | { kind: "booked" }
+) & { filter?: RuleFilter };
 export type CustomAction =
   | { kind: "create_activity"; activity_type: string; subject: string; due_in_days: number; note: string | null }
   | { kind: "draft_email"; subject: string; body: string }
   | { kind: "move_stage"; stage_id: string }
-  | { kind: "notify"; message: string };
+  | { kind: "notify"; message: string }
+  | { kind: "add_note"; content: string }
+  | { kind: "assign_owner"; owner_id: string }
+  | { kind: "webhook"; url: string };
 
 const CUSTOM_ACTION: Record<CustomAction["kind"], ActionType> = {
   create_activity: "create_task", draft_email: "draft_email", move_stage: "move_stage", notify: "notify",
+  add_note: "add_note", assign_owner: "update_deal", webhook: "webhook",
 };
 
 /** Qué tipo de acción produce una regla (de serie o personalizada). */
@@ -157,7 +174,7 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
 
 export async function listRules(): Promise<Rule[]> {
   return sql<Rule[]>`
-    SELECT id, key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action
+    SELECT id, key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action, created_at
     FROM automation_rules ORDER BY is_custom, position, name`;
 }
 
@@ -251,7 +268,7 @@ type Candidate = {
   dealId: string;
   title: string;
   reason: string;
-  payload: Record<string, unknown> & { stage_id?: string; activity_id?: string };
+  payload: Record<string, unknown> & { stage_id?: string; activity_id?: string; once_key?: string };
 };
 
 const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
@@ -648,18 +665,55 @@ export async function handoffSummary(dealId: string) {
 
 type TriggerActivity = { id: string; deal_id: string; type: string; subject: string; due_at: Date | null; person_id: string | null };
 
-/** Lo que hace la regla personalizada sobre el deal de la actividad que la disparó. */
-async function customCandidate(rule: Rule, ctx: RunContext, act: TriggerActivity, why: string): Promise<Candidate | null> {
+/** Deal (abierto o cerrado) con su contacto principal, para las reglas que no se limitan a deals abiertos. */
+async function anyDeal(dealId: string) {
+  const [d] = await sql<(DealContact & { pipeline_id: string; value: string | null; status: string; organization_name: string | null })[]>`
+    SELECT d.id, d.title, d.stage_id, s.name AS stage_name, floor(extract(epoch FROM now() - d.stage_entered_at) / 86400)::int AS days_in_stage,
+           s.rotten_after_days, s.required_activity_type, d.owner_id, u.name AS owner_name,
+           pc.person_id, pc.full_name AS person_name, pc.email, d.pipeline_id, d.value::text, d.status, o.name AS organization_name
+    FROM deals d
+    JOIN stages s ON s.id = d.stage_id
+    LEFT JOIN users u ON u.id = d.owner_id
+    LEFT JOIN organizations o ON o.id = d.organization_id
+    LEFT JOIN LATERAL (
+      SELECT p.id AS person_id, p.full_name,
+             (SELECT e.email FROM person_emails e WHERE e.person_id = p.id ORDER BY e.is_primary DESC, e.created_at LIMIT 1) AS email
+      FROM deal_participants dp JOIN persons p ON p.id = dp.person_id
+      WHERE dp.deal_id = d.id AND p.deleted_at IS NULL AND p.unsubscribed_at IS NULL
+      ORDER BY dp.is_primary DESC, dp.created_at LIMIT 1
+    ) pc ON true
+    WHERE d.id = ${dealId} AND d.deleted_at IS NULL`;
+  return d ?? null;
+}
+
+/** ¿Cumple el deal las condiciones de la regla? */
+function matchesFilter(f: RuleFilter | undefined, d: { pipeline_id: string; value: string | null; owner_id: string | null }) {
+  if (!f) return true;
+  if (f.pipeline_id && d.pipeline_id !== f.pipeline_id) return false;
+  if (f.owner_id && d.owner_id !== f.owner_id) return false;
+  if (f.min_value != null && Number(d.value ?? 0) < f.min_value) return false;
+  return true;
+}
+
+type Source = { dealId: string; personId?: string | null; activity?: TriggerActivity; onceKey?: string };
+
+/** Lo que hace la regla personalizada sobre el deal que la disparó. */
+async function customCandidate(rule: Rule, ctx: RunContext, src: Source, why: string): Promise<Candidate | null> {
   const action = rule.action;
   if (!action) return null;
-  const [d] = await openDeals(sql`ods.id = ${act.deal_id}`);
-  if (!d) return null;
-  const to = await contactFor(act.person_id, d);
+  const d = await anyDeal(src.dealId);
+  if (!d || !matchesFilter(rule.trigger?.filter, d)) return null;
+  const open = d.status === "open";
+  // Mover de fase solo tiene sentido con el deal abierto; el resto sirve también tras ganar o perder.
+  if (!open && action.kind === "move_stage") return null;
+  const to = await contactFor(src.personId ?? src.activity?.person_id ?? null, d);
+  const act = src.activity;
   const vars = {
-    deal: d.title, nombre: firstName(to.name), responsable: d.owner_name ?? "", actividad: act.subject,
-    tipo: activityLabel(act.type).toLowerCase(), sesion: activityLabel(act.type).toLowerCase(),
+    deal: d.title, nombre: firstName(to.name), responsable: d.owner_name ?? "", empresa: d.organization_name ?? "",
+    fase: d.stage_name, actividad: act?.subject ?? "", tipo: act ? activityLabel(act.type).toLowerCase() : "",
+    sesion: act ? activityLabel(act.type).toLowerCase() : "",
   };
-  const base = { activity_id: act.id };
+  const base: { activity_id?: string; once_key?: string } = act ? { activity_id: act.id } : src.onceKey ? { once_key: src.onceKey } : {};
   switch (action.kind) {
     case "create_activity": {
       const subject = renderTemplate(action.subject, vars).slice(0, 300);
@@ -682,64 +736,159 @@ async function customCandidate(rule: Rule, ctx: RunContext, act: TriggerActivity
     case "move_stage": {
       const [st] = await sql<{ name: string; pipeline_id: string; is_active: boolean }[]>`
         SELECT name, pipeline_id, is_active FROM stages WHERE id = ${action.stage_id}`;
-      const [deal] = await sql<{ pipeline_id: string; stage_id: string }[]>`SELECT pipeline_id, stage_id FROM deals WHERE id = ${d.id}`;
       // Solo si la fase es de su pipeline y no está ya en ella.
-      if (!st?.is_active || st.pipeline_id !== deal.pipeline_id || deal.stage_id === action.stage_id) return null;
+      if (!st?.is_active || st.pipeline_id !== d.pipeline_id || d.stage_id === action.stage_id) return null;
       return {
         dealId: d.id, reason: why, title: `Pasar «${d.title}» a «${st.name}»`,
-        payload: { ...base, stage_id: action.stage_id, stage_name: st.name, from_stage_id: deal.stage_id },
+        payload: { ...base, stage_id: action.stage_id, stage_name: st.name, from_stage_id: d.stage_id },
       };
     }
     case "notify":
       return { dealId: d.id, reason: why, title: renderTemplate(action.message, vars).slice(0, 300), payload: base };
+    case "add_note": {
+      const content = renderTemplate(action.content, vars).slice(0, 5000);
+      return { dealId: d.id, reason: why, title: `Nota en «${d.title}»: ${content.slice(0, 120)}`, payload: { ...base, content } };
+    }
+    case "assign_owner": {
+      if (d.owner_id === action.owner_id) return null;
+      const [u] = await sql<{ name: string }[]>`SELECT name FROM users WHERE id = ${action.owner_id} AND is_active AND kind = 'human'`;
+      if (!u) return null;
+      return {
+        dealId: d.id, reason: why, title: `Asignar «${d.title}» a ${u.name}`,
+        payload: { ...base, changes: { owner_id: action.owner_id }, owner_name: u.name },
+      };
+    }
+    case "webhook":
+      return {
+        dealId: d.id, reason: why, title: `Avisar a ${hostOf(action.url)} de «${d.title}»`,
+        payload: { ...base, url: action.url, event: rule.trigger?.kind ?? null, rule_name: rule.name },
+      };
   }
 }
 
+const hostOf = (url: string) => { try { return new URL(url).host; } catch { return "un webhook"; } };
+
 const OUTCOME_TEXT: Record<string, string> = { held: "realizada", no_show: "no se presentó", rescheduled: "reprogramada", cancelled: "cancelada" };
 
-/** Disparador «se marca como hecha»: llega como evento activity.completed del deal. */
-const CUSTOM_DONE: EventHandler = {
-  events: ["activity.completed"],
-  async handle(rule, e, ctx) {
-    const t = rule.trigger;
-    if (t?.kind !== "activity_done" || typeof e.payload.activity_id !== "string") return null;
-    const outcome = (e.payload.outcome as string | null) ?? null;
-    if (t.outcome !== "any" && outcome !== t.outcome) return null;
-    const [a] = await sql<TriggerActivity[]>`
-      SELECT id, deal_id, type, subject, due_at, person_id FROM activities WHERE id = ${e.payload.activity_id} AND deal_id IS NOT NULL`;
-    if (!a || (t.activity_type && a.type !== t.activity_type)) return null;
-    return customCandidate(rule, ctx, a, `Se marcó «${a.subject}» como hecha${outcome ? ` (${OUTCOME_TEXT[outcome] ?? outcome})` : ""}.`);
-  },
-  stillValid: () => sql`d.status = 'open'`,
+/** Disparadores con evento: actividad hecha, deal ganado/perdido, correo abierto o respondido, reunión reservada. */
+const CUSTOM_EVENTS: Partial<Record<CustomTrigger["kind"], string>> = {
+  activity_done: "activity.completed", deal_won: "deal.won", deal_lost: "deal.lost",
+  email_opened: "email.opened", email_received: "email.received", booked: "deal.booked",
 };
 
-/** Disparador «sigue sin hacerse N días después de su fecha»: se revisa periódicamente. */
-const CUSTOM_OVERDUE: Scanner = async (rule, ctx) => {
+function customEventHandler(kind: CustomTrigger["kind"]): EventHandler | undefined {
+  const event = CUSTOM_EVENTS[kind];
+  if (!event) return undefined;
+  return {
+    events: [event],
+    async handle(rule, e, ctx) {
+      const t = rule.trigger;
+      if (!t || t.kind !== kind) return null;
+      // Solo lo que pase después de crear la regla.
+      if (new Date(e.occurred_at) < new Date(rule.created_at)) return null;
+      if (t.kind === "activity_done") {
+        if (typeof e.payload.activity_id !== "string") return null;
+        const outcome = (e.payload.outcome as string | null) ?? null;
+        if (t.outcome !== "any" && outcome !== t.outcome) return null;
+        const [a] = await sql<TriggerActivity[]>`
+          SELECT id, deal_id, type, subject, due_at, person_id FROM activities WHERE id = ${e.payload.activity_id} AND deal_id IS NOT NULL`;
+        if (!a || (t.activity_type && a.type !== t.activity_type)) return null;
+        return customCandidate(rule, ctx, { dealId: a.deal_id, activity: a },
+          `Se marcó «${a.subject}» como hecha${outcome ? ` (${OUTCOME_TEXT[outcome] ?? outcome})` : ""}.`);
+      }
+      const why: Record<string, string> = {
+        deal_won: "El deal se ha ganado.", deal_lost: `El deal se ha perdido${e.payload.reason ? ` («${e.payload.reason}»)` : ""}.`,
+        email_opened: "El contacto ha abierto tu correo.", email_received: `El contacto ha respondido${e.payload.subject ? `: «${e.payload.subject}»` : ""}.`,
+        booked: "El contacto ha reservado una reunión desde tu enlace.",
+      };
+      return customCandidate(rule, ctx, { dealId: e.entity_id, personId: (e.payload.person_id as string | null) ?? null, onceKey: `ev:${e.id}` },
+        why[t.kind] ?? "Ha ocurrido algo en el deal.");
+    },
+    // Tras ganar o perder, la propuesta sigue valiendo aunque el deal ya no esté abierto.
+    stillValid: () => (kind === "deal_won" || kind === "deal_lost" ? sql`true` : sql`d.status = 'open'`),
+  };
+}
+
+const days = (n: number) => `${n} día${n === 1 ? "" : "s"}`;
+
+/** Disparadores que se revisan periódicamente. */
+const CUSTOM_SCAN: Scanner = async (rule, ctx) => {
   const t = rule.trigger;
-  if (t?.kind !== "activity_overdue") return [];
-  const rows = await sql<TriggerActivity[]>`
-    SELECT a.id, a.deal_id, a.type, a.subject, a.due_at, a.person_id
-    FROM activities a JOIN deals d ON d.id = a.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
-    WHERE NOT a.done AND a.due_at < now() - make_interval(days => ${Math.max(0, Math.round(t.days))})
-      AND (${t.activity_type}::text IS NULL OR a.type = ${t.activity_type}::text)
-    ORDER BY a.due_at LIMIT 300`;
+  if (!t) return [];
   const out: Candidate[] = [];
-  for (const a of rows) {
-    const late = Math.floor((Date.now() - new Date(a.due_at!).getTime()) / 86400000);
-    const c = await customCandidate(rule, ctx, a, `«${a.subject}» era para el ${dateText(a.due_at)} y sigue sin hacerse (${late} día${late === 1 ? "" : "s"}).`);
-    if (c) out.push(c);
+  const push = (c: Candidate | null) => { if (c) out.push(c); };
+  switch (t.kind) {
+    case "activity_overdue": {
+      const rows = await sql<TriggerActivity[]>`
+        SELECT a.id, a.deal_id, a.type, a.subject, a.due_at, a.person_id
+        FROM activities a JOIN deals d ON d.id = a.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
+        WHERE NOT a.done AND a.due_at < now() - make_interval(days => ${Math.max(0, Math.round(t.days))})
+          AND (${t.activity_type}::text IS NULL OR a.type = ${t.activity_type}::text)
+        ORDER BY a.due_at LIMIT 300`;
+      for (const a of rows) {
+        const late = Math.floor((Date.now() - new Date(a.due_at!).getTime()) / 86400000);
+        push(await customCandidate(rule, ctx, { dealId: a.deal_id, activity: a },
+          `«${a.subject}» era para el ${dateText(a.due_at)} y sigue sin hacerse (${days(late)}).`));
+      }
+      break;
+    }
+    case "deal_stage": {
+      // Al entrar en la fase (0 días) o cuando lleva N días en ella; una vez por cada entrada.
+      const rows = await sql<{ id: string; stage_entered_at: Date; stage_name: string }[]>`
+        SELECT d.id, d.stage_entered_at, s.name AS stage_name FROM deals d JOIN stages s ON s.id = d.stage_id
+        WHERE d.stage_id = ${t.stage_id} AND d.status = 'open' AND d.deleted_at IS NULL
+          AND d.stage_entered_at <= now() - make_interval(days => ${t.days})
+          AND d.stage_entered_at + make_interval(days => ${t.days}) >= ${rule.created_at}
+        LIMIT 300`;
+      for (const r of rows) {
+        push(await customCandidate(rule, ctx, { dealId: r.id, onceKey: `stage:${new Date(r.stage_entered_at).toISOString()}` },
+          t.days === 0 ? `El deal ha entrado en «${r.stage_name}».` : `El deal lleva ${days(t.days)} en «${r.stage_name}».`));
+      }
+      break;
+    }
+    case "deal_created": {
+      const rows = await sql<{ id: string }[]>`
+        SELECT d.id FROM deals d
+        WHERE d.status = 'open' AND d.deleted_at IS NULL
+          AND d.created_at <= now() - make_interval(days => ${t.days})
+          AND d.created_at + make_interval(days => ${t.days}) >= ${rule.created_at}
+        LIMIT 300`;
+      for (const r of rows) {
+        push(await customCandidate(rule, ctx, { dealId: r.id, onceKey: "created" },
+          t.days === 0 ? "Es un deal nuevo." : `El deal se creó hace ${days(t.days)}.`));
+      }
+      break;
+    }
+    case "deal_idle": {
+      // Sin nada hecho ni programado en N días: una vez por cada parón.
+      const rows = await sql<{ id: string; last_touch: Date }[]>`
+        SELECT d.id, greatest(d.created_at, d.stage_entered_at, max(a.done_at), max(a.created_at)) AS last_touch
+        FROM deals d LEFT JOIN activities a ON a.deal_id = d.id
+        WHERE d.status = 'open' AND d.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM activities p WHERE p.deal_id = d.id AND NOT p.done AND p.due_at >= now())
+        GROUP BY d.id
+        HAVING greatest(d.created_at, d.stage_entered_at, max(a.done_at), max(a.created_at)) < now() - make_interval(days => ${Math.max(1, t.days)})
+        ORDER BY 2 LIMIT 100`;
+      for (const r of rows) {
+        push(await customCandidate(rule, ctx, { dealId: r.id, onceKey: `idle:${new Date(r.last_touch).toISOString()}` },
+          `El deal no tiene movimiento desde el ${dateText(r.last_touch)} ni nada programado.`));
+      }
+      break;
+    }
   }
   return out;
 };
 
 const dateText = (d: Date | null) => (d ? new Date(d).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "—");
 
+const SCANNED: CustomTrigger["kind"][] = ["activity_overdue", "deal_stage", "deal_created", "deal_idle"];
+
 function scannerFor(rule: Rule): Scanner | undefined {
-  if (rule.is_custom) return rule.trigger?.kind === "activity_overdue" ? CUSTOM_OVERDUE : undefined;
+  if (rule.is_custom) return rule.trigger && SCANNED.includes(rule.trigger.kind) ? CUSTOM_SCAN : undefined;
   return SCANNERS[rule.key];
 }
 function handlerFor(rule: Rule): EventHandler | undefined {
-  if (rule.is_custom) return rule.trigger?.kind === "activity_done" ? CUSTOM_DONE : undefined;
+  if (rule.is_custom) return rule.trigger ? customEventHandler(rule.trigger.kind) : undefined;
   return EVENT_HANDLERS[rule.key];
 }
 
@@ -766,7 +915,9 @@ async function alreadyHandled(rule: Rule, c: Candidate) {
     WHERE rule_id = ${rule.id} AND subject_type = 'deal' AND subject_id = ${c.dealId}
       AND ${c.payload.activity_id
         ? sql`payload->>'activity_id' = ${c.payload.activity_id}`
-        : sql`status IN ('pending', 'done')`}
+        : c.payload.once_key
+          ? sql`payload->>'once_key' = ${String(c.payload.once_key)}`
+          : sql`status IN ('pending', 'done')`}
     LIMIT 1`;
   return Boolean(row);
 }
@@ -869,7 +1020,7 @@ async function runLocked(result: RunResult) {
       result.expired += expired.count;
       for (const c of candidates) {
         // Las reglas sobre una actividad concreta actúan una vez por actividad.
-        if (c.payload.activity_id ? await alreadyHandled(rule, c) : await coolingDown(rule, c)) continue;
+        if (c.payload.activity_id || c.payload.once_key ? await alreadyHandled(rule, c) : await coolingDown(rule, c)) continue;
         count(await propose(rule, mode, c));
       }
     }
@@ -1010,9 +1161,10 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
       if (!a.deal_id) throw new UserError("La propuesta no tiene deal.");
       const changes = parse(z.object({
         title: optText(300), value: optional(z.coerce.number().min(0)), expected_close_date: optional(z.iso.date()),
+        owner_id: optional(z.string().regex(/^[0-9a-f-]{36}$/i)),
       }), p.changes ?? {});
-      const [before] = await sql<{ title: string; value: string | null; expected_close_date: string | null }[]>`
-        SELECT title, value::text, expected_close_date::text FROM deals WHERE id = ${a.deal_id} AND deleted_at IS NULL`;
+      const [before] = await sql<{ title: string; value: string | null; expected_close_date: string | null; owner_id: string | null }[]>`
+        SELECT title, value::text, expected_close_date::text, owner_id FROM deals WHERE id = ${a.deal_id} AND deleted_at IS NULL`;
       if (!before) throw new UserError("El deal ya no existe.");
       const set = Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined));
       if (Object.keys(set).length === 0) throw new UserError("La propuesta no cambia nada.");
@@ -1020,9 +1172,43 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
       await recordEvent(sql, AI_ACTOR, "deal", a.deal_id, "deal.updated", { changes: set });
       return { before: Object.fromEntries(Object.keys(set).map((k) => [k, before[k as keyof typeof before]])) };
     }
+    case "webhook": {
+      const url = checkWebhookUrl(str(p.url, ""));
+      const d = a.deal_id ? await anyDeal(a.deal_id) : null;
+      const body = {
+        event: p.event ?? null, rule: p.rule_name ?? null, sent_at: new Date().toISOString(),
+        deal: d && {
+          id: d.id, title: d.title, status: d.status, value: d.value === null ? null : Number(d.value), stage: d.stage_name,
+          organization: d.organization_name, owner: d.owner_name, contact: d.person_name, contact_email: d.email,
+          url: `${(process.env.APP_URL ?? "").replace(/\/+$/, "")}/deals/${d.id}`,
+        },
+      };
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "POST", headers: { "content-type": "application/json", "user-agent": "CRM-webhook/1" },
+          body: JSON.stringify(body), signal: AbortSignal.timeout(10000), redirect: "manual",
+        });
+      } catch {
+        throw new UserError(`No se pudo contactar con ${hostOf(url)}.`);
+      }
+      if (!res.ok) throw new UserError(`${hostOf(url)} respondió con un error (${res.status}).`);
+      return { status: res.status, url };
+    }
     case "notify":
       return {};
   }
+}
+
+/** Solo direcciones públicas por HTTPS (en local también HTTP) para los webhooks. */
+export function checkWebhookUrl(raw: string): string {
+  let u: URL;
+  try { u = new URL(raw); } catch { throw new UserError("La dirección del webhook no es válida."); }
+  const local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[?::1\]?$|\[?f[cd])/i.test(u.hostname);
+  const prod = process.env.NODE_ENV === "production" && !process.env.ALLOW_PRIVATE_WEBHOOKS;
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && !prod)) throw new UserError("El webhook tiene que ser una dirección https://.");
+  if (local && prod) throw new UserError("El webhook no puede apuntar a una dirección interna.");
+  return u.toString();
 }
 
 export async function dismissAction(actionId: string, actor: Actor = UI_ACTOR) {
@@ -1035,7 +1221,7 @@ export async function dismissAction(actionId: string, actor: Actor = UI_ACTOR) {
 const UNDO_DAYS = 30;
 export const isUndoable = (a: { status: string; action_type: string; executed_at: Date | null }) =>
   // Un correo ya enviado no se puede «desenviar».
-  a.status === "done" && a.action_type !== "notify" && a.action_type !== "draft_email" && a.executed_at !== null
+  a.status === "done" && a.action_type !== "notify" && a.action_type !== "draft_email" && a.action_type !== "webhook" && a.executed_at !== null
   && Date.now() - new Date(a.executed_at).getTime() < UNDO_DAYS * 86400000;
 
 /** Deshace una acción ejecutada (borra la tarea, devuelve el deal a su fase…). */
@@ -1142,23 +1328,60 @@ const OUTCOME_LABELS: Record<Outcome, string> = {
 /** Descripción legible de una regla personalizada («Cuando… → …»). */
 export async function describeCustomRule(trigger: CustomTrigger, action: CustomAction): Promise<string> {
   await activityTypes();
-  const what = trigger.activity_type ? `una actividad «${activityLabel(trigger.activity_type)}»` : "cualquier actividad";
-  const when = trigger.kind === "activity_done"
-    ? `Cuando ${what} de un deal se marca como hecha${trigger.outcome === "any" ? "" : ` con resultado «${OUTCOME_LABELS[trigger.outcome]}»`}`
-    : `Cuando ${what} de un deal sigue sin hacerse ${trigger.days === 0 ? "pasada su fecha" : `${trigger.days} día${trigger.days === 1 ? "" : "s"} después de su fecha`}`;
+  const stageName = async (id: string) => {
+    const [st] = await sql<{ name: string; pipeline: string }[]>`
+      SELECT s.name, p.name AS pipeline FROM stages s JOIN pipelines p ON p.id = s.pipeline_id WHERE s.id = ${id}`;
+    return st ? `«${st.name}» (${st.pipeline})` : "«?»";
+  };
+  let when: string;
+  switch (trigger.kind) {
+    case "activity_done":
+    case "activity_overdue": {
+      const what = trigger.activity_type ? `una actividad «${activityLabel(trigger.activity_type)}»` : "cualquier actividad";
+      when = trigger.kind === "activity_done"
+        ? `Cuando ${what} de un deal se marca como hecha${trigger.outcome === "any" ? "" : ` con resultado «${OUTCOME_LABELS[trigger.outcome]}»`}`
+        : `Cuando ${what} de un deal sigue sin hacerse ${trigger.days === 0 ? "pasada su fecha" : `${days(trigger.days)} después de su fecha`}`;
+      break;
+    }
+    case "deal_stage":
+      when = trigger.days === 0 ? `Cuando un deal entra en ${await stageName(trigger.stage_id)}`
+        : `Cuando un deal lleva ${days(trigger.days)} en ${await stageName(trigger.stage_id)}`;
+      break;
+    case "deal_created": when = trigger.days === 0 ? "Cuando se crea un deal" : `${days(trigger.days)} después de crear un deal`; break;
+    case "deal_idle": when = `Cuando un deal lleva ${days(trigger.days)} sin movimiento ni nada programado`; break;
+    case "deal_won": when = "Cuando se gana un deal"; break;
+    case "deal_lost": when = "Cuando se pierde un deal"; break;
+    case "email_opened": when = "Cuando el contacto abre un correo"; break;
+    case "email_received": when = "Cuando el contacto responde un correo"; break;
+    case "booked": when = "Cuando el contacto reserva una reunión desde tu enlace"; break;
+  }
+  const f = trigger.filter ?? {};
+  const conds: string[] = [];
+  if (f.pipeline_id) {
+    const [p] = await sql<{ name: string }[]>`SELECT name FROM pipelines WHERE id = ${f.pipeline_id}`;
+    conds.push(`del pipeline «${p?.name ?? "?"}»`);
+  }
+  if (f.min_value != null) conds.push(`de ${f.min_value.toLocaleString("es-ES")} € o más`);
+  if (f.owner_id) {
+    const [u] = await sql<{ name: string }[]>`SELECT name FROM users WHERE id = ${f.owner_id}`;
+    conds.push(`de ${u?.name ?? "?"}`);
+  }
+  if (conds.length) when += ` (solo deals ${conds.join(", ")})`;
   let then: string;
   switch (action.kind) {
     case "create_activity":
-      then = `crea «${action.subject}» (${activityLabel(action.activity_type)}) ${action.due_in_days === 0 ? "para el mismo día" : `para dentro de ${action.due_in_days} día${action.due_in_days === 1 ? "" : "s"}`}`;
+      then = `crea «${action.subject}» (${activityLabel(action.activity_type)}) ${action.due_in_days === 0 ? "para el mismo día" : `para dentro de ${days(action.due_in_days)}`}`;
       break;
     case "draft_email": then = `prepara un correo al contacto: «${action.subject}»`; break;
-    case "move_stage": {
-      const [st] = await sql<{ name: string; pipeline: string }[]>`
-        SELECT s.name, p.name AS pipeline FROM stages s JOIN pipelines p ON p.id = s.pipeline_id WHERE s.id = ${action.stage_id}`;
-      then = `mueve el deal a «${st?.name ?? "?"}» (${st?.pipeline ?? "?"})`;
+    case "move_stage": then = `mueve el deal a ${await stageName(action.stage_id)}`; break;
+    case "notify": then = `te pide una decisión: «${action.message}»`; break;
+    case "add_note": then = "deja una nota en el deal"; break;
+    case "assign_owner": {
+      const [u] = await sql<{ name: string }[]>`SELECT name FROM users WHERE id = ${action.owner_id}`;
+      then = `asigna el deal a ${u?.name ?? "?"}`;
       break;
     }
-    case "notify": then = `te pide una decisión: «${action.message}»`; break;
+    case "webhook": then = `avisa a ${hostOf(action.url)} (webhook)`; break;
   }
   return `${when}, ${then}.`;
 }
@@ -1180,14 +1403,63 @@ async function parseCustomRule(data: Record<string, unknown>) {
     if (!Number.isInteger(n) || n < 0 || n > max) throw new UserError(`«${label}» debe ser un número de 0 a ${max}.`);
     return n;
   };
+  const uuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  const stageOf = async (k: string) => {
+    const stage = s(k);
+    const [st] = uuid(stage) ? await sql`SELECT 1 FROM stages WHERE id = ${stage} AND is_active` : [];
+    if (!st) throw new UserError("Elige la fase.");
+    return stage;
+  };
+  const ownerOf = async (k: string) => {
+    const v = s(k);
+    const [u] = uuid(v) ? await sql`SELECT 1 FROM users WHERE id = ${v} AND kind = 'human' AND is_active` : [];
+    if (!u) throw new UserError("Elige a la persona.");
+    return v;
+  };
+
+  // Condiciones (opcionales).
+  const filter: RuleFilter = {};
+  if (s("filter_pipeline")) {
+    const [p] = uuid(s("filter_pipeline")) ? await sql`SELECT 1 FROM pipelines WHERE id = ${s("filter_pipeline")}` : [];
+    if (!p) throw new UserError("Pipeline no válido.");
+    filter.pipeline_id = s("filter_pipeline");
+  }
+  if (s("filter_min_value")) {
+    const n = Number(s("filter_min_value").replace(",", "."));
+    if (!Number.isFinite(n) || n < 0) throw new UserError("El importe mínimo no es válido.");
+    filter.min_value = n;
+  }
+  if (s("filter_owner")) filter.owner_id = await ownerOf("filter_owner");
+  const withFilter = <T extends object>(t: T) => (Object.keys(filter).length ? { ...t, filter } : t);
+
   let trigger: CustomTrigger;
-  if (s("trigger_kind") === "activity_done") {
-    const outcome = (s("trigger_outcome") || "any") as Outcome;
-    if (!(outcome in OUTCOME_LABELS)) throw new UserError("Resultado no válido.");
-    trigger = { kind: "activity_done", activity_type: typeOrNull("trigger_type"), outcome };
-  } else if (s("trigger_kind") === "activity_overdue") {
-    trigger = { kind: "activity_overdue", activity_type: typeOrNull("trigger_type"), days: int("trigger_days", "Días de retraso", 90) };
-  } else throw new UserError("Elige cuándo se dispara la regla.");
+  switch (s("trigger_kind")) {
+    case "activity_done": {
+      const outcome = (s("trigger_outcome") || "any") as Outcome;
+      if (!(outcome in OUTCOME_LABELS)) throw new UserError("Resultado no válido.");
+      trigger = withFilter({ kind: "activity_done" as const, activity_type: typeOrNull("trigger_type"), outcome });
+      break;
+    }
+    case "activity_overdue":
+      trigger = withFilter({ kind: "activity_overdue" as const, activity_type: typeOrNull("trigger_type"), days: int("trigger_days", "Días de retraso", 90) });
+      break;
+    case "deal_stage":
+      trigger = withFilter({ kind: "deal_stage" as const, stage_id: await stageOf("trigger_stage"), days: int("trigger_days", "Días en la fase", 365) });
+      break;
+    case "deal_created":
+      trigger = withFilter({ kind: "deal_created" as const, days: int("trigger_days", "Días tras crearlo", 365) });
+      break;
+    case "deal_idle": {
+      const d = int("trigger_days", "Días sin movimiento", 365);
+      if (d < 1) throw new UserError("Pon al menos 1 día sin movimiento.");
+      trigger = withFilter({ kind: "deal_idle" as const, days: d });
+      break;
+    }
+    case "deal_won": case "deal_lost": case "email_opened": case "email_received": case "booked":
+      trigger = withFilter({ kind: s("trigger_kind") as "deal_won" });
+      break;
+    default: throw new UserError("Elige cuándo se dispara la regla.");
+  }
 
   let action: CustomAction;
   const text = (k: string, label: string, max: number) => {
@@ -1207,15 +1479,20 @@ async function parseCustomRule(data: Record<string, unknown>) {
     case "draft_email":
       action = { kind: "draft_email", subject: text("action_email_subject", "Asunto del correo", 300), body: text("action_email_body", "Texto del correo", 20000) };
       break;
-    case "move_stage": {
-      const stage = s("action_stage");
-      const [st] = stage ? await sql`SELECT 1 FROM stages WHERE id = ${stage}::uuid AND is_active` : [];
-      if (!st) throw new UserError("Elige la fase.");
-      action = { kind: "move_stage", stage_id: stage };
+    case "move_stage":
+      action = { kind: "move_stage", stage_id: await stageOf("action_stage") };
       break;
-    }
     case "notify":
       action = { kind: "notify", message: text("action_message", "Mensaje", 300) };
+      break;
+    case "add_note":
+      action = { kind: "add_note", content: text("action_note_content", "Texto de la nota", 5000) };
+      break;
+    case "assign_owner":
+      action = { kind: "assign_owner", owner_id: await ownerOf("action_owner") };
+      break;
+    case "webhook":
+      action = { kind: "webhook", url: checkWebhookUrl(text("action_url", "Dirección del webhook", 2000)) };
       break;
     default: throw new UserError("Elige qué hace la regla.");
   }
