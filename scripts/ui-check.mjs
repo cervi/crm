@@ -610,6 +610,54 @@ await step("tablero: las tarjetas marcan las propuestas de la IA pendientes", as
   if (n > 0) await card.locator(".badge.ai").filter({ hasText: String(n) }).waitFor();
 });
 
+await step("tipos de actividad: crear uno nuevo y usarlo en un deal", async () => {
+  await page.goto("/settings/activity-types");
+  const add = page.locator("form", { has: page.getByRole("button", { name: "Añadir tipo" }) });
+  await add.getByLabel("Nombre").fill("Onboarding");
+  await add.getByLabel("Sesión con el cliente").check();
+  await add.getByRole("button", { name: "Añadir tipo" }).click();
+  await page.getByRole("listitem", { name: "Tipo Onboarding" }).waitFor();
+  await page.goto(`/deals/${PACO_OPEN}`);
+  await page.getByRole("tab", { name: "Actividad", exact: true }).click();
+  const form = page.locator("form", { has: page.getByRole("button", { name: "Programar" }) });
+  await form.locator("select[name=type]").selectOption("onboarding");
+  await form.locator("input[name=subject]").fill(`Onboarding ${stamp}`);
+  await submit("Programar");
+  await page.locator(".item", { hasText: `Onboarding ${stamp}` }).waitFor();
+});
+
+await step("regla personalizada: al hacer el onboarding, la IA crea la tarea siguiente sola", async () => {
+  await page.goto("/settings/automations#reglas-personalizadas");
+  const card = page.getByRole("article", { name: "Nueva regla" });
+  await card.getByLabel("Nombre de la regla").fill(`Tras el onboarding ${stamp}`);
+  await card.locator("select[name=trigger_type]").selectOption("onboarding");
+  await card.locator("select[name=trigger_kind]").selectOption("activity_done");
+  await card.locator("select[name=trigger_outcome]").selectOption("held");
+  await card.locator("select[name=action_kind]").selectOption("create_activity");
+  await card.locator("select[name=action_type]").selectOption("task");
+  await card.locator("input[name=action_subject]").fill("Enviar el resumen del onboarding a {nombre}");
+  await card.locator("input[name=action_due_days]").fill("1");
+  await card.locator("select[name=autonomy]").selectOption("auto");
+  await card.getByRole("button", { name: "Crear regla" }).click();
+  const rule = page.getByRole("article", { name: `Tras el onboarding ${stamp}` });
+  await rule.getByText(/Cuando una actividad «Onboarding» de un deal se marca como hecha con resultado «Realizada»/).waitFor();
+
+  await page.goto(`/deals/${PACO_OPEN}`);
+  const item = page.locator(".item", { hasText: `Onboarding ${stamp}` });
+  await item.getByText("Marcar como hecha").click();
+  await item.locator("select[name=outcome]").selectOption("held");
+  await item.getByRole("button", { name: "Guardar" }).click();
+  await item.waitFor({ state: "detached" });
+  await page.goto("/inbox");
+  await submit("Revisar ahora");
+  await page.waitForTimeout(500);
+  const [t] = await sql`SELECT a.subject, a.created_by_id FROM activities a WHERE a.deal_id = ${PACO_OPEN} AND a.subject = 'Enviar el resumen del onboarding a Ana'`;
+  expect(t?.created_by_id === "00000000-0000-0000-0000-0000000000a1", "la tarea no la creó la IA");
+  await page.goto(`/deals/${PACO_OPEN}`);
+  await page.locator(".item", { hasText: "Enviar el resumen del onboarding a Ana" }).waitFor();
+  await shot("reglas-personalizadas");
+});
+
 await step("Customer Success: dirección por defecto y responsable por empresa", async () => {
   await page.goto("/settings/automations");
   const rule = page.getByRole("article", { name: "Deal ganado: enviar el resumen a Customer Success" });

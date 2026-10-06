@@ -639,6 +639,74 @@ if (process.env.MOCK_URL) {
         "el botón de exportar de leads lleva los filtros de la pantalla");
 }
 
+// ------------------------------------------------------------- Tipos de actividad y reglas personalizadas
+{
+  const SECRET = process.env.CRON_SECRET ?? "";
+  const run = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  const custom = async (name, trigger, action, autonomy) => (await sql`
+    INSERT INTO automation_rules (key, name, description, autonomy, allowed_autonomy, is_custom, trigger, action)
+    VALUES (${`custom_e2e_${name}`}, ${name}, ${name}, ${autonomy}, ARRAY['off','ask','auto'], true, ${sql.json(trigger)}, ${sql.json(action)})
+    RETURNING id`)[0].id;
+  const actionsOf = (ruleId) => sql`SELECT status, mode, title, payload, result FROM automation_actions WHERE rule_id = ${ruleId} ORDER BY created_at`;
+  const complete = async (activityId, outcome) => {
+    await sql`UPDATE activities SET done = true, outcome = ${outcome} WHERE id = ${activityId}`;
+    await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, payload)
+              VALUES ('deal', ${DEAL_OPEN}, 'activity.completed', 'user', ${sql.json({ activity_id: activityId, outcome })})`;
+  };
+
+  await sql`INSERT INTO activity_types (key, label, is_session, position) VALUES ('kickoff', 'Kick-off', true, 50) ON CONFLICT DO NOTHING`;
+  const typesPage = await (await get("/settings/activity-types")).text();
+  check(typesPage.includes("Tipos de actividad") && typesPage.includes("Videollamada"), "/settings/activity-types lista los tipos");
+  const bad = await sql`INSERT INTO activities (type, subject, deal_id) VALUES ('no_existe', 'x', ${DEAL_OPEN})`.then(() => "ok", (e) => e.code);
+  check(bad === "23503", "la base de datos solo admite tipos de actividad configurados", bad);
+
+  // «Cuando un Kick-off se hace con resultado Realizada → crea una tarea en 2 días» (Sola).
+  const r1 = await custom("Tras el kick-off", { kind: "activity_done", activity_type: "kickoff", outcome: "held" },
+                          { kind: "create_activity", activity_type: "task", subject: "Enviar propuesta a {nombre}", due_in_days: 2, note: "Tras «{actividad}»" }, "auto");
+  const [k1] = await sql`INSERT INTO activities (type, subject, deal_id, person_id, due_at) VALUES ('kickoff', 'Kick-off Paco', ${DEAL_OPEN}, ${PERSON}, now() - interval '1 hour') RETURNING id`;
+  const [k2] = await sql`INSERT INTO activities (type, subject, deal_id, person_id, due_at) VALUES ('kickoff', 'Kick-off cancelado', ${DEAL_OPEN}, ${PERSON}, now() - interval '1 hour') RETURNING id`;
+  await complete(k1.id, "held");
+  await complete(k2.id, "cancelled");
+  await run();
+  const a1 = await actionsOf(r1);
+  const [task] = a1[0]?.result ? await sql`SELECT type, subject, note, due_at FROM activities WHERE id = ${a1[0].result.activity_id}` : [];
+  const days = task ? Math.round((new Date(task.due_at) - Date.now()) / 86400000) : null;
+  check(a1.length === 1 && a1[0].status === "done" && task?.type === "task" && task.subject === "Enviar propuesta a Ana"
+        && task.note === "Tras «Kick-off Paco»" && days >= 2 && days <= 3,
+        "regla personalizada: al hacerse un Kick-off (Realizada) crea la tarea, solo para ese resultado", JSON.stringify({ n: a1.length, task, days }));
+
+  // «Cuando una Tarea sigue sin hacerse 1 día después → pide una decisión» (Preguntar), y caduca al hacerla.
+  const r2 = await custom("Tarea olvidada", { kind: "activity_overdue", activity_type: "task", days: 1 },
+                          { kind: "notify", message: "«{actividad}» sigue sin hacer en {deal}" }, "ask");
+  const [late] = await sql`INSERT INTO activities (type, subject, deal_id, due_at) VALUES ('task', 'Revisar contrato', ${DEAL_OPEN}, now() - interval '3 days') RETURNING id`;
+  await run();
+  const pend = (await actionsOf(r2)).filter((x) => x.payload.activity_id === late.id);
+  check(pend[0]?.status === "pending" && pend[0].title === "«Revisar contrato» sigue sin hacer en Paco — ampliación de servicio",
+        "regla personalizada: actividad sin hacer a tiempo → pide una decisión", JSON.stringify(pend));
+  await sql`UPDATE activities SET done = true WHERE id = ${late.id}`;
+  await run();
+  const after = (await actionsOf(r2)).filter((x) => x.payload.activity_id === late.id);
+  check(after[0]?.status === "expired", "al hacerse la actividad, la propuesta caduca", after[0]?.status);
+
+  // «Cuando un Email se hace → mover a Propuesta enviada» (de su pipeline) en «Preguntar».
+  const [prop] = await sql`SELECT id FROM stages WHERE pipeline_id = ${P.ampl} AND name = 'Propuesta enviada'`;
+  const [other] = await sql`SELECT id FROM stages WHERE pipeline_id = ${P.inbound} ORDER BY position LIMIT 1`;
+  const r3 = await custom("Propuesta enviada", { kind: "activity_done", activity_type: "email", outcome: "any" },
+                          { kind: "move_stage", stage_id: prop.id }, "ask");
+  const r4 = await custom("Otro pipeline", { kind: "activity_done", activity_type: "email", outcome: "any" },
+                          { kind: "move_stage", stage_id: other.id }, "ask");
+  const [em] = await sql`INSERT INTO activities (type, subject, deal_id, due_at) VALUES ('email', 'Propuesta', ${DEAL_OPEN}, now()) RETURNING id`;
+  await complete(em.id, null);
+  await run();
+  const [mv] = await actionsOf(r3);
+  check(mv?.status === "pending" && mv.payload.stage_name === "Propuesta enviada", "regla personalizada: propone mover de fase", JSON.stringify(mv?.payload));
+  check((await actionsOf(r4)).length === 0, "una fase de otro pipeline no se aplica al deal");
+  await sql`UPDATE automation_rules SET autonomy = 'off' WHERE id IN (${r1}, ${r2}, ${r3}, ${r4})`;
+
+  const conf = await (await get("/settings/automations")).text();
+  check(conf.includes("Tus reglas") && conf.includes("Tras el kick-off") && conf.includes("Nueva regla"), "/settings/automations muestra las reglas personalizadas");
+}
+
 await sql.end();
 console.log(`\n${failed === 0 ? "✓" : "✗"} ${passed} correctas, ${failed} fallidas`);
 process.exit(failed === 0 ? 0 : 1);
