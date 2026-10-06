@@ -520,10 +520,13 @@ if (process.env.MOCK_URL) {
     check(ho?.note.startsWith("(IA) Traspaso") && ho.note.includes("— Datos del CRM —"), "traspaso a CS redactado por la IA, con los datos debajo", ho?.note?.slice(0, 80));
 
     // Parte del día por correo (a quien tenga cuenta conectada), una vez al día.
+    // (Puede que ya saliera el de hoy sin IA en una revisión anterior: se empieza de cero.)
+    await sql`DELETE FROM digest_log`;
+    await sql`DELETE FROM digest_focus`;
     await sql`UPDATE automation_settings SET digest_enabled = true, digest_hour = 0, digest_days = ARRAY[1,2,3,4,5,6,7]`;
     const r3 = await run();
     const st = await (await fetch(`${MOCK}/__state`)).json();
-    const mail = st.gsent.find((m) => m.subject.startsWith("Tu parte del día"));
+    const mail = st.gsent.filter((m) => m.subject.startsWith("Tu parte del día")).at(-1);
     check(r3.digests >= 1 && mail?.to === "jesus@empresa-google.example" && mail.body.includes("Enfoque del día (IA):") && mail.body.includes("Deals que piden atención"),
           "parte del día: llega al correo de la persona con el enfoque de la IA", JSON.stringify({ digests: r3.digests, mail: mail?.body?.slice(0, 120) }));
     const r4 = await run();
