@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { listConnections, listOutboundMailboxes, availableSlots, providerOf, warmupLimit, type Connection } from "@/lib/mailbox";
-import { disconnectMailboxAction, updateMailboxAction } from "@/app/actions/outbound";
+import { disconnectOutboundAction, updateMailboxAction } from "@/app/actions/outbound";
 import { sql } from "@/lib/db";
 import { PROVIDER_LIST, PROVIDERS, redirectUri, type Provider } from "@/lib/integrations";
 import { encryptionConfigured } from "@/lib/crypto";
@@ -216,7 +216,7 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                   <label className="field"><span className="label">Calentamiento desde</span><input name="warmup_start" type="date" defaultValue={m.warmup_start} /></label>
                   <label className="checkbox"><input type="checkbox" name="paused" defaultChecked={m.paused} />En pausa</label>
                 </ActionForm>
-                <form action={disconnectMailboxAction.bind(null, m.id)}><button type="submit" className="link-btn meta">Desconectar</button></form>
+                <form action={disconnectOutboundAction.bind(null, m.id)}><button type="submit" className="link-btn meta">Desconectar</button></form>
               </div>
             );
           })}

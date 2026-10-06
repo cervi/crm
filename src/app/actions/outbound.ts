@@ -130,7 +130,7 @@ export async function updateMailboxAction(mailboxId: string, _: ActionState, for
   return res;
 }
 
-export async function disconnectMailboxAction(mailboxId: string): Promise<void> {
+export async function disconnectOutboundAction(mailboxId: string): Promise<void> {
   const g = await guard("admin");
   if ("error" in g) return;
   await disconnectMailbox(mailboxId);
