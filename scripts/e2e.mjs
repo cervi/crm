@@ -979,7 +979,8 @@ if (KEY) {
   const r3 = await (await api({ email: `tres.${stamp}@gmail.com`, full_name: "Tres E2E", source: "ebook", intent: "demo_request" })).json();
   const owners = await sql`SELECT id, owner_id, score, score_reasons FROM leads WHERE id IN (${r1.lead_id}, ${r2.lead_id}, ${r3.lead_id})`;
   const by = (id) => owners.find((o) => o.id === id);
-  check(by(r1.lead_id)?.owner_id === MEMBER_ID && by(r2.lead_id)?.owner_id === CS_ID && by(r3.lead_id)?.owner_id === ADMIN_ID,
+  // (La solicitud de demo convierte el lead en deal: lo que se asigna es el deal.)
+  check(by(r1.lead_id)?.owner_id === MEMBER_ID && by(r2.lead_id)?.owner_id === CS_ID,
         "reparto: por origen y por turnos; lo demás, a la regla general", JSON.stringify(owners.map((o) => o.owner_id)));
   const [d3] = await sql`SELECT owner_id FROM deals WHERE id = ${r3.deal_id}`;
   check(d3?.owner_id === ADMIN_ID, "reparto: el deal de una solicitud de demo también se asigna", JSON.stringify(d3));
@@ -987,7 +988,7 @@ if (KEY) {
   check(s1?.score >= 25 && s1.score_reasons.some((x) => x.label.startsWith("Cargo con capacidad de decisión")) && s3?.score >= 50
         && s3.score_reasons.some((x) => x.label === "Ha pedido una demo o reunión"),
         "puntuación: el cargo y la petición de demo suben la nota, con sus motivos", JSON.stringify({ s1: s1?.score, s3: s3?.score }));
-  const leadsHtml = await (await get("/leads?sort=score&temp=warm")).text();
+  const leadsHtml = await (await get("/leads?status=all&sort=score&temp=warm")).text();
   check(leadsHtml.includes("Puntuación") && leadsHtml.includes("Tres E2E"), "leads: ordenar y filtrar por puntuación");
   const leadPage = await (await get(`/leads/${r3.lead_id}`)).text();
   check(leadPage.includes("Ha pedido una demo o reunión") && leadPage.includes("/ 100"), "ficha del lead: la puntuación con sus motivos");
