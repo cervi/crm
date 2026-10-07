@@ -455,6 +455,77 @@ if (process.env.MOCK_URL) {
     const list = await (await get("/sequences")).text();
     check(list.includes("Seguimiento tras la propuesta") && list.includes("Respondieron"), "/sequences lista las secuencias con sus resultados");
 
+    // --- Editor de correos (al estilo de Apollo): formato, variables, condiciones, A/B, pausa por datos, hilo y manual.
+    const [sq] = await sql`INSERT INTO sequences (name, created_by) VALUES ('Editor e2e', ${ADMIN_ID}) RETURNING id`;
+    const [st1] = await sql`INSERT INTO sequence_steps (sequence_id, position, delay_days, kind, format, subject, body) VALUES (${sq.id}, 1, 0, 'email', 'html',
+      '{{empresa|tu empresa}}: una idea', '<p>Hola {{nombre->mayusculas}}, {{#if cargo}}como {{cargo}}{{#else}}como responsable{{#endif}} te interesa <a href="https://aikit.example/demo">esta demo</a>. ¿Hablamos?</p>') RETURNING id`;
+    await sql`INSERT INTO sequence_step_variants (step_id, label, subject, body) VALUES (${st1.id}, 'B', 'Pregunta rápida, {{nombre}}', '<p>Hola {{nombre}}, ¿te va bien el {{hoy_dia_semana->mas_2}}?</p>')`;
+    const [st2] = await sql`INSERT INTO sequence_steps (sequence_id, position, delay_days, delay_hours, kind, format, thread_reply, subject, body) VALUES (${sq.id}, 2, 0, 0, 'email', 'text', true, '',
+      'Hola {{nombre}}, sobre {{contacto.prioridad_e2e}}: ¿lo vemos?') RETURNING id`;
+    await sql`INSERT INTO sequence_steps (sequence_id, position, delay_days, kind, format, subject, body) VALUES (${sq.id}, 3, 0, 'manual_email', 'text', 'Último intento, {{nombre}}', 'Hola {{nombre}}, ¿cierro el tema?')`;
+    await sql`UPDATE users SET email_signature = '<p><strong>{{remitente}}</strong> · aikit</p>' WHERE id = ${OWNER}`;
+    const [beto] = await sql`INSERT INTO persons (first_name, last_name) VALUES ('Beto', 'Prueba') RETURNING id`;
+    await sql`INSERT INTO person_emails (person_id, email, is_primary) VALUES (${beto.id}, 'beto@ejemplo-e2e.example', true)`;
+    const [ea] = await sql`INSERT INTO sequence_enrollments (sequence_id, deal_id, person_id, user_id, next_step, next_run_at, enrolled_by)
+                           VALUES (${sq.id}, ${DEAL_OPEN}, ${PERSON}, ${OWNER}, 0, now() - interval '1 minute', ${ADMIN_ID}) RETURNING id`;
+    const [eb] = await sql`INSERT INTO sequence_enrollments (sequence_id, deal_id, person_id, user_id, next_step, next_run_at, enrolled_by, created_at)
+                           VALUES (${sq.id}, NULL, ${beto.id}, ${OWNER}, 0, now() - interval '30 seconds', ${ADMIN_ID}, now() + interval '1 second') RETURNING id`;
+    const sentBefore = (await mock("/__state")).sent.length;
+    const r1 = await run();
+    const mails = await sql`SELECT person_id, subject, body, body_html, variant, sequence_step_id, token FROM emails WHERE enrollment_id IN (${ea.id}, ${eb.id}) ORDER BY created_at`;
+    const ma = mails.find((m) => m.person_id === PERSON), mb = mails.find((m) => m.person_id === beto.id);
+    const outbox = (await mock("/__state")).sent.slice(sentBefore);
+    const htmlA = outbox.find((m) => m.subject === ma?.subject)?.body;
+    check(r1.sequences?.sent >= 2 && ma?.variant === "A" && mb?.variant === "B" && ma.sequence_step_id === st1.id
+          && ma.body_html.includes("Hola ANA,") && ma.body_html.includes("como Directora de Marketing") && ma.body_html.includes("<strong>")
+          && !ma.body.includes("<p>") && ma.body.includes("esta demo (https://aikit.example/demo)")
+          && htmlA?.contentType === "HTML" && htmlA.content.includes(`/t/c/${ma.token}?u=`) && htmlA.content.includes(`/t/o/${ma.token}.gif`),
+          "editor: el correo con formato sale con variables, condiciones, firma y enlaces seguidos; las variantes A y B se reparten",
+          JSON.stringify({ r: r1.sequences, ma, mb: mb?.variant, ct: htmlA?.contentType }));
+    await sql`UPDATE sequence_enrollments SET next_run_at = now() + interval '30 days' WHERE id = ${eb.id}`;
+    check(/^Pregunta rápida, Beto$/.test(mb?.subject ?? "") && /(lunes|martes|miércoles|jueves|viernes)/.test(mb?.body ?? ""),
+          "editor: variables de fecha (días laborables) y nombre en la variante B", JSON.stringify(mb));
+    const clk = await fetch(`${BASE}/t/c/${ma.token}?u=${encodeURIComponent("https://aikit.example/demo")}`, { redirect: "manual", headers: { "user-agent": UA_DESKTOP } });
+    check(clk.status === 302, "editor: los clics en enlaces del correo con formato se cuentan", `HTTP ${clk.status}`);
+    // Paso 2: le falta un dato sin valor por defecto → no sale, queda en pausa y avisa.
+    await sql`UPDATE sequence_enrollments SET next_run_at = now() - interval '1 minute' WHERE id = ${ea.id}`;
+    const r2 = await run();
+    const [pa] = await sql`SELECT status, error, next_step FROM sequence_enrollments WHERE id = ${ea.id}`;
+    const [nt] = await sql`SELECT count(*)::int AS n FROM notifications WHERE kind = 'sequence' AND title LIKE '%Ana%'`;
+    check(r2.sequences?.paused >= 1 && pa.status === "paused" && pa.error.includes("contacto.prioridad_e2e") && pa.next_step === 1 && nt.n >= 1,
+          "editor: si falta un dato, el correo no sale y la inscripción queda en pausa (con aviso)", JSON.stringify({ r: r2.sequences, pa, nt }));
+    const pausedPage = await (await get(`/sequences/${sq.id}`)).text();
+    check(pausedPage.includes("En pausa") && pausedPage.includes("Reanudar") && pausedPage.includes("Va ganando") === false && pausedPage.includes("Enviados"),
+          "editor: la secuencia muestra la pausa, el botón de reanudar y los resultados por paso");
+    await sql`UPDATE persons SET custom = custom || '{"prioridad_e2e": "la renovación"}' WHERE id = ${PERSON}`;
+    await sql`UPDATE sequence_enrollments SET status = 'active', error = NULL, next_run_at = now() - interval '1 minute' WHERE id = ${ea.id}`;
+    await run();
+    const [m2] = await sql`SELECT subject, body, sequence_step_id FROM emails WHERE enrollment_id = ${ea.id} AND sequence_step_id = ${st2.id}`;
+    check(m2?.subject === `Re: ${ma.subject}` && m2.body.startsWith("Hola Ana, sobre la renovación: ¿lo vemos?") && m2.body.includes("aikit"),
+          "editor: al completar el dato y reanudar, sale; en el mismo hilo («Re: ») y con la firma en texto", JSON.stringify(m2));
+    // Paso 3: correo manual → borrador para revisar; al completarlo, la secuencia termina.
+    await sql`UPDATE sequence_enrollments SET next_run_at = now() - interval '1 minute' WHERE id = ${ea.id}`;
+    const r3 = await run();
+    const [w] = await sql`SELECT e.waiting_activity_id, a.draft_subject, a.draft_html, a.draft_to, a.done FROM sequence_enrollments e
+                          JOIN activities a ON a.id = e.waiting_activity_id WHERE e.id = ${ea.id}`;
+    check(r3.sequences?.manual === 1 && w?.draft_subject === "Último intento, Ana" && w.draft_html.includes("Hola Ana") && w.draft_to === "ana@paco.example" && !w.done,
+          "editor: el correo manual queda como borrador para revisarlo y enviarlo", JSON.stringify({ r: r3.sequences, w }));
+    const tasksPage = await (await get("/sequences/tasks?todos=1")).text();
+    check(tasksPage.includes("Correos manuales por enviar") && tasksPage.includes("Último intento, Ana"), "/sequences/tasks lista los correos manuales");
+    await sql`UPDATE activities SET done = true, done_at = now() WHERE id = ${w.waiting_activity_id}`;
+    await run();
+    const [fin] = await sql`SELECT status FROM sequence_enrollments WHERE id = ${ea.id}`;
+    check(fin.status === "completed", "editor: completado el correo manual, la secuencia sigue (aquí, termina)", JSON.stringify(fin));
+    // Horario de envío: fuera de los días elegidos no sale nada.
+    const wd = ({ Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 })[new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Madrid", weekday: "short" }).format(new Date())];
+    await sql`UPDATE sequences SET send_days = ${[1, 2, 3, 4, 5, 6, 7].filter((d) => d !== wd)} WHERE id = ${sq.id}`;
+    await sql`UPDATE sequence_enrollments SET next_run_at = now() - interval '1 minute' WHERE id = ${eb.id}`;
+    await run();
+    const [wb] = await sql`SELECT next_run_at, next_step FROM sequence_enrollments WHERE id = ${eb.id}`;
+    check(wb.next_step === 1 && new Date(wb.next_run_at) > new Date(Date.now() + 60000), "editor: fuera del horario de envío de la secuencia, espera al siguiente día permitido", JSON.stringify(wb));
+    await sql`UPDATE sequence_enrollments SET status = 'stopped', next_run_at = NULL WHERE id = ${eb.id}`;
+    await sql`UPDATE users SET email_signature = NULL WHERE id = ${OWNER}`;
+
     const page = await (await get(`/deals/${DEAL_OPEN}`)).text();
     check(page.includes("Correos") && page.includes("Programado de prueba") && page.includes("Abierto") && page.includes("Seguir aperturas y clics")
           && page.includes("Seguimiento tras la demo"), "correo: la ficha muestra la conversación, las aperturas y las plantillas");
