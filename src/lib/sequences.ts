@@ -594,15 +594,18 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
   await releaseWaiting();
   const due = await sql<({ id: string; sequence_id: string; deal_id: string | null; person_id: string; user_id: string | null;
                           enrolled_by: string | null; next_step: number; mailbox_id: string | null; campaign_contact_id: string | null;
-                          sequence_name: string } & SequenceSettings)[]>`
-    UPDATE sequence_enrollments x SET next_run_at = now() + interval '10 minutes'   -- reclamada: nadie más la procesa a la vez
-    FROM sequences s
-    WHERE s.id = x.sequence_id AND x.id IN (
-      SELECT e.id FROM sequence_enrollments e JOIN sequences s ON s.id = e.sequence_id AND s.is_active
+                          sequence_name: string; due_at: Date } & SequenceSettings)[]>`
+    WITH picked AS (
+      SELECT e.id, e.next_run_at AS due_at FROM sequence_enrollments e JOIN sequences s ON s.id = e.sequence_id AND s.is_active
       WHERE e.status = 'active' AND e.next_run_at <= now()
-      ORDER BY e.next_run_at LIMIT ${limit} FOR UPDATE OF e SKIP LOCKED)
-    RETURNING x.id, x.sequence_id, x.deal_id, x.person_id, x.user_id, x.enrolled_by, x.next_step, x.mailbox_id, x.campaign_contact_id,
+      ORDER BY e.next_run_at, e.created_at LIMIT ${limit} FOR UPDATE OF e SKIP LOCKED)
+    UPDATE sequence_enrollments x SET next_run_at = now() + interval '10 minutes'   -- reclamada: nadie más la procesa a la vez
+    FROM picked, sequences s
+    WHERE x.id = picked.id AND s.id = x.sequence_id
+    RETURNING picked.due_at, x.id, x.sequence_id, x.deal_id, x.person_id, x.user_id, x.enrolled_by, x.next_step, x.mailbox_id, x.campaign_contact_id,
               s.name AS sequence_name, s.send_days, s.send_from, s.send_to, s.track, s.add_signature, s.unsubscribe_link`;
+  // En el orden en que vencían (RETURNING no lo garantiza): reparto A/B y envíos predecibles.
+  due.sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime());
   for (const e of due) {
     // Campañas de outbound: horario, buzón en pausa y límite diario (con calentamiento).
     const camp = e.campaign_contact_id ? await campaignContext(e.campaign_contact_id) : null;
