@@ -856,8 +856,8 @@ await step("secuencias: crear una, añadir un paso y meter al contacto de un dea
   await submit("Crear y añadir pasos");
   await page.waitForURL(/\/sequences\/[0-9a-f-]{36}$/);
   const add = page.locator("section", { has: page.getByRole("heading", { name: "Añadir un paso" }) });
-  await add.getByLabel("Días tras añadirlo").fill("0");
-  await add.getByLabel("Asunto").fill("¿Retomamos {deal}?");
+  await add.getByLabel("Días de espera").fill("0");
+  await add.getByLabel("Asunto del nuevo paso").fill("¿Retomamos {deal}?");
   await add.getByRole("button", { name: "Añadir paso" }).click();
   await page.getByRole("listitem", { name: "Paso 1" }).getByText("¿Retomamos {deal}?").waitFor();
   // Un deal abierto con contacto (el de Paco ya se ganó en una prueba anterior).
