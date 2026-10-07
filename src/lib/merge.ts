@@ -235,7 +235,7 @@ const num = (s: string) => {
 
 export function mergeTemplate(src: string, vars: MergeVars, opts: MergeOptions = {}): MergeResult {
   const now = opts.now ?? new Date();
-  const tz = opts.tz ?? (typeof process !== "undefined" && process.env?.TZ) ?? "Europe/Madrid";
+  const tz = opts.tz ?? (typeof process !== "undefined" ? process.env?.TZ : undefined) ?? "Europe/Madrid";
   const missing = new Set<string>();
   const unknown = new Set<string>();
   const { nodes, errors } = parse(upgradeLegacy(src ?? ""));
