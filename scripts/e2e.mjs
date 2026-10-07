@@ -498,11 +498,14 @@ if (process.env.MOCK_URL) {
     check(pausedPage.includes("En pausa") && pausedPage.includes("Reanudar") && pausedPage.includes("Va ganando") === false && pausedPage.includes("Enviados"),
           "editor: la secuencia muestra la pausa, el botón de reanudar y los resultados por paso");
     await sql`UPDATE persons SET custom = custom || '{"prioridad_e2e": "la renovación"}' WHERE id = ${PERSON}`;
+    await sql`UPDATE mailbox_connections SET signature = '<p>Firma del buzón e2e</p>' WHERE user_id = ${OWNER} AND purpose = 'main'`;
     await sql`UPDATE sequence_enrollments SET status = 'active', error = NULL, next_run_at = now() - interval '1 minute' WHERE id = ${ea.id}`;
     await run();
     const [m2] = await sql`SELECT subject, body, sequence_step_id FROM emails WHERE enrollment_id = ${ea.id} AND sequence_step_id = ${st2.id}`;
-    check(m2?.subject === `Re: ${ma.subject}` && m2.body.startsWith("Hola Ana, sobre la renovación: ¿lo vemos?") && m2.body.includes("aikit"),
-          "editor: al completar el dato y reanudar, sale; en el mismo hilo («Re: ») y con la firma en texto", JSON.stringify(m2));
+    check(m2?.subject === `Re: ${ma.subject}` && m2.body.startsWith("Hola Ana, sobre la renovación: ¿lo vemos?") && m2.body.includes("Firma del buzón e2e")
+          && !m2.body.includes("· aikit"),
+          "editor: al completar el dato y reanudar, sale; en el mismo hilo («Re: ») y con la firma del buzón (que manda sobre la de la persona)", JSON.stringify(m2));
+    await sql`UPDATE mailbox_connections SET signature = NULL WHERE user_id = ${OWNER}`;
     // Paso 3: correo manual → borrador para revisar; al completarlo, la secuencia termina.
     await sql`UPDATE sequence_enrollments SET next_run_at = now() - interval '1 minute' WHERE id = ${ea.id}`;
     const r3 = await run();

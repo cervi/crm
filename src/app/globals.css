@@ -1121,3 +1121,7 @@ a.btn.small svg { width: 14px; height: 14px; }
 .ee-day span { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border-strong); font-size: 12.5px; font-weight: 600; color: var(--text-2); }
 .ee-day input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .ee-day input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.compose-signature { display: grid; gap: 6px; justify-items: start; }
+.signature-preview { padding: 8px 10px; border-left: 3px solid var(--border-strong); background: var(--panel-2); border-radius: 0 var(--r-sm) var(--r-sm) 0; font: 13px/1.5 Arial, Helvetica, sans-serif; color: var(--text-2); }
+.signature-preview p { margin: 0 0 4px; }
+.signature-preview img { max-width: 180px; height: auto; }

@@ -87,10 +87,3 @@ export async function mergeContext(ref: MergeRef): Promise<MergeVars> {
   if (ref.wantSlots) vars.huecos = await slotsText(ref.conn ?? null);
   return vars;
 }
-
-/** Firma de una persona (HTML), o vacía. */
-export async function signatureOf(userId: string | null | undefined): Promise<string> {
-  if (!userId) return "";
-  const [u] = await sql<{ email_signature: string | null }[]>`SELECT email_signature FROM users WHERE id = ${userId}`;
-  return u?.email_signature?.trim() ?? "";
-}

@@ -4,6 +4,7 @@ import { UserError } from "./errors";
 import { recordEvent, INTEGRATION_ACTOR, type Actor } from "./events";
 import { linksIn } from "./email-track";
 import { hrefsIn, sanitizeEmailHtml } from "./email-html";
+import { appendSignature, senderVars, signatureFor } from "./signatures";
 import { DEVICE_LABEL, readerOf, type Device, type ReaderInfo } from "./reader";
 import { notify } from "./notifications";
 import { bookingLinkFor } from "./booking";
@@ -50,6 +51,7 @@ const composeSchema = z.object({
   track: z.string().optional(),
   track_present: z.string().optional(),
   template_id: optId,
+  signature: z.string().optional(),
 });
 
 export type ComposeResult = { scheduled: boolean; at?: Date };
@@ -67,6 +69,9 @@ export async function composeDealEmail(actor: Actor, dealId: string, data: unkno
   const conn = mine?.status === "active" ? mine : p.owner_id ? await connectionOf(p.owner_id) : null;
   if (!conn || conn.status !== "active") throw new UserError("Conecta tu cuenta en Ajustes → Correo, calendario y documentos para enviar desde aquí.");
   const track = v.track_present ? v.track === "on" : undefined;
+  // Firma de quien envía (la de su buzón o la suya), salvo que se desmarque.
+  const sig = v.signature === "on" ? await signatureFor(conn) : "";
+  const mail = appendSignature(sig, senderVars(conn), { text: v.body });
 
   if (v.send_at) {
     const at = new Date(v.send_at);
@@ -75,15 +80,15 @@ export async function composeDealEmail(actor: Actor, dealId: string, data: unkno
     if (at.getTime() > Date.now() + 365 * 86400000) throw new UserError("Como mucho, con un año de antelación.");
     const [row] = await sql<{ id: string }[]>`
       INSERT INTO emails (direction, status, deal_id, person_id, organization_id, user_id, from_email, to_email, to_name,
-                          subject, body, scheduled_at, template_id, track, created_by)
+                          subject, body, body_html, scheduled_at, template_id, track, created_by)
       VALUES ('out', 'scheduled', ${dealId}, ${v.person_id}, ${p.organization_id}, ${conn.user_id}, ${conn.email}, ${p.email},
-              ${p.full_name}, ${v.subject}, ${v.body}, ${at}, ${v.template_id ?? null}, ${track ?? true}, ${actor.id})
+              ${p.full_name}, ${v.subject}, ${mail.text}, ${mail.html}, ${at}, ${v.template_id ?? null}, ${track ?? true}, ${actor.id})
       RETURNING id`;
     await recordEvent(sql, actor, "deal", dealId, "email.scheduled", { email_id: row.id, subject: v.subject, at: at.toISOString() });
     return { scheduled: true, at };
   }
   await sendEmail(conn, actor, {
-    to: { email: p.email, name: p.full_name }, subject: v.subject, body: v.body,
+    to: { email: p.email, name: p.full_name }, subject: v.subject, body: mail.text, html: mail.html,
     dealId, personId: v.person_id, organizationId: p.organization_id, track, templateId: v.template_id ?? null,
   });
   return { scheduled: false };
@@ -101,18 +106,18 @@ export async function cancelScheduledEmail(user: SessionUser, emailId: string) {
 export async function sendDueEmails(limit = 20): Promise<{ sent: number; failed: number }> {
   const due = await sql<{ id: string; user_id: string | null; created_by: string | null; to_email: string; to_name: string | null;
                           subject: string; body: string; deal_id: string | null; person_id: string | null; organization_id: string | null;
-                          track: boolean; template_id: string | null }[]>`
+                          track: boolean; template_id: string | null; body_html: string | null }[]>`
     UPDATE emails SET status = 'sending'
     WHERE id IN (SELECT id FROM emails WHERE status = 'scheduled' AND scheduled_at <= now()
                  ORDER BY scheduled_at LIMIT ${limit} FOR UPDATE SKIP LOCKED)
-    RETURNING id, user_id, created_by, to_email, to_name, subject, body, deal_id, person_id, organization_id, track, template_id`;
+    RETURNING id, user_id, created_by, to_email, to_name, subject, body, body_html, deal_id, person_id, organization_id, track, template_id`;
   let sent = 0, failed = 0;
   for (const e of due) {
     try {
       const conn = e.user_id ? await connectionOf(e.user_id) : null;
       if (!conn || conn.status !== "active") throw new Error("La cuenta de correo con la que se programó ya no está conectada.");
       await sendEmail(conn, { type: "user", id: e.created_by }, {
-        to: { email: e.to_email, name: e.to_name }, subject: e.subject, body: e.body, dealId: e.deal_id,
+        to: { email: e.to_email, name: e.to_name }, subject: e.subject, body: e.body, html: e.body_html, dealId: e.deal_id,
         personId: e.person_id, organizationId: e.organization_id, track: e.track, templateId: e.template_id, emailId: e.id,
       });
       sent++;

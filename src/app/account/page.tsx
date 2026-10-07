@@ -52,11 +52,11 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
             <p className="meta">El email y el rol los cambia un administrador.</p>
           </section>
 
-          <section className="panel" aria-label="Firma">
+          <section className="panel" aria-label="Firma" id="firma">
             <h2>Firma de tus correos</h2>
-            <ActionForm action={saveSignatureAction} submitLabel="Guardar firma" secondary>
-              <RichTextField name="signature" initial={sig?.email_signature ?? ""} label="Firma" />
-              <p className="meta" style={{ margin: 0 }}>Se añade al final de los correos de las secuencias (si la secuencia lo tiene activado). Admite variables como {"{{remitente}}"}.</p>
+            <ActionForm action={saveSignatureAction.bind(null, null)} submitLabel="Guardar firma" secondary>
+              <RichTextField name="signature" initial={sig?.email_signature ?? ""} label="Firma"
+                             hint="Va al final de los correos que envías desde el CRM: desde la ficha del deal, las secuencias y los agentes. Admite variables como {{remitente}} y {{remitente_email}}. Puedes pegar la que ya usas en Outlook o Gmail." />
             </ActionForm>
           </section>
 

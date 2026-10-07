@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { appendSignature, senderVars, signatureFor } from "./signatures";
 import type postgres from "postgres";
 import { sql, json } from "./db";
 import { AI_ACTOR, UI_ACTOR, recordEvent, type Actor } from "./events";
@@ -1526,8 +1527,9 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
       // Con cuenta conectada sale desde su correo (salvo que la persona diga que ya lo envió ella).
       const sender = edits.manual === "1" ? null : await senderFor(deal?.owner_id ?? (p.owner_id as string | null | undefined));
       if (sender) {
+        const mail = appendSignature(await signatureFor(sender), senderVars(sender), { text: body });
         const sent = await sendEmail(sender, actor, {
-          to: { email: to, name: str(p.to_name, "") || null }, subject, body,
+          to: { email: to, name: str(p.to_name, "") || null }, subject, body: mail.text, html: mail.html,
           dealId: a.deal_id, personId: (p.person_id as string | null) ?? null, organizationId: deal?.organization_id ?? null,
         });
         return { activity_id: sent.activityId, to, subject, from: sent.from, sent: true };

@@ -22,6 +22,8 @@ export type Connection = {
   status: "active" | "error"; last_error: string | null; scheduling: Scheduling;
   sync_mail: boolean; sync_calendar: boolean; mail_synced_at: Date | null; calendar_synced_at: Date | null; created_at: Date;
   purpose: "main" | "outbound"; daily_limit: number; warmup_start: string; paused: boolean; paused_reason: string | null;
+  /** Firma propia del buzón (si no, la de la persona). */
+  signature: string | null; user_signature: string | null;
 };
 
 type Row = Omit<Connection, "scheduling"> & { scheduling: unknown };
@@ -29,7 +31,7 @@ type Row = Omit<Connection, "scheduling"> & { scheduling: unknown };
 const selectConnections = (where = sql``) => sql<Row[]>`
   SELECT m.id, m.user_id, u.name AS user_name, m.provider, m.email, m.display_name, m.status, m.last_error, m.scheduling,
          m.sync_mail, m.sync_calendar, m.mail_synced_at, m.calendar_synced_at, m.created_at,
-         m.purpose, m.daily_limit, m.warmup_start::text, m.paused, m.paused_reason
+         m.purpose, m.daily_limit, m.warmup_start::text, m.paused, m.paused_reason, m.signature, u.email_signature AS user_signature
   FROM mailbox_connections m JOIN users u ON u.id = m.user_id
   ${where}
   ORDER BY m.created_at`;

@@ -9,7 +9,8 @@ import { isId, parse } from "./validation";
 import { zonedToUtc } from "./slots";
 import { mergeTemplate, usesVariable, type MergeVars } from "./merge";
 import { escapeHtml, htmlToText, sanitizeEmailHtml, textToHtml } from "./email-html";
-import { mergeContext, signatureOf } from "./merge-context";
+import { mergeContext } from "./merge-context";
+import { signatureFor } from "./signatures";
 import { notify } from "./notifications";
 
 // ===========================================================================
@@ -377,7 +378,7 @@ export type Composed = { subject: string; html: string | null; text: string; mis
 /** Rellena asunto y texto (con firma y enlace de baja si toca) para un contacto. */
 export async function composeEmail(c: ComposeInput): Promise<Composed> {
   const html = c.format === "html";
-  const signature = c.settings?.add_signature === false ? "" : await signatureOf(c.senderId ?? c.conn?.user_id);
+  const signature = c.settings?.add_signature === false ? "" : await signatureFor(c.conn ?? c.senderId ?? null);
   const vars = c.vars ?? await mergeContext({
     personId: c.personId, dealId: c.dealId, senderId: c.senderId ?? c.conn?.user_id, campaignContactId: c.campaignContactId, conn: c.conn,
     wantSlots: usesVariable(c.body, "huecos") || usesVariable(c.subject, "huecos"),

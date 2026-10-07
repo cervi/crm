@@ -11,6 +11,8 @@ import { requireUser } from "@/lib/auth";
 import { dateTime } from "@/lib/format";
 import { disconnectMailboxAction, syncMailboxAction, updateMailboxSettingsAction } from "@/app/actions/mailbox";
 import { ActionForm } from "@/components/ActionForm";
+import { RichTextField } from "@/components/RichTextField";
+import { saveMailboxSignatureAction, saveSignatureAction } from "@/app/actions/email-editor";
 import { Avatar } from "@/components/Avatar";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +65,8 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
     GROUP BY mailbox_id` : [];
   // Cada uno ve su cuenta; un administrador, las de todo el equipo.
   const humans = users.filter((u) => u.kind === "human" && (me.role === "admin" || u.id === me.id));
+  const sigs = new Map((await sql<{ id: string; email_signature: string | null }[]>`SELECT id, email_signature FROM users WHERE id = ANY(${humans.map((u) => u.id)}::uuid[])`)
+    .map((r) => [r.id, r.email_signature ?? ""]));
   const encryption = encryptionConfigured();
   const available = PROVIDER_LIST.filter((p) => p.configured() && encryption);
   const h = await headers();
@@ -146,6 +150,13 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
               </div>
               {conn?.last_error && <p className="callout bad" style={{ margin: "12px 0 0" }}>{conn.last_error}</p>}
 
+              <details className="ee-variant" open={!sigs.get(u.id) && u.id === me.id}>
+                <summary className="meta">{sigs.get(u.id) ? "Firma de los correos ✓" : "Firma de los correos (sin firma todavía)"}</summary>
+                <ActionForm action={saveSignatureAction.bind(null, u.id)} submitLabel="Guardar firma" secondary>
+                  <RichTextField name="signature" initial={sigs.get(u.id) ?? ""} label={`Firma de ${u.name}`}
+                                 hint="Va al final de los correos que salen de esta cuenta: desde la ficha del deal, las secuencias y los agentes. Admite variables como {{remitente}} y {{remitente_email}}. Puedes pegar la que ya usas en Outlook o Gmail." />
+                </ActionForm>
+              </details>
               {conn && (
                 <div className="mailbox-body">
                   <ActionForm action={updateMailboxSettingsAction.bind(null, u.id)} submitLabel="Guardar preferencias" secondary>
@@ -216,6 +227,13 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                   <label className="field"><span className="label">Calentamiento desde</span><input name="warmup_start" type="date" defaultValue={m.warmup_start} /></label>
                   <label className="checkbox"><input type="checkbox" name="paused" defaultChecked={m.paused} />En pausa</label>
                 </ActionForm>
+                <details>
+                  <summary className="meta">{m.signature ? "Firma propia de este buzón ✓" : `Firma: la de ${m.user_name}${m.user_signature ? "" : " (no tiene)"} · poner una propia`}</summary>
+                  <ActionForm action={saveMailboxSignatureAction.bind(null, m.id)} submitLabel="Guardar firma del buzón" secondary>
+                    <RichTextField name="signature" initial={m.signature ?? ""} label={`Firma de ${m.email}`}
+                                   hint="Con dominios secundarios conviene una firma coherente con el buzón (nombre, web). Vacía, se usa la de la persona." />
+                  </ActionForm>
+                </details>
                 <form action={disconnectOutboundAction.bind(null, m.id)}><button type="submit" className="link-btn meta">Desconectar</button></form>
               </div>
             );

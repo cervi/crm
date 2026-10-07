@@ -1210,6 +1210,41 @@ if (MOCK) {
     const [u] = await sql`SELECT email_signature FROM users WHERE lower(email) = ${ADMIN.email}`;
     expect(u.email_signature?.includes(`Gestor ${stamp}`), JSON.stringify(u));
   });
+
+  await step("la firma va en los correos que escribes desde el deal (y se puede quitar)", async () => {
+    const [open] = await sql`SELECT d.id FROM deals d JOIN deal_participants dp ON dp.deal_id = d.id JOIN person_emails pe ON pe.person_id = dp.person_id
+                             WHERE d.status = 'open' AND d.deleted_at IS NULL ORDER BY d.created_at LIMIT 1`;
+    await page.goto(`/deals/${open.id}`);
+    await page.getByRole("tab", { name: "Correo", exact: true }).click();
+    const form = page.locator(".composer form", { has: page.getByRole("button", { name: "Insertar mis huecos" }) });
+    await form.getByLabel("Firma").getByText(`Gestor ${stamp} · aikit`).waitFor();
+    await form.getByLabel("Asunto").fill(`Con firma ${stamp}`);
+    await form.locator("textarea[name=body]").fill("Hola, te escribo por lo que hablamos.");
+    await form.getByRole("button", { name: /Enviar desde/ }).click();
+    await page.getByText(`Email: Con firma ${stamp}`).waitFor();
+    const m = (await mockState()).sent.find((x) => x.subject === `Con firma ${stamp}`);
+    expect(m && m.body.contentType === "HTML" && m.body.content.includes(`Gestor ${stamp} · aikit`) && m.body.content.includes("Hola, te escribo"), "el correo no llevaba la firma");
+    await form.getByLabel("Asunto").fill(`Sin firma ${stamp}`);
+    await form.locator("textarea[name=body]").fill("Sin firma esta vez.");
+    await form.getByLabel("Añadir mi firma").uncheck();
+    await form.getByRole("button", { name: /Enviar desde/ }).click();
+    await page.getByText(`Email: Sin firma ${stamp}`).waitFor();
+    const m2 = (await mockState()).sent.find((x) => x.subject === `Sin firma ${stamp}`);
+    expect(m2 && !JSON.stringify(m2.body).includes(`Gestor ${stamp}`), "salió con firma aunque se quitó");
+  });
+
+  await step("ajustes de correo: firma de cada cuenta", async () => {
+    await page.goto("/settings/mailbox");
+    const card = page.locator("article.mailbox").first();
+    await card.getByText(/Firma de los correos/).click();
+    await card.getByRole("button", { name: "HTML" }).click();
+    await card.getByLabel("HTML de la firma").fill(`<p><b>Firma ajustes ${stamp}</b><script>alert(1)</script></p>`);
+    await card.getByRole("button", { name: "Aplicar" }).click();
+    await card.getByRole("button", { name: "Guardar firma" }).click();
+    await card.getByText("Firma guardada.").waitFor();
+    const rows = await sql`SELECT email_signature FROM users WHERE email_signature LIKE ${`%Firma ajustes ${stamp}%`}`;
+    expect(rows.length === 1 && !rows[0].email_signature.includes("script"), JSON.stringify(rows));
+  });
 }
 
 await step("sin errores de JavaScript en el navegador", async () => {

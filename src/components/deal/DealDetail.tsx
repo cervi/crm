@@ -9,7 +9,7 @@ import { eventLabel, timeline } from "@/lib/events";
 import { listUsers } from "@/lib/users";
 import { sql } from "@/lib/db";
 import { listActions } from "@/lib/automations";
-import { senderFor } from "@/lib/mailbox";
+import { connectionOf, senderFor } from "@/lib/mailbox";
 import { PROVIDERS } from "@/lib/integrations";
 import { documentKind, listDocuments } from "@/lib/documents";
 import { getDealBrief } from "@/lib/briefs";
@@ -46,6 +46,7 @@ import { HealthBadge } from "../HealthBadge";
 import { DEVICE_LABEL } from "@/lib/reader";
 import { mergeTemplate } from "@/lib/merge";
 import { htmlToText } from "@/lib/email-html";
+import { signatureFor, signaturePreview } from "@/lib/signatures";
 import { publicBase } from "@/lib/email-track";
 import { requireUser } from "@/lib/auth";
 import { cancelScheduledEmailAction } from "@/app/actions/mailbox";
@@ -107,6 +108,10 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     body: mergeTemplate(t.format === "html" ? htmlToText(t.body) : t.body, { ...vars, huecos: "{huecos}" }).text,
   }));
   const canSend = sender !== null;
+  // Firma de quien enviará desde aquí: tu buzón si lo tienes conectado; si no, el del responsable.
+  const myConn = await connectionOf(me.id);
+  const sendingConn = myConn?.status === "active" ? myConn : sender;
+  const signatureHtml = sendingConn ? signaturePreview(await signatureFor(sendingConn), sendingConn) : "";
   const provider = sender ? PROVIDERS[sender.provider] : null;
   const reachable = participants.filter((p) => p.email);
   const firstContact = participants.find((p) => p.is_primary) ?? participants[0];
@@ -485,7 +490,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                       </label>
                     </div>
                     <EmailComposerFields dealId={dealId} templates={composerTemplates}
-                                         trackDefault={appSettings?.email_tracking ?? true} trackAvailable={publicBase() !== null} />
+                                         trackDefault={appSettings?.email_tracking ?? true} trackAvailable={publicBase() !== null}
+                                         signatureHtml={signatureHtml} />
                   </ActionForm>
                 )
               ) : (

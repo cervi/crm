@@ -29,9 +29,12 @@ export type ComposerTemplate = { id: string; name: string; subject: string; body
  * huecos», seguimiento de aperturas y envío programado. Las plantillas llegan
  * ya con los datos del deal; {huecos} se rellena aquí, leyendo el calendario.
  */
-export function EmailComposerFields({ dealId, templates, trackDefault, trackAvailable }: {
+export function EmailComposerFields({ dealId, templates, trackDefault, trackAvailable, signatureHtml }: {
   dealId: string; templates: ComposerTemplate[]; trackDefault: boolean; trackAvailable: boolean;
+  /** Firma de quien envía, ya con sus datos (vacía si no tiene). */
+  signatureHtml?: string;
 }) {
+  const [withSig, setWithSig] = useState(Boolean(signatureHtml));
   const ref = useRef<HTMLTextAreaElement>(null);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -44,10 +47,10 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
   useEffect(() => {
     const form = ref.current?.form;
     if (!form) return;
-    const clear = () => { setSubject(""); setBody(""); setTemplateId(""); setLater(false); setSendAt(""); setState({}); };
+    const clear = () => { setSubject(""); setBody(""); setTemplateId(""); setLater(false); setSendAt(""); setState({}); setWithSig(Boolean(signatureHtml)); };
     form.addEventListener("reset", clear);
     return () => form.removeEventListener("reset", clear);
-  }, []);
+  }, [signatureHtml]);
 
   async function slots(): Promise<string> {
     const res = await fetch(`/api/calendar/slots?deal=${dealId}`);
@@ -103,6 +106,15 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
       <label className="field"><span className="label">Texto</span>
         <textarea ref={ref} name="body" rows={8} required value={body} onChange={(e) => setBody(e.target.value)} />
       </label>
+      {signatureHtml ? (
+        <div className="compose-signature">
+          <label className="checkbox"><input type="checkbox" name="signature" checked={withSig} onChange={(e) => setWithSig(e.target.checked)} />Añadir mi firma</label>
+          {withSig && <div className="signature-preview" aria-label="Firma" dangerouslySetInnerHTML={{ __html: signatureHtml }} />}
+          <a className="meta" href="/account#firma">Editar firma</a>
+        </div>
+      ) : (
+        <p className="meta" style={{ margin: 0 }}>Sin firma. <a href="/account#firma">Crear mi firma</a> para que vaya al final de tus correos.</p>
+      )}
       <div className="compose-tools">
         <button type="button" className="btn secondary small" onClick={insert} disabled={state.loading}>
           {state.loading ? "Leyendo el calendario…" : "Insertar mis huecos"}

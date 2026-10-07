@@ -1,7 +1,9 @@
 "use server";
 
-import { currentUser } from "@/lib/auth";
-import { toUserMessage } from "@/lib/errors";
+import { currentUser, guard } from "@/lib/auth";
+import { attempt, toUserMessage, type ActionState } from "@/lib/errors";
+import { revalidatePath } from "next/cache";
+import { saveMailboxSignature, saveUserSignature } from "@/lib/signatures";
 import { sql } from "@/lib/db";
 import { composeEmail, getSequence, type Format } from "@/lib/sequences";
 import { connectionOf, sendPlainEmail } from "@/lib/mailbox";
@@ -134,15 +136,24 @@ export async function saveEmailTemplateAction(d: { name: string; subject: string
   }
 }
 
-/** Firma de los correos de la persona (HTML saneado). */
-export async function saveSignatureAction(_: { error?: string; ok?: boolean; message?: string } | undefined, form: FormData) {
-  try {
-    const user = await writerUser();
-    const html = sanitizeEmailHtml(String(form.get("signature") ?? ""));
-    if (html.length > 10000) return { error: "La firma es demasiado larga." };
-    await sql`UPDATE users SET email_signature = ${htmlToText(html).trim() ? html : null} WHERE id = ${user.id}`;
-    return { ok: true, message: "Firma guardada." };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : toUserMessage(err) };
-  }
+/** Firma de los correos de una persona (la tuya; un administrador puede cambiar la de cualquiera). */
+export async function saveSignatureAction(userId: string | null, _: ActionState, form: FormData): Promise<ActionState> {
+  const me = await currentUser();
+  const target = userId ?? me?.id ?? "";
+  const g = await guard({ self: target });
+  if ("error" in g) return g;
+  const res = await attempt(() => saveUserSignature(target, String(form.get("signature") ?? "")));
+  revalidatePath("/account"); revalidatePath("/settings/mailbox");
+  return res?.error ? res : { ok: true, message: "Firma guardada." };
+}
+
+/** Firma propia de un buzón (manda sobre la de la persona): de su dueño o de un administrador. */
+export async function saveMailboxSignatureAction(mailboxId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const [m] = await sql<{ user_id: string }[]>`SELECT user_id FROM mailbox_connections WHERE id = ${mailboxId}`;
+  if (!m) return { error: "Ese buzón ya no está conectado." };
+  const g = await guard({ self: m.user_id });
+  if ("error" in g) return g;
+  const res = await attempt(() => saveMailboxSignature(mailboxId, String(form.get("signature") ?? "")));
+  revalidatePath("/settings/mailbox");
+  return res?.error ? res : { ok: true, message: "Firma del buzón guardada." };
 }
