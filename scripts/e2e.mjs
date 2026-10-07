@@ -1814,6 +1814,50 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   check(week.includes("Semana siguiente") && week.includes("week-grid"), "actividades: vista de semana");
 }
 
+// ------------------------------------------------------------- Fichas como en Pipedrive: archivos, seguidores, llamadas, listas
+{
+  // Archivos: subir, listar en la ficha, descargar; no se aceptan ejecutables.
+  const form = new FormData();
+  form.append("file", new Blob(["hola contrato"], { type: "text/plain" }), "contrato e2e.txt");
+  form.append("person_id", PERSON);
+  const up = await get("/api/files", { method: "POST", body: form });
+  const upj = await up.json();
+  const bad = new FormData();
+  bad.append("file", new Blob(["MZ"], { type: "application/octet-stream" }), "virus.exe");
+  bad.append("person_id", PERSON);
+  const upBad = await get("/api/files", { method: "POST", body: bad });
+  const anon = await fetch(`${BASE}/api/files/${upj.ids?.[0]}`, { redirect: "manual" });
+  const dl = await get(`/api/files/${upj.ids?.[0]}`);
+  const dlText = await dl.text();
+  check(up.status === 200 && upj.ids?.length === 1 && upBad.status === 400 && dl.status === 200 && dlText === "hola contrato"
+        && (dl.headers.get("content-disposition") ?? "").includes("attachment") && anon.status !== 200,
+        "archivos: se suben a la ficha, se descargan con sesión (y sin ella no); los ejecutables no", JSON.stringify({ up: up.status, bad: upBad.status, dl: dl.status, anon: anon.status }));
+  const page = await (await get(`/persons/${PERSON}`)).text();
+  check(page.includes("contrato e2e.txt") && page.includes("Registrar llamada") && page.includes("Seguidores") && page.includes("Último contacto")
+        && page.includes("Fusionar con otro contacto") && page.includes("Descargar vCard") && page.includes("WhatsApp"),
+        "ficha de contacto: acciones rápidas, archivos, seguidores, resumen y fusionar");
+  const vc = await (await get(`/api/persons/${PERSON}/vcard`)).text();
+  check(vc.startsWith("BEGIN:VCARD") && vc.includes("FN:Ana García") && vc.includes("EMAIL;TYPE=INTERNET:ana@paco.example"), "vCard del contacto", vc.slice(0, 120));
+  // Seguidores: quien sigue un deal recibe aviso de un cambio (y quien lo hizo no).
+  await sql`INSERT INTO followers (entity_type, entity_id, user_id) VALUES ('deal', ${DEAL_OPEN}, ${MEMBER_ID}) ON CONFLICT DO NOTHING`;
+  const [nb] = await sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${MEMBER_ID} AND kind = 'follow'`;
+  await get("/api/files", { method: "POST", body: (() => { const f = new FormData(); f.append("file", new Blob(["x"], { type: "text/plain" }), "acta.txt"); f.append("deal_id", DEAL_OPEN); return f; })() });
+  const [na] = await sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${MEMBER_ID} AND kind = 'follow' AND title LIKE '%Nuevo archivo: acta.txt%'`;
+  const [own] = await sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${ADMIN_ID} AND kind = 'follow' AND title LIKE '%acta.txt%'`;
+  check(na.n === 1 && nb.n === 0 && own.n === 0, "seguidores: quien sigue el deal recibe el aviso del archivo nuevo", JSON.stringify({ nb, na, own }));
+  const deal = await (await get(`/deals/${DEAL_OPEN}`)).text();
+  check(deal.includes("acta.txt") && deal.includes("Seguidores") && deal.includes("Llamada") && deal.includes("Etiqueta"), "ficha del deal: archivos, seguidores, llamada y etiquetas");
+  // Listas con filtros.
+  await sql`INSERT INTO tags (name, color) VALUES ('vip-e2e', 'green') ON CONFLICT DO NOTHING`;
+  const [tg] = await sql`SELECT id FROM tags WHERE name = 'vip-e2e'`;
+  await sql`INSERT INTO person_tags (person_id, tag_id) VALUES (${PERSON}, ${tg.id}) ON CONFLICT DO NOTHING`;
+  const byTag = await (await get(`/persons?tag=${tg.id}`)).text();
+  const none = await (await get(`/persons?tag=${tg.id}&deals=none`)).text();
+  const orgs = await (await get(`/organizations?owner=me&sort=recent`)).text();
+  check(byTag.includes("Ana García") && byTag.includes("vip-e2e") && !none.includes("Ana García") && orgs.includes("Empresas"),
+        "listas: filtro por etiqueta, deals y responsable");
+}
+
 // ------------------------------------------------------------- Usuarios y permisos
 {
   const as = async (userId, path) => {

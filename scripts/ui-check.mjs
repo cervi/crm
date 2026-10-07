@@ -1233,6 +1233,64 @@ if (MOCK) {
     expect(m2 && !JSON.stringify(m2.body).includes(`Gestor ${stamp}`), "salió con firma aunque se quitó");
   });
 
+  await step("ficha de contacto: registrar una llamada, etiquetar, seguir, subir un archivo y escribirle", async () => {
+    const [p] = await sql`SELECT p.id, p.full_name FROM persons p JOIN person_emails e ON e.person_id = p.id
+                          WHERE p.deleted_at IS NULL AND p.unsubscribed_at IS NULL ORDER BY p.created_at LIMIT 1`;
+    await page.goto(`/persons/${p.id}`);
+    // Llamada
+    await page.getByRole("link", { name: "Registrar llamada" }).click();
+    const call = page.getByRole("tabpanel", { name: "Llamada" });
+    await call.getByLabel("No contestó").check();
+    await call.getByLabel("Siguiente llamada").selectOption("1");
+    await call.getByLabel("Notas de la llamada").fill(`Sin respuesta ${stamp}`);
+    await call.getByRole("button", { name: "Registrar llamada" }).click();
+    await call.getByText("Llamada registrada.").waitFor();
+    await page.locator(".feed-item.call", { hasText: "no contestó" }).first().waitFor();
+    const [a] = await sql`SELECT call_outcome, done FROM activities WHERE person_id = ${p.id} AND note = ${`Sin respuesta ${stamp}`}`;
+    const [next] = await sql`SELECT count(*)::int AS n FROM activities WHERE person_id = ${p.id} AND NOT done AND subject LIKE 'Volver a llamar%'`;
+    expect(a?.call_outcome === "no_answer" && a.done && next.n >= 1, JSON.stringify({ a, next }));
+    // Etiqueta
+    await page.getByText("+ Etiqueta").first().click();
+    await page.getByLabel("Etiquetas (separadas por comas)").fill(`vip-ui-${stamp}`);
+    await page.locator(".tags-edit").getByRole("button", { name: "Guardar" }).click();
+    await page.locator(".tags-block .tag", { hasText: `vip-ui-${stamp}` }).waitFor();
+    // Seguir
+    await page.getByRole("region", { name: "Seguidores" }).getByRole("button", { name: "Seguir" }).click();
+    await page.getByRole("region", { name: "Seguidores" }).getByRole("button", { name: "Dejar de seguir" }).waitFor();
+    // Archivo
+    await page.getByRole("tab", { name: /^Archivos/ }).click();
+    await page.getByLabel("Elegir archivos").setInputFiles({ name: `propuesta-${stamp}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 prueba") });
+    await page.getByRole("link", { name: `propuesta-${stamp}.pdf` }).first().waitFor();
+    // Correo desde la ficha
+    await page.getByRole("tab", { name: "Correo" }).click();
+    const mail = page.getByRole("tabpanel", { name: "Correo" });
+    await mail.getByLabel("Asunto").fill(`Desde la ficha ${stamp}`);
+    await mail.locator("textarea[name=body]").fill("Hola, te escribo desde tu ficha.");
+    await mail.getByRole("button", { name: /^Enviar a / }).click();
+    await mail.getByText("Correo enviado.").waitFor();
+    expect((await mockState()).sent.some((m) => m.subject === `Desde la ficha ${stamp}`), "el correo no salió");
+    await shot("ficha-contacto");
+  });
+
+  await step("lista de contactos: filtrar por etiqueta y etiquetar en bloque", async () => {
+    const [t] = await sql`SELECT id FROM tags WHERE name = ${`vip-ui-${stamp}`}`;
+    await page.goto(`/persons?tag=${t.id}`);
+    const rows = page.locator("tbody tr");
+    expect(await rows.count() === 1, `filas: ${await rows.count()}`);
+    await page.goto("/persons");
+    const checks = page.locator("input.bulk-check");
+    await checks.nth(0).check();
+    await checks.nth(1).check();
+    const bar = page.getByRole("region", { name: "Acciones en bloque" });
+    await bar.getByLabel("Acción").selectOption("tag");
+    await bar.getByLabel("Etiqueta").fill(`lote-${stamp}`);
+    await bar.getByRole("button", { name: "Aplicar" }).click();
+    await bar.getByText(/2 contactos con el cambio/).waitFor();
+    const [n] = await sql`SELECT count(*)::int AS n FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE t.name = ${`lote-${stamp}`}`;
+    expect(n.n === 2, `etiquetados: ${n.n}`);
+    await shot("contactos");
+  });
+
   await step("ajustes de correo: firma de cada cuenta", async () => {
     await page.goto("/settings/mailbox");
     const card = page.locator("article.mailbox").first();
