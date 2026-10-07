@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { sql, transaction } from "./db";
 import { createActivity } from "./activities";
-import { enroll } from "./sequences";
+import { enroll, enrollPerson } from "./sequences";
+import { moveToTrash } from "./trash";
 import { loseDeal, moveDealToStage, winDeal } from "./deals";
 import { UserError, toUserMessage } from "./errors";
 import { recordEvent, type Actor } from "./events";
@@ -96,4 +97,52 @@ export function bulkSummary(r: BulkResult): string {
   const parts = [`${r.done} deal${s(r.done)} actualizado${s(r.done)}`];
   if (r.skipped) parts.push(`${r.skipped} sin cambios${r.firstError ? ` (${r.firstError.replace(/\.$/, "")})` : ""}`);
   return `${parts.join(", ")}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Contactos y empresas en bloque (desde sus listas)
+
+const recordOp = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("owner"), owner_id: z.union([id, z.literal("")]) }),
+  z.object({ op: z.literal("tag"), tag: text("La etiqueta", 40) }),
+  z.object({ op: z.literal("untag"), tag: text("La etiqueta", 40) }),
+  z.object({ op: z.literal("sequence"), sequence_id: id }),
+  z.object({
+    op: z.literal("activity"), type: z.string().trim().min(1), subject: text("El asunto", 300),
+    due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Indica la fecha"),
+  }),
+  z.object({ op: z.literal("trash") }),
+], { message: "Elige qué hacer con los seleccionados." });
+
+export async function bulkRecords(actor: Actor, kind: "person" | "organization", ids: unknown, data: unknown): Promise<BulkResult> {
+  const list = Array.isArray(ids) ? [...new Set(ids.filter((x): x is string => typeof x === "string" && UUID_RE.test(x)))] : [];
+  if (list.length === 0) throw new UserError("No hay nada seleccionado.");
+  if (list.length > BULK_MAX) throw new UserError(`Como mucho ${BULK_MAX} a la vez.`);
+  const v = parse(recordOp, data);
+  let done = 0, skipped = 0, firstError: string | null = null;
+  const table = kind === "person" ? "persons" : "organizations";
+  const tagTable = kind === "person" ? "person_tags" : "organization_tags";
+  const col = kind === "person" ? "person_id" : "organization_id";
+  for (const rid of list) {
+    try {
+      if (v.op === "owner") {
+        await sql`UPDATE ${sql(table)} SET owner_id = ${v.owner_id || null}, updated_at = now() WHERE id = ${rid}`;
+        await recordEvent(sql, actor, kind, rid, `${kind}.owner_changed`, { to_owner_id: v.owner_id || null });
+      } else if (v.op === "tag" || v.op === "untag") {
+        const [t] = await sql<{ id: string }[]>`
+          INSERT INTO tags (name) VALUES (${v.tag.trim()}) ON CONFLICT ((lower(name))) DO UPDATE SET name = tags.name RETURNING id`;
+        if (v.op === "tag") await sql`INSERT INTO ${sql(tagTable)} (${sql(col)}, tag_id) VALUES (${rid}, ${t.id}) ON CONFLICT DO NOTHING`;
+        else await sql`DELETE FROM ${sql(tagTable)} WHERE ${sql(col)} = ${rid} AND tag_id = ${t.id}`;
+      } else if (v.op === "sequence") {
+        if (kind !== "person") throw new UserError("Solo los contactos entran en secuencias.");
+        await enrollPerson(actor, v.sequence_id, rid);
+      } else if (v.op === "activity") {
+        await createActivity(actor, { type: v.type, subject: v.subject, due_at: `${v.due_date}T09:00:00`, [col]: rid, owner_id: actor.id ?? undefined });
+      } else {
+        await moveToTrash(actor, kind, rid);
+      }
+      done++;
+    } catch (err) { skipped++; firstError ??= toUserMessage(err); }
+  }
+  return { done, skipped, firstError };
 }

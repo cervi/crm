@@ -13,6 +13,7 @@ import { enrollPerson } from "@/lib/sequences";
 import { merge } from "@/lib/duplicates";
 import { recordEvent } from "@/lib/events";
 import { completeActivity } from "@/lib/activities";
+import { bulkRecords } from "@/lib/bulk";
 import { isId } from "@/lib/validation";
 
 // Acciones de las fichas de contacto, empresa y deal (estilo Pipedrive).
@@ -132,4 +133,18 @@ export async function quickCompleteAction(activityId: string, back: string): Pro
   const actor = await writer();
   try { await completeActivity(actor, activityId, {}); } catch (err) { console.error(toUserMessage(err)); }
   revalidatePath(back);
+}
+
+/** Acciones en bloque desde la lista de contactos o de empresas. */
+export async function bulkRecordsAction(kind: "person" | "organization", ids: string[], data: Record<string, string>): Promise<{ error?: string; message?: string }> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  try {
+    const r = await bulkRecords(g.actor, kind, ids, data);
+    revalidatePath(kind === "person" ? "/persons" : "/organizations");
+    const word = kind === "person" ? ["contacto", "contactos"] : ["empresa", "empresas"];
+    return { message: `${r.done} ${r.done === 1 ? word[0] : word[1]} con el cambio${r.skipped ? `, ${r.skipped} sin cambios${r.firstError ? ` (${r.firstError.replace(/\.$/, "")})` : ""}` : ""}.` };
+  } catch (err) {
+    return { error: toUserMessage(err) };
+  }
 }

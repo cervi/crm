@@ -13,26 +13,55 @@ export type PersonListRow = {
   organization_name: string | null;
   job_title: string | null;
   owner_name: string | null;
+  open_deals: number;
+  next_activity: Date | null;
+  last_activity: Date | null;
+  tags: { name: string; color: string }[];
 };
 
-export async function listPersons({ q = "", limit = 200 } = {}) {
+export type ListFilters = {
+  q?: string; owner?: string; tag?: string; activity?: "" | "none" | "overdue"; deals?: "" | "open" | "none";
+  sort?: "name" | "recent" | "next" | "last"; limit?: number; me?: string | null;
+};
+
+/** Filtro de responsable: un id, «me» (yo) o «none» (sin responsable). */
+export const ownerFilter = (col: string, owner: string | undefined, me: string | null | undefined) =>
+  !owner ? sql`true` : owner === "none" ? sql`${sql.unsafe(col)} IS NULL`
+    : sql`${sql.unsafe(col)} = ${owner === "me" ? me ?? null : /^[0-9a-f-]{36}$/i.test(owner) ? owner : null}::uuid`;
+
+export async function listPersons({ q = "", owner, tag, activity, deals, sort = "name", limit = 300, me }: ListFilters = {}) {
   const like = `%${q.trim().toLowerCase()}%`;
+  const order = sort === "recent" ? sql`p.created_at DESC` : sort === "next" ? sql`next_activity NULLS LAST, lower(p.full_name)`
+    : sort === "last" ? sql`last_activity DESC NULLS LAST` : sql`lower(p.full_name)`;
   return sql<PersonListRow[]>`
-    SELECT p.id, p.full_name,
-           (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email,
-           (SELECT phone FROM person_phones WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS phone,
-           cur.organization_id, o.name AS organization_name, cur.job_title, u.name AS owner_name
-    FROM persons p
-    LEFT JOIN LATERAL (
-      SELECT organization_id, job_title FROM person_organizations
-      WHERE person_id = p.id AND status = 'current' ORDER BY created_at DESC LIMIT 1
-    ) cur ON true
-    LEFT JOIN organizations o ON o.id = cur.organization_id
-    LEFT JOIN users u ON u.id = p.owner_id
-    WHERE p.deleted_at IS NULL
-      AND (${q.trim() === ""} OR lower(p.full_name) LIKE ${like}
-           OR EXISTS (SELECT 1 FROM person_emails e WHERE e.person_id = p.id AND lower(e.email) LIKE ${like}))
-    ORDER BY lower(p.full_name)
+    SELECT * FROM (
+      SELECT p.id, p.full_name, p.created_at,
+             (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email,
+             (SELECT phone FROM person_phones WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS phone,
+             cur.organization_id, o.name AS organization_name, cur.job_title, u.name AS owner_name,
+             (SELECT count(*)::int FROM deal_participants dp JOIN deals d ON d.id = dp.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
+               WHERE dp.person_id = p.id) AS open_deals,
+             (SELECT min(due_at) FROM activities a WHERE a.person_id = p.id AND NOT a.done) AS next_activity,
+             (SELECT max(done_at) FROM activities a WHERE a.person_id = p.id AND a.done) AS last_activity,
+             coalesce((SELECT json_agg(json_build_object('name', t.name, 'color', coalesce(t.color, 'blue')) ORDER BY lower(t.name))
+                       FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '[]'::json) AS tags,
+             (SELECT bool_or(NOT a.done AND a.due_at < now()) FROM activities a WHERE a.person_id = p.id) AS overdue
+      FROM persons p
+      LEFT JOIN LATERAL (
+        SELECT organization_id, job_title FROM person_organizations
+        WHERE person_id = p.id AND status = 'current' ORDER BY created_at DESC LIMIT 1
+      ) cur ON true
+      LEFT JOIN organizations o ON o.id = cur.organization_id
+      LEFT JOIN users u ON u.id = p.owner_id
+      WHERE p.deleted_at IS NULL
+        AND (${q.trim() === ""} OR lower(p.full_name) LIKE ${like} OR lower(coalesce(o.name, '')) LIKE ${like}
+             OR EXISTS (SELECT 1 FROM person_emails e WHERE e.person_id = p.id AND lower(e.email) LIKE ${like}))
+        AND ${ownerFilter("p.owner_id", owner, me)}
+        AND (${tag ?? ""} = '' OR EXISTS (SELECT 1 FROM person_tags pt WHERE pt.person_id = p.id AND pt.tag_id::text = ${tag ?? ""}))
+    ) x
+    WHERE (${activity ?? ""} = '' OR (${activity ?? ""} = 'none' AND x.next_activity IS NULL) OR (${activity ?? ""} = 'overdue' AND x.overdue))
+      AND (${deals ?? ""} = '' OR (${deals ?? ""} = 'open' AND x.open_deals > 0) OR (${deals ?? ""} = 'none' AND x.open_deals = 0))
+    ORDER BY ${order}
     LIMIT ${limit}`;
 }
 

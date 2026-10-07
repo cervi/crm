@@ -1183,3 +1183,6 @@ a.btn.small svg { width: 14px; height: 14px; }
 .check-btn svg { width: 14px; height: 14px; }
 .feed-item.pinned .feed-card { border-color: var(--warn); }
 .feed-pin { margin-left: auto; }
+.tags-inline { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+.tags-inline .tag { font-size: 11px; padding: 1px 7px; }
+.list-filters select { max-width: 200px; }

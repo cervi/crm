@@ -3,32 +3,50 @@ import { sql, json, transaction, type Db } from "./db";
 import { recordEvent, type Actor } from "./events";
 import { normalizeDomain, optId, optText, optional, parse, text } from "./validation";
 import { UserError } from "./errors";
+import { ownerFilter, type ListFilters } from "./persons";
 
 export type OrganizationListRow = {
   id: string;
   name: string;
   domain: string | null;
   industry: string | null;
+  city: string | null;
   owner_name: string | null;
   contacts: number;
   open_deals: number;
   open_value: string;
+  won_value: string;
+  next_activity: Date | null;
+  last_activity: Date | null;
+  tags: { name: string; color: string }[];
 };
 
-export async function listOrganizations({ q = "", limit = 200 } = {}) {
+export async function listOrganizations({ q = "", owner, tag, activity, deals, sort = "name", limit = 300, me }: ListFilters = {}) {
   const like = `%${q.trim().toLowerCase()}%`;
+  const order = sort === "recent" ? sql`x.created_at DESC` : sort === "next" ? sql`next_activity NULLS LAST, lower(x.name)`
+    : sort === "last" ? sql`last_activity DESC NULLS LAST` : sql`lower(x.name)`;
   return sql<OrganizationListRow[]>`
-    SELECT o.id, o.name, o.domain, o.industry, u.name AS owner_name,
-           (SELECT count(*)::int FROM person_organizations po
-             WHERE po.organization_id = o.id AND po.status = 'current') AS contacts,
-           (SELECT count(*)::int FROM deals d
-             WHERE d.organization_id = o.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_deals,
-           (SELECT coalesce(sum(d.value), 0)::text FROM deals d
-             WHERE d.organization_id = o.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_value
-    FROM organizations o LEFT JOIN users u ON u.id = o.owner_id
-    WHERE o.deleted_at IS NULL
-      AND (${q.trim() === ""} OR lower(o.name) LIKE ${like} OR lower(coalesce(o.domain, '')) LIKE ${like})
-    ORDER BY lower(o.name)
+    SELECT * FROM (
+      SELECT o.id, o.name, o.domain, o.industry, o.city, o.created_at, u.name AS owner_name,
+             (SELECT count(*)::int FROM person_organizations po WHERE po.organization_id = o.id AND po.status = 'current') AS contacts,
+             (SELECT count(*)::int FROM deals d WHERE d.organization_id = o.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_deals,
+             (SELECT coalesce(sum(d.value), 0)::text FROM deals d WHERE d.organization_id = o.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_value,
+             (SELECT coalesce(sum(d.value), 0)::text FROM deals d WHERE d.organization_id = o.id AND d.status = 'won' AND d.deleted_at IS NULL) AS won_value,
+             (SELECT min(due_at) FROM activities a WHERE NOT a.done AND (a.organization_id = o.id OR a.deal_id IN (SELECT id FROM deals WHERE organization_id = o.id))) AS next_activity,
+             (SELECT max(done_at) FROM activities a WHERE a.done AND (a.organization_id = o.id OR a.deal_id IN (SELECT id FROM deals WHERE organization_id = o.id))) AS last_activity,
+             coalesce((SELECT json_agg(json_build_object('name', t.name, 'color', coalesce(t.color, 'blue')) ORDER BY lower(t.name))
+                       FROM organization_tags ot JOIN tags t ON t.id = ot.tag_id WHERE ot.organization_id = o.id), '[]'::json) AS tags,
+             (SELECT bool_or(NOT a.done AND a.due_at < now()) FROM activities a WHERE a.organization_id = o.id
+                OR a.deal_id IN (SELECT id FROM deals WHERE organization_id = o.id)) AS overdue
+      FROM organizations o LEFT JOIN users u ON u.id = o.owner_id
+      WHERE o.deleted_at IS NULL
+        AND (${q.trim() === ""} OR lower(o.name) LIKE ${like} OR lower(coalesce(o.domain, '')) LIKE ${like})
+        AND ${ownerFilter("o.owner_id", owner, me)}
+        AND (${tag ?? ""} = '' OR EXISTS (SELECT 1 FROM organization_tags ot WHERE ot.organization_id = o.id AND ot.tag_id::text = ${tag ?? ""}))
+    ) x
+    WHERE (${activity ?? ""} = '' OR (${activity ?? ""} = 'none' AND x.next_activity IS NULL) OR (${activity ?? ""} = 'overdue' AND x.overdue))
+      AND (${deals ?? ""} = '' OR (${deals ?? ""} = 'open' AND x.open_deals > 0) OR (${deals ?? ""} = 'none' AND x.open_deals = 0))
+    ORDER BY ${order}
     LIMIT ${limit}`;
 }
 
