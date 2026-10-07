@@ -31,8 +31,8 @@ export const ownerFilter = (col: string, owner: string | undefined, me: string |
 
 export async function listPersons({ q = "", owner, tag, activity, deals, sort = "name", limit = 300, me }: ListFilters = {}) {
   const like = `%${q.trim().toLowerCase()}%`;
-  const order = sort === "recent" ? sql`p.created_at DESC` : sort === "next" ? sql`next_activity NULLS LAST, lower(p.full_name)`
-    : sort === "last" ? sql`last_activity DESC NULLS LAST` : sql`lower(p.full_name)`;
+  const order = sort === "recent" ? sql`x.created_at DESC` : sort === "next" ? sql`x.next_activity NULLS LAST, lower(x.full_name)`
+    : sort === "last" ? sql`x.last_activity DESC NULLS LAST` : sql`lower(x.full_name)`;
   return sql<PersonListRow[]>`
     SELECT * FROM (
       SELECT p.id, p.full_name, p.created_at,
