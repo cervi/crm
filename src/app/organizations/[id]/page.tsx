@@ -91,7 +91,7 @@ export default async function OrganizationPage({ params, searchParams }: { param
           <Link className="btn secondary" href={`${back}?tab=call#compositor`}>Registrar llamada</Link>
           {web && <a className="btn secondary" href={web} target="_blank" rel="noreferrer">Web</a>}
           <Link href={`/persons/new?organization=${id}`} className="btn secondary"><Icon name="plus" />Contacto</Link>
-          <Link href={`/deals/new?organization=${id}`} className="btn"><Icon name="plus" />Deal</Link>
+          <Link href={`/deals/new?organization=${id}`} className="btn"><Icon name="plus" />Nuevo deal</Link>
           <details className="menu-wrap more-menu">
             <summary className="btn secondary" aria-label="Más acciones">···</summary>
             <div className="dropdown">
@@ -188,7 +188,7 @@ export default async function OrganizationPage({ params, searchParams }: { param
         </aside>
 
         <div className="record-main">
-          <ComposerTabsBox initial={tab} tabs={[
+          <ComposerTabsBox key={tab ?? "note"} initial={tab} tabs={[
             { key: "note", label: "Nota", content: <NoteForm refs={refs} back={back} /> },
             { key: "activity", label: "Actividad", content: <ActivityForm refs={refs} back={back} users={humans} me={me.id} /> },
             {
