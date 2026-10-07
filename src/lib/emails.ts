@@ -23,14 +23,14 @@ export type EmailRow = {
   subject: string; body: string; from_email: string | null; to_email: string | null; to_name: string | null;
   person_name: string | null; user_name: string | null; at: Date; scheduled_at: Date | null; sent_at: Date | null;
   track: boolean; open_count: number; first_opened_at: Date | null; last_opened_at: Date | null;
-  click_count: number; last_clicked_at: Date | null; error: string | null;
+  click_count: number; last_clicked_at: Date | null; error: string | null; activity_id: string | null;
 };
 
 export async function listEmails(ref: { dealId?: string; personId?: string; organizationId?: string }, limit = 100): Promise<EmailRow[]> {
   return sql<EmailRow[]>`
     SELECT e.id, e.direction, e.status, e.subject, e.body, e.from_email, e.to_email, e.to_name,
            p.full_name AS person_name, u.name AS user_name, coalesce(e.sent_at, e.scheduled_at, e.created_at) AS at,
-           e.scheduled_at, e.sent_at, e.track, e.open_count, e.first_opened_at, e.last_opened_at, e.click_count, e.last_clicked_at, e.error
+           e.scheduled_at, e.sent_at, e.track, e.open_count, e.first_opened_at, e.last_opened_at, e.click_count, e.last_clicked_at, e.error, e.activity_id
     FROM emails e
     LEFT JOIN persons p ON p.id = e.person_id
     LEFT JOIN users u ON u.id = e.user_id

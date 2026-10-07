@@ -272,8 +272,8 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
             <p className="meta">Si es la misma persona: se juntan deals, actividades, notas, correos, archivos, emails y teléfonos. El que no se queda va a la papelera.</p>
             <ActionForm action={mergeWithAction.bind(null, "person", id)} submitLabel="Fusionar" secondary>
               <EntityPicker name="other_id" type="persons" label="Otro contacto" required />
-              <label className="checkbox"><input type="radio" name="keep" value="this" defaultChecked /> Quedarse con este ({person.full_name})</label>
-              <label className="checkbox"><input type="radio" name="keep" value="other" /> Quedarse con el otro</label>
+              <label className="radio-row"><input type="radio" name="keep" value="this" defaultChecked /> Quedarse con este ({person.full_name})</label>
+              <label className="radio-row"><input type="radio" name="keep" value="other" /> Quedarse con el otro</label>
             </ActionForm>
           </section>
           <p className="meta">Alta: {dateTime(person.created_at)}</p>

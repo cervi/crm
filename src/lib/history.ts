@@ -23,6 +23,8 @@ const COVERED = /^(activity\.|note\.created|email\.(received|scheduled|opened|cl
 
 export function buildHistory(src: { notes?: Note[]; activities?: Activity[]; emails?: EmailRow[]; files?: StoredFile[]; events?: TimelineEvent[];
                                     showDeal?: boolean }): HistoryItem[] {
+  // Los correos ya salen como correo: su actividad «Email» no se repite.
+  const mailActs = new Set((src.emails ?? []).map((m) => m.activity_id).filter(Boolean));
   const deal = (title: string | null | undefined) => (src.showDeal && title ? ` · ${title}` : "");
   const items: HistoryItem[] = [
     ...(src.notes ?? []).map((n) => ({
@@ -30,7 +32,7 @@ export function buildHistory(src: { notes?: Note[]; activities?: Activity[]; ema
       body: n.content, meta: `${dateTime(n.created_at)}${n.author_name ? ` · ${n.author_name}` : ""}${deal(n.deal_title)}`,
       pinned: n.is_pinned, noteId: n.id,
     })),
-    ...(src.activities ?? []).filter((a) => a.done).map((a) => {
+    ...(src.activities ?? []).filter((a) => a.done && !mailActs.has(a.id)).map((a) => {
       const call = a.type === "call";
       return {
         id: `a${a.id}`, kind: call ? "call" as const : "activity" as const, at: new Date(a.done_at ?? a.due_at ?? 0).toISOString(),

@@ -1186,3 +1186,7 @@ a.btn.small svg { width: 14px; height: 14px; }
 .tags-inline { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
 .tags-inline .tag { font-size: 11px; padding: 1px 7px; }
 .list-filters select { max-width: 200px; }
+.radio-row { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.radio-row input { width: auto; margin: 0; }
+.record-head .title-with-avatar { align-items: flex-start; }
+.tags-edit[open] .form.inline { margin-top: 6px; }

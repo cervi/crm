@@ -236,8 +236,8 @@ export default async function OrganizationPage({ params, searchParams }: { param
             <p className="meta">Si es la misma empresa: se juntan contactos, deals, actividades, notas, correos y archivos. La que no se queda va a la papelera.</p>
             <ActionForm action={mergeWithAction.bind(null, "organization", id)} submitLabel="Fusionar" secondary>
               <EntityPicker name="other_id" type="organizations" label="Otra empresa" required />
-              <label className="checkbox"><input type="radio" name="keep" value="this" defaultChecked /> Quedarse con esta ({org.name})</label>
-              <label className="checkbox"><input type="radio" name="keep" value="other" /> Quedarse con la otra</label>
+              <label className="radio-row"><input type="radio" name="keep" value="this" defaultChecked /> Quedarse con esta ({org.name})</label>
+              <label className="radio-row"><input type="radio" name="keep" value="other" /> Quedarse con la otra</label>
             </ActionForm>
           </section>
           <p className="meta">Alta: {dateTime(org.created_at)}</p>
