@@ -80,7 +80,7 @@ export async function tagsOf(entity: TagEntity, id: string): Promise<Tag[]> {
 export async function setTags(actor: Actor, entity: TagEntity, id: string, names: string[], color?: string) {
   const [table, col] = TAG_TABLE[entity];
   const clean = [...new Set(names.map((n) => n.trim().replace(/\s+/g, " ")).filter(Boolean).map((n) => n.slice(0, 40)))].slice(0, 20);
-  const c = TAG_COLORS.includes(color as (typeof TAG_COLORS)[number]) ? color : "blue";
+  const c: string = color && TAG_COLORS.includes(color as (typeof TAG_COLORS)[number]) ? color : "blue";
   await transaction(async (tx) => {
     const ids: string[] = [];
     for (const n of clean) {
