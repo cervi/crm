@@ -1258,11 +1258,11 @@ if (MOCK) {
     await page.getByRole("region", { name: "Seguidores" }).getByRole("button", { name: "Seguir" }).click();
     await page.getByRole("region", { name: "Seguidores" }).getByRole("button", { name: "Dejar de seguir" }).waitFor();
     // Archivo
-    await page.getByRole("tab", { name: /^Archivos/ }).click();
+    await page.getByRole("tab", { name: /^Archivos/ }).first().click();
     await page.getByLabel("Elegir archivos").setInputFiles({ name: `propuesta-${stamp}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 prueba") });
     await page.getByRole("link", { name: `propuesta-${stamp}.pdf` }).first().waitFor();
     // Correo desde la ficha
-    await page.getByRole("tab", { name: "Correo" }).click();
+    await page.getByRole("tab", { name: "Correo", exact: true }).click();
     const mail = page.getByRole("tabpanel", { name: "Correo" });
     await mail.getByLabel("Asunto").fill(`Desde la ficha ${stamp}`);
     await mail.locator("textarea[name=body]").fill("Hola, te escribo desde tu ficha.");
