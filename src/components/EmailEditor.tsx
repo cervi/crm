@@ -101,7 +101,7 @@ export function EmailEditor(props: Props) {
     const sel = window.getSelection();
     if (!sel) return;
     sel.removeAllRanges();
-    if (savedRange.current) sel.addRange(savedRange.current);
+    if (savedRange.current && el.contains(savedRange.current.startContainer)) sel.addRange(savedRange.current);
     else { const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); sel.addRange(r); }
   };
 

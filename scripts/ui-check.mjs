@@ -1137,6 +1137,81 @@ await step("campañas: crear una campaña y añadir contactos pegando un CSV", a
   await shot("campana");
 });
 
+if (MOCK) {
+  await step("secuencias: escribir un correo con formato, variables, condición, IA, vista previa y prueba", async () => {
+    await page.goto("/sequences");
+    await page.getByLabel("Nombre").fill(`Secuencia UI ${stamp}`);
+    await submit("Crear y añadir pasos");
+    await page.waitForURL(/\/sequences\/[0-9a-f-]{36}$/);
+    const add = page.getByRole("region", { name: "Añadir un paso" });
+    await add.getByLabel("Formato del correo").selectOption("html");
+    await add.getByLabel("Asunto del nuevo paso").fill(`Idea para {{empresa}} ${stamp}`);
+    const body = add.getByRole("textbox", { name: "Texto del nuevo paso" });
+    await body.click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.type("Hola ");
+    await add.getByRole("button", { name: /Variables/ }).click();
+    await add.locator(".ee-vars button", { hasText: "{{nombre}}" }).click();
+    await body.click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(", ¿hablamos el jueves?");
+    expect((await body.innerHTML()).includes("Hola {{nombre}}, ¿hablamos el jueves?"), `texto: ${await body.innerHTML()}`);
+    await add.locator(".ee-checks").getByText(/Personalizado/).waitFor();
+    // Vista previa: con datos de ejemplo y con un contacto real.
+    await add.getByRole("tab", { name: "Vista previa" }).click();
+    const frame = add.frameLocator('iframe[title="Vista previa del correo"]');
+    await frame.getByText("Hola Laura, ¿hablamos el jueves?").waitFor();
+    await add.getByLabel("Buscar otro contacto").fill("Ana Garc");
+    await add.locator(".ee-found button", { hasText: "Ana García" }).first().click();
+    await frame.getByText("Hola Ana, ¿hablamos el jueves?").waitFor();
+    await add.getByText("Idea para Paco S.L.").first().waitFor().catch(() => {});
+    await shot("secuencia-editor-previa");
+    // Prueba a mi correo.
+    await add.getByRole("tab", { name: "Enviar prueba" }).click();
+    await add.getByRole("button", { name: "Enviar prueba" }).click();
+    await add.getByText(/Prueba enviada a .* con los datos de Ana García/).waitFor();
+    const test = (await mockState()).sent.find((m) => m.subject?.startsWith("[Prueba] Idea para") && m.subject.includes(stamp));
+    expect(test && test.body.contentType === "HTML" && test.body.content.includes("Hola Ana"), "la prueba no salió en HTML con los datos de Ana");
+    // IA: acortar (y se puede deshacer); luego una condición.
+    await add.getByRole("button", { name: "✦ Escribir con IA" }).click();
+    await add.getByRole("button", { name: "Acortar" }).click();
+    await add.getByText("Listo. Revísalo antes de guardar").waitFor();
+    expect((await body.innerHTML()).includes("(IA) Hola {{nombre}}"), "la IA no reescribió el correo");
+    await add.getByRole("button", { name: "Deshacer" }).click();
+    expect((await body.innerHTML()).includes("¿hablamos el jueves?"), "no se deshizo");
+    await body.click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await add.getByRole("button", { name: "Si… / si no" }).click();
+    await add.getByLabel("Texto si se cumple").fill(" Como {{cargo}}, te interesará.");
+    await add.getByRole("button", { name: "Insertar" }).click();
+    expect((await body.innerHTML()).includes("{{#if cargo}} Como {{cargo}}, te interesará.{{#endif}}"), `sin condición: ${await body.innerHTML()}`);
+    await shot("secuencia-editor");
+    await submit("Añadir paso");
+    await page.getByRole("listitem", { name: "Paso 1" }).waitFor();
+    const [st] = await sql`SELECT st.id, st.format, st.subject, st.body FROM sequence_steps st JOIN sequences s ON s.id = st.sequence_id WHERE s.name = ${`Secuencia UI ${stamp}`}`;
+    expect(st?.format === "html" && st.body.includes("{{#if cargo}}") && st.body.includes("Hola {{nombre}}"), JSON.stringify(st));
+    // Prueba A/B: una variante B con otro asunto.
+    const step1 = page.getByRole("listitem", { name: "Paso 1" });
+    await step1.getByText("+ Prueba A/B: añadir una variante").click();
+    await step1.getByLabel("Asunto del paso 1 nueva variante").fill(`Otra idea {{nombre}} ${stamp}`);
+    await step1.getByRole("button", { name: "Añadir variante" }).click();
+    await step1.getByText(/Variante B: Otra idea/).waitFor();
+    const [v] = await sql`SELECT label, subject FROM sequence_step_variants WHERE step_id = ${st.id}`;
+    expect(v?.label === "B", JSON.stringify(v));
+  });
+
+  await step("mi cuenta: firma de los correos con formato", async () => {
+    await page.goto("/account");
+    const box = page.getByRole("textbox", { name: "Firma" });
+    await box.click();
+    await page.keyboard.type(`Gestor ${stamp} · aikit`);
+    await page.getByRole("button", { name: "Guardar firma" }).click();
+    await page.getByText("Firma guardada.").waitFor();
+    const [u] = await sql`SELECT email_signature FROM users WHERE lower(email) = ${ADMIN.email}`;
+    expect(u.email_signature?.includes(`Gestor ${stamp}`), JSON.stringify(u));
+  });
+}
+
 await step("sin errores de JavaScript en el navegador", async () => {
   expect(errors.length === 0, errors.slice(0, 3).join(" | "));
 });
