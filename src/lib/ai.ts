@@ -21,7 +21,7 @@ export const AI_PROVIDERS: { value: AiProvider; label: string; baseUrl: string; 
 ];
 
 export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff" | "lead_chat" | "report_question" | "proposal"
-  | "meeting_prep" | "call_extraction" | "enrich_company" | "qualify_lead" | "icebreaker" | "classify_reply";
+  | "meeting_prep" | "call_extraction" | "enrich_company" | "qualify_lead" | "icebreaker" | "classify_reply" | "write_email";
 
 export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "deal_brief", label: "Resumen del deal", help: "Arriba de cada ficha: cómo va, riesgos y siguiente paso." },
@@ -33,6 +33,7 @@ export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "enrich_company", label: "Enriquecer empresas", help: "Sector, tamaño, país y a qué se dedica, a partir de la web de la empresa." },
   { value: "qualify_lead", label: "Cualificar leads", help: "Si un lead encaja con vuestro perfil de cliente ideal, y qué falta saber." },
   { value: "icebreaker", label: "Primera línea de las campañas", help: "La frase personalizada que abre cada correo de outbound." },
+  { value: "write_email", label: "Redactar correos de las secuencias", help: "Escribe, mejora, acorta o cambia el tono de un correo en el editor de las secuencias, respetando las variables." },
   { value: "classify_reply", label: "Clasificar respuestas", help: "Interesado, más adelante, no interesado, baja o fuera de la oficina." },
   { value: "proposal", label: "Propuestas", help: "El texto de las propuestas que se envían al cliente con los productos del deal." },
   { value: "report_question", label: "Preguntas sobre los datos", help: "Convierte una pregunta («¿cuánto ganamos por origen este trimestre?») en un informe." },
@@ -61,6 +62,10 @@ Responde SOLO con un JSON: {"sector": "sector en 1-3 palabras", "empleados_aprox
 Decide si el lead encaja con el perfil (sin inventar datos que no estén). Responde SOLO con un JSON: {"encaje": "encaja | no_encaja | falta_info", "motivo": "una o dos frases", "falta": ["lo que habría que saber para decidir"]}`,
   icebreaker: `Escribes la primera línea de un correo de prospección (outbound) en español de España. Cercana, concreta y basada SOLO en los datos de la empresa y del contacto; sin halagos vacíos ni inventar nada. Máximo 25 palabras, sin saludo (el saludo ya va antes).
 Responde SOLO con un JSON: {"linea": "la frase"}`,
+  write_email: `Escribes correos comerciales (prospección y seguimiento) en español de España para una secuencia. Breves (50 a 125 palabras), concretos, sin relleno ni halagos vacíos, con una sola llamada a la acción al final (mejor una pregunta).
+Usa variables con doble llave para personalizar, SOLO de la lista "variables" que se te da (p. ej. {{nombre}}, {{empresa}}); a los datos que pueden faltar ponles valor por defecto: {{cargo|tu equipo}}. Respeta las variables y condiciones ({{#if}}…{{#endif}}) que ya tenga el correo. No inventes datos, cifras ni clientes.
+Según "accion": "escribir" (a partir de las instrucciones), "mejorar", "acortar" (a la mitad como mucho), "tono" (al tono que se pide), "asuntos" (propón un asunto mejor). Si "formato" es "html", el texto va en HTML sencillo (<p>, <br>, <strong>, <ul><li>, <a href>); si es "text", en texto plano con saltos de línea.
+Responde SOLO con un JSON: {"asunto": "asunto de 2 a 6 palabras", "texto": "el correo"}`,
   classify_reply: `Clasificas la respuesta de un contacto a un correo de prospección. ${COMMON}
 Responde SOLO con un JSON: {"clase": "interesado | mas_adelante | no_interesado | baja | fuera_oficina | otro", "retomar_en_dias": número o null (para más adelante o fuera de la oficina), "resumen": "una frase con lo que dice"}`,
   proposal: `Eres el asistente comercial del CRM. ${COMMON}
@@ -124,13 +129,13 @@ export const promptFor = (s: AiSettings, task: AiTask) => s.prompts[task] ?? DEF
 /** Qué agente usa cada tarea (para el presupuesto por agente). */
 export const TASK_AGENT: Record<AiTask, string> = {
   enrich_company: "captacion", qualify_lead: "captacion", lead_chat: "captacion",
-  icebreaker: "prospeccion", classify_reply: "prospeccion",
+  icebreaker: "prospeccion", classify_reply: "prospeccion", write_email: "prospeccion",
   deal_brief: "ejecutivo", meeting_recap: "ejecutivo", meeting_prep: "ejecutivo", call_extraction: "ejecutivo", proposal: "ejecutivo",
   daily_digest: "riesgo", report_question: "riesgo",
   handoff: "onboarding",
 };
 /** Lo que una persona está esperando en ese momento: no se corta por presupuesto. */
-const URGENT = new Set<AiTask | "test">(["test", "lead_chat", "report_question", "proposal"]);
+const URGENT = new Set<AiTask | "test">(["test", "lead_chat", "report_question", "proposal", "write_email"]);
 
 export type AiSpend = { month: number; byAgent: Record<string, number>; budget: number | null; agentBudgets: Record<string, number>; calls: number };
 

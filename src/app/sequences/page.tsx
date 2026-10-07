@@ -18,6 +18,7 @@ export default async function SequencesPage() {
             responde, agenda una reunión o el deal se cierra. Añade contactos desde la ficha del deal o en bloque desde la lista de deals.
           </p>
         </div>
+        <Link className="btn secondary" href="/sequences/tasks">Correos manuales por enviar</Link>
       </div>
 
       {sequences.length === 0 && <p className="muted">Todavía no hay secuencias.</p>}

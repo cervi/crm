@@ -199,6 +199,13 @@ createServer(async (req, res) => {
         report_question: JSON.stringify({ titulo: "(IA) Importe ganado por origen", source: "deals", metric: "sum_value", group_by: "source",
                                           date_field: "won_at", period: "all", chart: "bar", filters: { status: "won" } }),
       };
+      if (task === "write_email") {
+        const d = JSON.parse(user).datos ?? {};
+        const html = d.formato === "html";
+        const t = d.accion === "acortar" ? "(IA) Hola {{nombre}}, ¿hablamos 15 minutos esta semana?"
+          : "(IA) Hola {{nombre}}, he visto que en {{empresa|tu empresa}} estáis creciendo. Ayudamos a equipos comerciales a no perder ningún seguimiento. ¿Te encaja una llamada de 15 minutos el {{hoy_dia_semana->mas_2}}?";
+        replies.write_email = JSON.stringify({ asunto: "(IA) Idea para {{empresa}}", texto: html ? `<p>${t}</p>` : t });
+      }
       if (task === "classify_reply") {
         const t = JSON.stringify(JSON.parse(user).datos ?? {}).toLowerCase();
         replies.classify_reply = JSON.stringify(/fuera de la oficina|vacaciones/.test(t) ? { clase: "fuera_oficina", retomar_en_dias: 7, resumen: "(IA) De vacaciones" }

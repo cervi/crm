@@ -3,6 +3,7 @@ import { sql } from "./db";
 import { UserError } from "./errors";
 import { recordEvent, INTEGRATION_ACTOR, type Actor } from "./events";
 import { linksIn } from "./email-track";
+import { hrefsIn, sanitizeEmailHtml } from "./email-html";
 import { DEVICE_LABEL, readerOf, type Device, type ReaderInfo } from "./reader";
 import { notify } from "./notifications";
 import { bookingLinkFor } from "./booking";
@@ -189,8 +190,8 @@ export async function recordOpen(token: string, headers: Headers = new Headers()
 
 /** Registra el clic y devuelve a dónde redirigir (solo enlaces que estaban en el correo). */
 export async function recordClick(token: string, url: string, headers: Headers = new Headers()): Promise<string | null> {
-  const [raw] = await sql<{ id: string; body: string }[]>`SELECT id, body FROM emails WHERE token = ${token}`;
-  if (!raw || !linksIn(raw.body).includes(url)) return null;
+  const [raw] = await sql<{ id: string; body: string; body_html: string | null }[]>`SELECT id, body, body_html FROM emails WHERE token = ${token}`;
+  if (!raw || !(linksIn(raw.body).includes(url) || hrefsIn(raw.body_html).includes(url))) return null;
   const e = await trackedEmail(token);
   if (!e) return url;
   const info = readerOf(headers, e.sent_at);
@@ -314,11 +315,11 @@ export async function opensFor(emailIds: string[]): Promise<Map<string, OpenRow[
 // ---------------------------------------------------------------------------
 // Plantillas
 
-export type Template = { id: string; name: string; subject: string; body: string; shared: boolean; mine: boolean; author: string | null };
+export type Template = { id: string; name: string; subject: string; body: string; format: "text" | "html"; shared: boolean; mine: boolean; author: string | null };
 
 export async function listTemplates(userId: string): Promise<Template[]> {
   return sql<Template[]>`
-    SELECT t.id, t.name, t.subject, t.body, t.user_id IS NULL AS shared, t.user_id = ${userId} AS mine, u.name AS author
+    SELECT t.id, t.name, t.subject, t.body, t.format, t.user_id IS NULL AS shared, t.user_id = ${userId} AS mine, u.name AS author
     FROM email_templates t LEFT JOIN users u ON u.id = t.created_by
     WHERE t.user_id IS NULL OR t.user_id = ${userId}
     ORDER BY lower(t.name)`;
@@ -327,8 +328,9 @@ export async function listTemplates(userId: string): Promise<Template[]> {
 const templateSchema = z.object({
   name: text("El nombre", 100),
   subject: z.string().trim().max(300).default(""),
-  body: text("El texto", 20000),
+  body: text("El texto", 100000),
   shared: z.string().optional(),
+  format: z.enum(["text", "html"]).optional(),
 });
 
 function canEdit(user: SessionUser, t: { user_id: string | null }) {
@@ -339,16 +341,22 @@ export async function saveTemplate(user: SessionUser, templateId: string | null,
   const v = parse(templateSchema, data);
   const shared = v.shared === "on";
   if (shared && user.role !== "admin") throw new UserError("Solo un administrador puede compartir plantillas con el equipo.");
+  let format: "text" | "html" = v.format ?? "text";
+  const clean = () => (format === "html" ? sanitizeEmailHtml(v.body) : v.body);
   if (templateId) {
-    const [t] = await sql<{ user_id: string | null }[]>`SELECT user_id FROM email_templates WHERE id = ${templateId}`;
+    const [t] = await sql<{ user_id: string | null; format: "text" | "html" }[]>`SELECT user_id, format FROM email_templates WHERE id = ${templateId}`;
     if (!t) throw new UserError("Esa plantilla ya no existe.");
+    format = v.format ?? t.format;
+    const body = clean();
     if (!canEdit(user, t)) throw new UserError("No puedes cambiar esa plantilla.");
-    await sql`UPDATE email_templates SET name = ${v.name}, subject = ${v.subject}, body = ${v.body},
+    await sql`UPDATE email_templates SET name = ${v.name}, subject = ${v.subject}, body = ${body}, format = ${format},
                      user_id = ${shared ? null : t.user_id ?? user.id}, updated_at = now() WHERE id = ${templateId}`;
     return;
   }
-  await sql`INSERT INTO email_templates (name, subject, body, user_id, created_by)
-            VALUES (${v.name}, ${v.subject}, ${v.body}, ${shared ? null : user.id}, ${user.id})`;
+  const body = clean();
+  const [row] = await sql<{ id: string }[]>`INSERT INTO email_templates (name, subject, body, format, user_id, created_by)
+            VALUES (${v.name}, ${v.subject}, ${body}, ${format}, ${shared ? null : user.id}, ${user.id}) RETURNING id`;
+  return row.id;
 }
 
 export async function deleteTemplate(user: SessionUser, templateId: string) {

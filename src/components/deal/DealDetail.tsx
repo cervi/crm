@@ -44,7 +44,8 @@ import {
 } from "@/app/actions/deal-agent";
 import { HealthBadge } from "../HealthBadge";
 import { DEVICE_LABEL } from "@/lib/reader";
-import { renderTemplate } from "@/lib/automations";
+import { mergeTemplate } from "@/lib/merge";
+import { htmlToText } from "@/lib/email-html";
 import { publicBase } from "@/lib/email-track";
 import { requireUser } from "@/lib/auth";
 import { cancelScheduledEmailAction } from "@/app/actions/mailbox";
@@ -102,7 +103,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   const linesTotal = lines.reduce((n, l) => n + l.subtotal, 0);
   const sequences = allSequences.filter((q) => q.is_active && q.steps > 0);
   const composerTemplates = templates.map((t) => ({
-    id: t.id, name: t.name, subject: renderTemplate(t.subject, vars), body: renderTemplate(t.body, vars),
+    id: t.id, name: t.name, subject: mergeTemplate(t.subject, { ...vars, huecos: "{huecos}" }).text,
+    body: mergeTemplate(t.format === "html" ? htmlToText(t.body) : t.body, { ...vars, huecos: "{huecos}" }).text,
   }));
   const canSend = sender !== null;
   const provider = sender ? PROVIDERS[sender.provider] : null;

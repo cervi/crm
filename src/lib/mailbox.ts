@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { sql, json, transaction, type Db } from "./db";
 import { publicBase, trackedHtml } from "./email-track";
+import { trackHtmlLinks } from "./email-html";
 import { decrypt, encrypt } from "./crypto";
 import { INTEGRATION_ACTOR, recordEvent, type Actor } from "./events";
 import { UserError } from "./errors";
@@ -179,6 +180,8 @@ type EmailInput = {
   to: { email: string; name?: string | null };
   subject: string;
   body: string;
+  /** Versión con formato (ya saneada y sin seguimiento); el texto de `body` va como alternativa. */
+  html?: string | null;
   dealId?: string | null;
   personId?: string | null;
   organizationId?: string | null;
@@ -203,12 +206,12 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
   const base = publicBase();
   const track = Boolean(base) && (v.track ?? (await trackingDefault()));
   const token = track ? randomBytes(18).toString("base64url") : null;
-  const html = token && base ? trackedHtml(v.body, token, base) : undefined;
+  const html = v.html ? trackHtmlLinks(v.html, token, base) : token && base ? trackedHtml(v.body, token, base) : undefined;
   const values = {
     direction: "out", status: "sending", deal_id: v.dealId ?? null, person_id: v.personId ?? null,
     organization_id: v.organizationId ?? null, user_id: conn.user_id, from_email: conn.email, to_email: v.to.email,
     to_name: v.to.name ?? null, subject: v.subject.slice(0, 500), body: v.body, template_id: v.templateId ?? null,
-    track, token, created_by: actor.id, error: null,
+    track, token, created_by: actor.id, error: null, body_html: v.html ?? null,
   };
   const [row] = v.emailId
     ? await sql<{ id: string }[]>`UPDATE emails SET ${sql(values as unknown as Record<string, never>)} WHERE id = ${v.emailId} RETURNING id`
@@ -233,8 +236,8 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
 }
 
 /** Envía un correo sin registrarlo en ningún deal (p. ej. el parte del día a uno mismo). */
-export async function sendPlainEmail(conn: Connection, to: string, subject: string, body: string) {
-  await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: { email: to }, subject, body }));
+export async function sendPlainEmail(conn: Connection, to: string, subject: string, body: string, html?: string | null) {
+  await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: { email: to }, subject, body, html: html ? trackHtmlLinks(html, null, null) : undefined }));
 }
 
 type ActivityRow = {

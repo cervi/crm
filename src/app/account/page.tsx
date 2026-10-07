@@ -1,5 +1,7 @@
 import { changePasswordAction, signOutOthersAction, updateProfileAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
+import { RichTextField } from "@/components/RichTextField";
+import { saveSignatureAction } from "@/app/actions/email-editor";
 import { ROLE_LABELS, requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { dateTime } from "@/lib/format";
@@ -11,6 +13,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const [user, { change }] = await Promise.all([requireUser(), searchParams]);
   const sessions = await sql<{ created_at: Date; last_seen_at: Date; user_agent: string | null }[]>`
     SELECT created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ${user.id} AND expires_at > now() ORDER BY last_seen_at DESC`;
+  const [sig] = await sql<{ email_signature: string | null }[]>`SELECT email_signature FROM users WHERE id = ${user.id}`;
   return (
     <main className="page" style={{ maxWidth: 720 }}>
       <div className="page-head">
@@ -47,6 +50,14 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
               <label className="field"><span className="label">Nombre</span><input name="name" required defaultValue={user.name} /></label>
             </ActionForm>
             <p className="meta">El email y el rol los cambia un administrador.</p>
+          </section>
+
+          <section className="panel" aria-label="Firma">
+            <h2>Firma de tus correos</h2>
+            <ActionForm action={saveSignatureAction} submitLabel="Guardar firma" secondary>
+              <RichTextField name="signature" initial={sig?.email_signature ?? ""} label="Firma" />
+              <p className="meta" style={{ margin: 0 }}>Se añade al final de los correos de las secuencias (si la secuencia lo tiene activado). Admite variables como {"{{remitente}}"}.</p>
+            </ActionForm>
           </section>
 
           <section className="panel">
