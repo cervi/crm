@@ -345,6 +345,43 @@ export async function enroll(actor: Actor, sequenceId: string, dealId: string, p
   return row.id;
 }
 
+/** Inscribe a un contacto sin deal (desde su ficha): sale desde el buzón de su responsable o el tuyo. */
+export async function enrollPerson(actor: Actor, sequenceId: string, personId: string): Promise<string> {
+  if (!isId(sequenceId)) throw new UserError("Elige una secuencia.");
+  if (!isId(personId)) throw new UserError("Contacto no válido.");
+  // Si tiene un deal abierto, mejor con él: así la secuencia se para si el deal se cierra.
+  const [d] = await sql<{ id: string }[]>`
+    SELECT d.id FROM deal_participants dp JOIN deals d ON d.id = dp.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
+    WHERE dp.person_id = ${personId} ORDER BY dp.is_primary DESC, d.updated_at DESC LIMIT 1`;
+  if (d) return enroll(actor, sequenceId, d.id, personId);
+  const seq = await getSequence(sequenceId);
+  if (!seq) throw new UserError("La secuencia no existe.");
+  if (!seq.is_active) throw new UserError("La secuencia está desactivada.");
+  if (seq.steps.length === 0) throw new UserError("La secuencia no tiene pasos.");
+  const [p] = await sql<{ owner_id: string | null; email: string | null; unsubscribed: boolean }[]>`
+    SELECT p.owner_id, p.unsubscribed_at IS NOT NULL AS unsubscribed,
+           (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email
+    FROM persons p WHERE p.id = ${personId} AND p.deleted_at IS NULL`;
+  if (!p) throw new UserError("El contacto no existe.");
+  if (!p.email && seq.steps.some((s) => s.kind !== "task")) throw new UserError("El contacto no tiene email.");
+  if (p.unsubscribed) throw new UserError("El contacto se dio de baja de las comunicaciones.");
+  const [busy] = await sql`SELECT 1 FROM sequence_enrollments WHERE sequence_id = ${sequenceId} AND person_id = ${personId} AND status IN ('active', 'paused')`;
+  if (busy) throw new UserError("Ese contacto ya está en esta secuencia.");
+  const sender = (p.owner_id && (await connectionOf(p.owner_id))?.status === "active") ? p.owner_id : actor.id ?? p.owner_id;
+  const first = seq.steps[0];
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO sequence_enrollments (sequence_id, deal_id, person_id, user_id, next_step, next_run_at, enrolled_by)
+    VALUES (${sequenceId}, NULL, ${personId}, ${sender}, 0,
+            now() + make_interval(days => ${first.delay_days}::int, hours => ${first.delay_hours}::int), ${actor.id})
+    ON CONFLICT (sequence_id, person_id) WHERE status = 'active' DO NOTHING RETURNING id`;
+  if (!row) throw new UserError("Ese contacto ya está en esta secuencia.");
+  await recordEvent(sql, actor, "person", personId, "sequence.enrolled", { sequence_id: sequenceId, sequence: seq.name, enrollment_id: row.id });
+  return row.id;
+}
+
+/** Inscripciones de un contacto (todas, con o sin deal). */
+export const listPersonEnrollments = (personId: string) => selectEnrollments(sql`WHERE e.person_id = ${personId}`);
+
 export async function stopEnrollment(actor: Actor, enrollmentId: string, reason = "Parada a mano") {
   const [e] = await sql<{ deal_id: string | null; name: string }[]>`
     UPDATE sequence_enrollments x SET status = 'stopped', stopped_reason = ${reason}, finished_at = now(), next_run_at = NULL

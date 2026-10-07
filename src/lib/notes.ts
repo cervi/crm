@@ -28,12 +28,13 @@ export type Note = {
   deal_title: string | null;
   person_id: string | null;
   person_name: string | null;
+  is_pinned: boolean;
 };
 
 export async function listNotesFor(ref: { dealId?: string; leadId?: string; personId?: string; organizationId?: string }) {
   return sql<Note[]>`
     SELECT n.id, n.content, u.name AS author_name, n.created_at, n.deal_id, d.title AS deal_title,
-           n.person_id, p.full_name AS person_name
+           n.person_id, p.full_name AS person_name, n.is_pinned
     FROM notes n
     LEFT JOIN users u ON u.id = n.author_id
     LEFT JOIN deals d ON d.id = n.deal_id

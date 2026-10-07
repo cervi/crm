@@ -30,12 +30,13 @@ export type Activity = {
   /** Ficha de preparación que deja el agente antes de una reunión. */
   prep: string | null;
   prep_at: Date | null;
+  call_outcome: string | null;
 };
 
 const select = () => sql`
   SELECT a.id, a.type, a.subject, a.note, a.due_at, a.duration_minutes, a.done, a.done_at, a.outcome,
          a.deal_id, d.title AS deal_title, a.lead_id, a.person_id, p.full_name AS person_name,
-         a.organization_id, o.name AS organization_name, u.name AS owner_name, a.meeting_url, a.summary, a.prep, a.prep_at,
+         a.organization_id, o.name AS organization_name, u.name AS owner_name, a.meeting_url, a.summary, a.prep, a.prep_at, a.call_outcome,
          (NOT a.done AND a.due_at < now()) AS is_overdue
   FROM activities a
   LEFT JOIN deals d ON d.id = a.deal_id

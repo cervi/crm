@@ -112,6 +112,15 @@ const LABELS: Record<string, string> = {
   "ai.action_undone": "Acción de la IA deshecha",
   "deal.document_added": "Documento enlazado",
   "deal.document_removed": "Documento quitado",
+  "file.added": "Archivo añadido",
+  "file.removed": "Archivo borrado",
+  "call.logged": "Llamada registrada",
+  "person.tags_changed": "Etiquetas cambiadas",
+  "organization.tags_changed": "Etiquetas cambiadas",
+  "deal.tags_changed": "Etiquetas cambiadas",
+  "lead.tags_changed": "Etiquetas cambiadas",
+  "person.owner_changed": "Cambio de responsable",
+  "organization.owner_changed": "Cambio de responsable",
 };
 
 export const eventLabel = (type: string) => LABELS[type] ?? type;

@@ -26,7 +26,7 @@ export type EmailRow = {
   click_count: number; last_clicked_at: Date | null; error: string | null;
 };
 
-export async function listEmails(ref: { dealId?: string; personId?: string }, limit = 100): Promise<EmailRow[]> {
+export async function listEmails(ref: { dealId?: string; personId?: string; organizationId?: string }, limit = 100): Promise<EmailRow[]> {
   return sql<EmailRow[]>`
     SELECT e.id, e.direction, e.status, e.subject, e.body, e.from_email, e.to_email, e.to_name,
            p.full_name AS person_name, u.name AS user_name, coalesce(e.sent_at, e.scheduled_at, e.created_at) AS at,
@@ -34,7 +34,10 @@ export async function listEmails(ref: { dealId?: string; personId?: string }, li
     FROM emails e
     LEFT JOIN persons p ON p.id = e.person_id
     LEFT JOIN users u ON u.id = e.user_id
-    WHERE ${ref.dealId ? sql`e.deal_id = ${ref.dealId}` : sql`e.person_id = ${ref.personId ?? null}`}
+    WHERE ${ref.dealId ? sql`e.deal_id = ${ref.dealId}`
+      : ref.organizationId ? sql`(e.organization_id = ${ref.organizationId} OR e.deal_id IN (SELECT id FROM deals WHERE organization_id = ${ref.organizationId})
+                                  OR e.person_id IN (SELECT person_id FROM person_organizations WHERE organization_id = ${ref.organizationId} AND status = 'current'))`
+      : sql`e.person_id = ${ref.personId ?? null}`}
       AND e.status <> 'cancelled'
     ORDER BY coalesce(e.sent_at, e.scheduled_at, e.created_at) DESC
     LIMIT ${limit}`;
@@ -57,13 +60,15 @@ const composeSchema = z.object({
 export type ComposeResult = { scheduled: boolean; at?: Date };
 
 /** Envía (o programa) el correo escrito en la ficha del deal. Sale de tu buzón o, si no tienes, del del responsable. */
-export async function composeDealEmail(actor: Actor, dealId: string, data: unknown): Promise<ComposeResult> {
+export async function composeDealEmail(actor: Actor, dealId: string | null, data: unknown): Promise<ComposeResult> {
   const v = parse(composeSchema, data);
   const [p] = await sql<{ full_name: string; email: string | null; owner_id: string | null; organization_id: string | null }[]>`
     SELECT p.full_name,
-           (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email,
-           d.owner_id, d.organization_id
-    FROM persons p, deals d WHERE p.id = ${v.person_id} AND d.id = ${dealId}`;
+           (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY (bounced_at IS NULL) DESC, is_primary DESC, created_at LIMIT 1) AS email,
+           coalesce(d.owner_id, p.owner_id) AS owner_id,
+           coalesce(d.organization_id, (SELECT organization_id FROM person_organizations WHERE person_id = p.id AND status = 'current'
+                                        ORDER BY created_at DESC LIMIT 1)) AS organization_id
+    FROM persons p LEFT JOIN deals d ON d.id = ${dealId}::uuid WHERE p.id = ${v.person_id}`;
   if (!p?.email) throw new UserError("Ese contacto no tiene email.");
   const mine = actor.id ? await connectionOf(actor.id) : null;
   const conn = mine?.status === "active" ? mine : p.owner_id ? await connectionOf(p.owner_id) : null;
@@ -84,7 +89,7 @@ export async function composeDealEmail(actor: Actor, dealId: string, data: unkno
       VALUES ('out', 'scheduled', ${dealId}, ${v.person_id}, ${p.organization_id}, ${conn.user_id}, ${conn.email}, ${p.email},
               ${p.full_name}, ${v.subject}, ${mail.text}, ${mail.html}, ${at}, ${v.template_id ?? null}, ${track ?? true}, ${actor.id})
       RETURNING id`;
-    await recordEvent(sql, actor, "deal", dealId, "email.scheduled", { email_id: row.id, subject: v.subject, at: at.toISOString() });
+    await recordEvent(sql, actor, dealId ? "deal" : "person", dealId ?? v.person_id, "email.scheduled", { email_id: row.id, subject: v.subject, at: at.toISOString() });
     return { scheduled: true, at };
   }
   await sendEmail(conn, actor, {

@@ -5,7 +5,7 @@ import { listStages } from "@/lib/pipelines";
 import { listActivitiesFor } from "@/lib/activities";
 import { listNotesFor } from "@/lib/notes";
 import { listFieldDefinitions } from "@/lib/custom-fields";
-import { eventLabel, timeline } from "@/lib/events";
+import { timeline } from "@/lib/events";
 import { listUsers } from "@/lib/users";
 import { sql } from "@/lib/db";
 import { listActions } from "@/lib/automations";
@@ -19,7 +19,7 @@ import { regenerateBriefAction } from "@/app/actions/ai";
 import { addDocumentAction, removeDocumentAction } from "@/app/actions/documents";
 import { DrivePicker } from "./DrivePicker";
 import { sendDealEmailAction } from "@/app/actions/mailbox";
-import { OUTCOMES, activityLabel, date, dateTime, isSessionType, money, outcomeLabel, STATUS_LABELS } from "@/lib/format";
+import { OUTCOMES, activityLabel, date, dateTime, isSessionType, money, STATUS_LABELS } from "@/lib/format";
 import { activeActivityTypes } from "@/lib/activity-types";
 import {
   addParticipantAction, loseDealAction, moveDealFormAction, removeParticipantAction, reopenDealAction, winDealAction,
@@ -31,7 +31,13 @@ import { CustomFieldValues } from "../CustomFieldValues";
 import { EntityPicker } from "../EntityPicker";
 import { ProposalCard } from "../ai/ProposalCard";
 import { Icon } from "../Icon";
-import { ComposerTabs, EmailComposerFields, HistoryFeed, PanelControls, type HistoryItem } from "./DealClient";
+import { ComposerTabs, EmailComposerFields, PanelControls } from "./DealClient";
+import { HistoryFeed } from "@/components/record/HistoryFeed";
+import { CallForm, FilesPanel, FollowersBlock, TagsBlock } from "@/components/record/Blocks";
+import { buildHistory } from "@/lib/history";
+import { listFiles } from "@/lib/files";
+import { listFollowers } from "@/lib/followers";
+import { listTags, tagsOf } from "@/lib/contact-workspace";
 import { listEmails, listTemplates, opensFor, templateVars } from "@/lib/emails";
 import { getHealth, recomputeHealth } from "@/lib/health";
 import { DEAL_TYPE_LABEL } from "@/lib/deal-types";
@@ -92,6 +98,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     listEnrollments({ dealId }), listSequences(),
   ]);
   const [lines, catalog, proposals_] = await Promise.all([dealLines(dealId), listProducts(), listProposals(dealId)]);
+  const [files, followers, tags, allTags] = await Promise.all([listFiles({ deal_id: dealId }), listFollowers("deal", dealId), tagsOf("deal", dealId), listTags()]);
   const [insights, closePlan] = await Promise.all([getInsights(dealId), getClosePlan(dealId)]);
   const views = new Map(await Promise.all(proposals_.filter((p) => p.view_count > 0).map(async (p) => [p.id, await proposalViews(p.id)] as const)));
   const opens = await opensFor(emails.filter((e) => e.direction === "out" && e.open_count > 0).map((e) => e.id));
@@ -127,30 +134,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   const humans = users.filter((u) => u.kind === "human");
 
   // Historia: notas, actividades hechas y cambios del deal, en un solo hilo.
-  const items: HistoryItem[] = [
-    ...notes.map((n) => ({ id: `n${n.id}`, kind: "note" as const, at: new Date(n.created_at).toISOString(), title: "Nota",
-                          body: n.content, meta: `${dateTime(n.created_at)}${n.author_name ? ` · ${n.author_name}` : ""}` })),
-    ...activities.filter((a) => a.done).map((a) => ({
-      id: `a${a.id}`, kind: "activity" as const, at: new Date(a.done_at ?? a.due_at ?? 0).toISOString(),
-      title: `${activityLabel(a.type)}: ${a.subject}${a.outcome ? ` — ${outcomeLabel(a.outcome).toLowerCase()}` : ""}`,
-      body: a.note, meta: `${dateTime(a.done_at)}${a.owner_name ? ` · ${a.owner_name}` : ""}`,
-      tone: a.outcome === "no_show" ? "bad" as const : null,
-    })),
-    ...events.filter((e) => !e.event_type.startsWith("activity.") && e.event_type !== "note.created" && e.event_type !== "email.received" && e.event_type !== "email.scheduled").map((e) => {
-      const p = e.payload as Record<string, unknown>;
-      const detail = e.event_type === "deal.stage_changed" && p.from_stage ? `${p.from_stage} → ${p.to_stage}`
-        : e.event_type === "deal.lost" ? [p.reason, p.note].filter(Boolean).join(" · ")
-        : e.event_type.startsWith("deal.document_") ? String(p.title ?? "")
-        : e.event_type.startsWith("sequence.") ? [p.sequence, p.reason].filter(Boolean).join(" · ")
-        : e.event_type === "deal.owner_changed" ? `${p.from_name ?? "sin responsable"} → ${p.to_name ?? "sin responsable"}` : null;
-      return {
-        id: `e${e.id}`, kind: "change" as const, at: new Date(e.occurred_at).toISOString(),
-        title: eventLabel(e.event_type), body: detail,
-        meta: `${dateTime(e.occurred_at)} · ${e.actor_name ?? (e.actor_type === "ai_agent" ? "IA" : e.actor_type === "integration" ? "Integración" : "Usuario")}`,
-        tone: e.event_type === "deal.won" ? "good" as const : e.event_type === "deal.lost" ? "bad" as const : null,
-      };
-    }),
-  ].sort((a, b) => b.at.localeCompare(a.at));
+  // Historia: notas, actividades, llamadas, archivos y cambios del deal, en un solo hilo (los correos van en su apartado).
+  const items = buildHistory({ notes, activities, files, events });
 
   return (
     <div className={panel ? "deal-view in-panel" : "deal-view"}>
@@ -168,6 +153,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               {deal.organization_id && <Link href={`/organizations/${deal.organization_id}`}>{deal.organization_name}</Link>}
               {deal.owner_name && <span className="owner"><Avatar name={deal.owner_name} size="sm" />{deal.owner_name}</span>}
             </div>
+            <TagsBlock entity="deal" id={dealId} tags={tags} all={allTags} back={back} />
           </div>
           <div className="deal-actions">
             {isOpen ? (
@@ -336,6 +322,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             </details>
           </section>
 
+          <FollowersBlock type="deal" id={dealId} followers={followers} me={me.id} users={users.filter((u) => u.kind === "human")} back={back} />
+
           <section className="side-section deal-sequences" aria-label="Secuencias">
             <h3>Secuencias <span className="muted">{enrollments.filter((e) => e.status === "active").length}</span></h3>
             {enrollments.length > 0 && (
@@ -444,6 +432,9 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
           )}
 
           <ComposerTabs
+            call={<CallForm refs={{ deal_id: dealId, ...(primary ? { person_id: primary.person_id } : {}) }} back={back} />}
+            files={<FilesPanel refs={{ deal_id: dealId }} files={files} back={back} />}
+            filesLabel={`Archivos${files.length ? ` (${files.length})` : ""}`}
             note={
               <ActionForm action={createNoteAction.bind(null, back)} submitLabel="Guardar nota" resetOnSuccess>
                 <input type="hidden" name="deal_id" value={dealId} />
@@ -768,7 +759,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
 
           <section>
             <h2 className="section-title">Historia <span className="spacer" /><ExportLink dataset="deal-history" params={{ deal: dealId }} label="Exportar CSV" small /></h2>
-            <HistoryFeed items={items} />
+            <HistoryFeed items={items} back={back} />
           </section>
         </div>
       </div>

@@ -6,18 +6,23 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 
 /** Pestañas del compositor (nota / actividad / correo): solo cambian qué formulario se ve. */
-export function ComposerTabs({ note, activity, email }: { note: React.ReactNode; activity: React.ReactNode; email?: React.ReactNode }) {
-  const [tab, setTab] = useState<"note" | "activity" | "email">("note");
+export function ComposerTabs({ note, activity, email, call, files, filesLabel = "Archivos" }: {
+  note: React.ReactNode; activity: React.ReactNode; email?: React.ReactNode; call?: React.ReactNode; files?: React.ReactNode; filesLabel?: string;
+}) {
+  const [tab, setTab] = useState<"note" | "activity" | "call" | "email" | "files">("note");
+  const tabs = [
+    { key: "note" as const, label: "Nota", content: note },
+    { key: "activity" as const, label: "Actividad", content: activity },
+    ...(call ? [{ key: "call" as const, label: "Llamada", content: call }] : []),
+    ...(email ? [{ key: "email" as const, label: "Correo", content: email }] : []),
+    ...(files ? [{ key: "files" as const, label: filesLabel, content: files }] : []),
+  ];
   return (
     <div className="composer">
       <div className="composer-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === "note"} onClick={() => setTab("note")}>Nota</button>
-        <button type="button" role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}>Actividad</button>
-        {email && <button type="button" role="tab" aria-selected={tab === "email"} onClick={() => setTab("email")}>Correo</button>}
+        {tabs.map((t) => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>{t.label}</button>)}
       </div>
-      <div hidden={tab !== "note"}>{note}</div>
-      <div hidden={tab !== "activity"}>{activity}</div>
-      {email && <div hidden={tab !== "email"}>{email}</div>}
+      {tabs.map((t) => <div key={t.key} hidden={tab !== t.key}>{t.content}</div>)}
     </div>
   );
 }
@@ -136,56 +141,6 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
         {state.error && <span className="meta tone-bad" role="status">{state.error}</span>}
       </div>
     </>
-  );
-}
-
-export type HistoryItem = {
-  id: string;
-  kind: "note" | "activity" | "change";
-  at: string;
-  title: string;
-  body?: string | null;
-  meta?: string | null;
-  tone?: "good" | "bad" | null;
-};
-
-const FILTERS: { value: "all" | HistoryItem["kind"]; label: string }[] = [
-  { value: "all", label: "Todo" },
-  { value: "note", label: "Notas" },
-  { value: "activity", label: "Actividades" },
-  { value: "change", label: "Cambios" },
-];
-
-/** Historia del deal con filtro por tipo. */
-export function HistoryFeed({ items }: { items: HistoryItem[] }) {
-  const [filter, setFilter] = useState<"all" | HistoryItem["kind"]>("all");
-  const shown = filter === "all" ? items : items.filter((i) => i.kind === filter);
-  const count = (k: HistoryItem["kind"]) => items.filter((i) => i.kind === k).length;
-  return (
-    <div className="history">
-      <div className="chips" role="tablist" aria-label="Filtrar historia">
-        {FILTERS.map((f) => (
-          <button key={f.value} type="button" role="tab" aria-selected={filter === f.value} onClick={() => setFilter(f.value)}>
-            {f.label}{f.value !== "all" && ` (${count(f.value)})`}
-          </button>
-        ))}
-      </div>
-      {shown.length === 0 && <p className="muted">Nada por aquí todavía.</p>}
-      <ol className="feed">
-        {shown.map((i) => (
-          <li key={i.id} className={`feed-item ${i.kind}`}>
-            <span className="feed-icon" aria-hidden="true"><Icon name={i.kind === "note" ? "pencil" : i.kind === "activity" ? "activities" : "sort"} /></span>
-            <div className="feed-card">
-              <div className="feed-title">
-                <strong className={i.tone ? `tone-${i.tone}` : undefined}>{i.title}</strong>
-                <span className="meta">{i.meta}</span>
-              </div>
-              {i.body && <p className="note-body">{i.body}</p>}
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
   );
 }
 

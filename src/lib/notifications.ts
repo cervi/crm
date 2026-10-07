@@ -1,3 +1,4 @@
+import { notifyFollowers } from "./followers";
 import { sql, type Db } from "./db";
 import type { Actor, EntityType } from "./events";
 
@@ -42,6 +43,13 @@ const DEAL_EVENTS: Record<string, (p: Record<string, unknown>) => string> = {
 
 /** Se llama al registrar cada evento: genera los avisos que tocan. */
 export async function notifyForEvent(db: Db, actor: Actor, entityType: EntityType, entityId: string, eventType: string, payload: Record<string, unknown>) {
+  await notifyOwnerOrAssignee(db, actor, entityType, entityId, eventType, payload);
+  // Seguidores: al responsable del deal ya le avisa lo anterior.
+  const [owner] = entityType === "deal" ? await db<{ owner_id: string | null }[]>`SELECT owner_id FROM deals WHERE id = ${entityId}` : [];
+  await notifyFollowers(db, entityType, entityId, eventType, payload, actor.id, DEAL_EVENTS[eventType] ? [owner?.owner_id ?? null] : []);
+}
+
+async function notifyOwnerOrAssignee(db: Db, actor: Actor, entityType: EntityType, entityId: string, eventType: string, payload: Record<string, unknown>) {
   if (entityType === "deal" && eventType === "deal.owner_changed") {
     const to = payload.to_owner_id as string | null;
     if (!to || to === actor.id) return;
