@@ -1708,6 +1708,15 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   const SECRET = process.env.CRON_SECRET ?? "", MOCK = process.env.MOCK_URL;
   const runA = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
   const [ai] = await sql`SELECT provider, api_key IS NOT NULL AS key FROM ai_settings`;
+  const encKey = (plain) => {
+    const key = createHash("sha256").update(process.env.TOKEN_ENCRYPTION_KEY ?? "").digest();
+    const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", key, iv);
+    const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
+    return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+  };
+  if (MOCK && process.env.TOKEN_ENCRYPTION_KEY) {
+    await sql`UPDATE ai_settings SET provider = 'anthropic', base_url = ${`${MOCK}/llm/anthropic`}, model = 'modelo-de-pruebas', api_key = ${encKey("clave-llm-de-pruebas")}`;
+  }
   await sql`UPDATE ai_settings SET monthly_budget = NULL, agent_budgets = '{}'::jsonb, last_error = NULL`;
   await sql`UPDATE automation_settings SET paused = false`;
   const [d] = await sql`SELECT d.stage_id, d.pipeline_id, s.position FROM deals d JOIN stages s ON s.id = d.stage_id WHERE d.id = ${DEAL_OPEN}`;
@@ -1751,6 +1760,7 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
         "IA por fase: la página del pipeline muestra las instrucciones por fase y el tablero marca las fases con IA");
   await sql`UPDATE ai_permissions SET autonomy = ${perm?.autonomy ?? "ask"} WHERE actor = 'assistant' AND action_type = 'move_stage'`;
   await sql`DELETE FROM stage_instructions WHERE id = ${ins.id}`;
+  if (MOCK && process.env.TOKEN_ENCRYPTION_KEY) await sql`UPDATE ai_settings SET api_key = ${encKey("clave-mala")}`;
 }
 
 // ------------------------------------------------------------- Avisos, importar CSV, duplicados
