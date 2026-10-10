@@ -70,6 +70,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           </p>
         </div>
         <div className="head-actions">
+          <Link href={ownerId ? `/b?owner=${ownerId}` : "/b"} className="b-link" title="Una propuesta más visual de esta página, para comparar"><Icon name="spark" />Ver versión B</Link>
           <nav className="chips" aria-label="Ver el parte de">
             <Link href="/" aria-current={!ownerId ? "page" : undefined}>Todo el equipo</Link>
             {humans.map((u) => <Link key={u.id} href={`/?owner=${u.id}`} aria-current={ownerId === u.id ? "page" : undefined}>{u.name}</Link>)}
