@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { contactEngagement } from "@/lib/engagement";
+import { aiReady, getAiSettings } from "@/lib/ai";
 import { TRASH_DAYS } from "@/lib/trash";
 import { notFound } from "next/navigation";
 import { trashAction } from "@/app/actions/trash";
@@ -68,6 +70,8 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
     listPersonEnrollments(id), listSequences(), listTemplates(me.id),
   ]);
   const events = await timeline(sql, [{ type: "person", id }, ...leads.map((l) => ({ type: "lead" as const, id: l.id }))], 60);
+  const [eng, aiSettings] = await Promise.all([contactEngagement([id]), getAiSettings()]);
+  const e1 = eng.get(id);
   const current = info.companies.filter((c) => c.status === "current");
   const humans = users.filter((u) => u.kind === "human");
   const openDeals = deals.filter((d) => d.status === "open");
@@ -256,7 +260,9 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
                       </label>
                     )}
                     <EmailComposerFields dealId={openDeals[0]?.id ?? ""} templates={composerTemplates}
-                                         trackDefault={settings?.email_tracking ?? true} trackAvailable={publicBase() !== null} signatureHtml={signatureHtml} />
+                                         trackDefault={settings?.email_tracking ?? true} trackAvailable={publicBase() !== null} signatureHtml={signatureHtml}
+                                         personId={id} aiReady={aiReady(aiSettings)}
+                                         engagement={e1 ? { [id]: { temperature: e1.temperature, headline: e1.headline, advice: e1.advice } } : {}} />
                   </ActionForm>
                 ),
             },

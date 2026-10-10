@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { contactEngagement } from "@/lib/engagement";
 import { TRASH_DAYS } from "@/lib/trash";
 import { ExportLink } from "../ExportLink";
 import { dealParticipants, getDeal, listLostReasons, stageHistory } from "@/lib/deals";
@@ -139,6 +140,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   // Historia: notas, actividades hechas y cambios del deal, en un solo hilo.
   // Historia: notas, actividades, llamadas, archivos y cambios del deal, en un solo hilo (los correos van en su apartado).
   const items = buildHistory({ notes, activities, files, events });
+  const engagementMap = await contactEngagement(participants.map((p) => p.person_id));
 
   return (
     <div className={panel ? "deal-view in-panel" : "deal-view"}>
@@ -510,7 +512,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                     </div>
                     <EmailComposerFields dealId={dealId} templates={composerTemplates}
                                          trackDefault={appSettings?.email_tracking ?? true} trackAvailable={publicBase() !== null}
-                                         signatureHtml={signatureHtml} />
+                                         signatureHtml={signatureHtml} aiReady={aiReady(ai)}
+                                         engagement={Object.fromEntries([...engagementMap].map(([k, v]) => [k, { temperature: v.temperature, headline: v.headline, advice: v.advice }]))} />
                   </ActionForm>
                 )
               ) : (

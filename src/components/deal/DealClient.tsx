@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { aiEmailAction } from "@/app/actions/email-editor";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
@@ -34,8 +35,16 @@ export type ComposerTemplate = { id: string; name: string; subject: string; body
  * huecos», seguimiento de aperturas y envío programado. Las plantillas llegan
  * ya con los datos del deal; {huecos} se rellena aquí, leyendo el calendario.
  */
-export function EmailComposerFields({ dealId, templates, trackDefault, trackAvailable, signatureHtml }: {
+export type EngagementHint = { temperature: "caliente" | "templado" | "frio" | "sin_datos"; headline: string; advice: string };
+const TEMP_LABEL = { caliente: "Caliente", templado: "Templado", frio: "Frío", sin_datos: "Sin datos" } as const;
+
+export function EmailComposerFields({ dealId, templates, trackDefault, trackAvailable, signatureHtml, engagement = {}, personId, aiReady }: {
   dealId: string; templates: ComposerTemplate[]; trackDefault: boolean; trackAvailable: boolean;
+  /** Cómo ha respondido cada posible destinatario a los correos anteriores. */
+  engagement?: Record<string, EngagementHint>;
+  /** Destinatario fijo (ficha de contacto); si no, se lee del desplegable «Para». */
+  personId?: string;
+  aiReady?: boolean;
   /** Firma de quien envía, ya con sus datos (vacía si no tiene). */
   signatureHtml?: string;
 }) {
@@ -47,6 +56,31 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
   const [later, setLater] = useState(false);
   const [sendAt, setSendAt] = useState("");
   const [state, setState] = useState<{ loading?: boolean; error?: string }>({});
+  const [to, setTo] = useState<string | undefined>(personId);
+  const [ask, setAsk] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+
+  // El destinatario elegido en «Para» (en la ficha del deal).
+  useEffect(() => {
+    if (personId) return;
+    const sel = ref.current?.form?.querySelector<HTMLSelectElement>("select[name=person_id]");
+    if (!sel) return;
+    const sync = () => setTo(sel.value);
+    sync();
+    sel.addEventListener("change", sync);
+    return () => sel.removeEventListener("change", sync);
+  }, [personId]);
+  const hint = to ? engagement[to] : undefined;
+
+  async function writeWithAi(mode: "escribir" | "mejorar") {
+    setAiBusy(true); setState({});
+    try {
+      const r = await aiEmailAction({ subject, body, format: "text", personId: to ?? null, dealId: dealId || null, personalized: true, mode,
+                                      instructions: ask || (mode === "escribir" ? "Seguimiento para avanzar al siguiente paso." : "") });
+      if (r.error) setState({ error: r.error });
+      else { if (r.subject && (!subject || mode === "escribir")) setSubject(r.subject); if (r.body) setBody(r.body); }
+    } finally { setAiBusy(false); }
+  }
 
   // Tras enviar, el formulario se vacía (también lo que controla este componente).
   useEffect(() => {
@@ -96,6 +130,21 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
 
   return (
     <>
+      {hint && (
+        <div className={`engagement temp-${hint.temperature}`} role="note" aria-label="Cómo ha respondido a tus correos">
+          <span className="temp-badge">{TEMP_LABEL[hint.temperature]}</span>
+          <div><strong>{hint.headline}</strong><div className="meta">{hint.advice}</div></div>
+        </div>
+      )}
+      {aiReady && (
+        <div className="compose-ai">
+          <label className="field"><span className="label">Escribir con IA (opcional)</span>
+            <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Qué quieres decirle: p. ej. retomar tras la demo y proponer llamada el jueves" /></label>
+          <button type="button" className="btn secondary small" onClick={() => writeWithAi("escribir")} disabled={aiBusy}>{aiBusy ? "Escribiendo…" : "Redactar"}</button>
+          {body.trim() && <button type="button" className="btn secondary small" onClick={() => writeWithAi("mejorar")} disabled={aiBusy}>Mejorar lo escrito</button>}
+          <span className="meta">Tiene en cuenta el deal y si abrió o respondió tus correos anteriores.</span>
+        </div>
+      )}
       {templates.length > 0 && (
         <label className="field"><span className="label">Plantilla</span>
           <select value={templateId} onChange={(e) => applyTemplate(e.target.value)} aria-label="Plantilla">

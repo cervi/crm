@@ -1766,3 +1766,13 @@ tr.row-muted td { color: var(--muted); }
 .tip-note { font-size: 12px; color: var(--text-2) !important; border-top: 1px solid var(--border); padding-top: 4px; margin-top: 2px; }
 .tip-hint { font-size: 11.5px; color: var(--accent-ink) !important; font-weight: 600; }
 .drill-table td { vertical-align: top; }
+
+/* Temperatura del contacto al escribir */
+.engagement { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-sm); background: var(--sunken); font-size: 13.5px; }
+.temp-badge { flex-shrink: 0; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--panel); border: 1px solid var(--border); }
+.temp-caliente .temp-badge { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.temp-templado .temp-badge { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.temp-frio .temp-badge { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+.compose-ai { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: flex-end; }
+.compose-ai .field { flex: 1 1 320px; }
+.compose-ai > .meta { flex-basis: 100%; }

@@ -1,4 +1,5 @@
 import { sql, json } from "./db";
+import { contactEngagement, engagementFacts } from "./engagement";
 import { UserError } from "./errors";
 import { aiReady, generate, getAiSettings, parseJsonReply } from "./ai";
 import { activityTypes } from "./activity-types";
@@ -324,7 +325,7 @@ export async function instructionCounts(pipelineId: string): Promise<{ byStage: 
 // ---------------------------------------------------------------------------
 // Condiciones y correos (los usa el motor)
 
-async function conditionFacts(dealId: string) {
+export async function conditionFacts(dealId: string) {
   const [f, insights, emails] = await Promise.all([
     dealFacts(dealId), getInsights(dealId),
     sql<{ direction: string; subject: string; body: string; at: Date }[]>`
@@ -370,6 +371,7 @@ export async function writeAgentEmail(o: { dealId: string; prompt: string; conta
   const reply = await generate("write_email", {
     accion: "escribir", formato: "text", instrucciones: o.prompt,
     contexto_del_deal: facts, destinatario: o.contact,
+    historial_con_el_contacto: o.personId ? engagementFacts((await contactEngagement([o.personId])).get(o.personId)) : null,
     huecos_libres_de_mi_calendario: o.slots, enlace_para_reservar: link,
     reglas: "Escribe el correo ya personalizado (sin variables {{…}}). Si hay huecos, ofrécelos tal cual; si hay enlace, inclúyelo. Firma con el nombre del responsable.",
   }, { maxTokens: 900 });

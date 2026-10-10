@@ -13,13 +13,15 @@ import { generate, parseJsonReply } from "@/lib/ai";
 import { saveTemplate } from "@/lib/emails";
 import { htmlToText, sanitizeEmailHtml, textToHtml } from "@/lib/email-html";
 import { isId } from "@/lib/validation";
+import { contactEngagement, engagementFacts } from "@/lib/engagement";
+import { conditionFacts } from "@/lib/stage-agents";
 
 // ===========================================================================
 // Acciones del editor de correos: vista previa con un contacto real, envío
 // de prueba, redacción con IA y guardar como plantilla.
 // ===========================================================================
 
-export type EditorDraft = { subject: string; body: string; format: Format; personId?: string | null; sequenceId?: string | null };
+export type EditorDraft = { subject: string; body: string; format: Format; personId?: string | null; sequenceId?: string | null; dealId?: string | null; personalized?: boolean };
 
 export type PreviewResult = {
   error?: string; subject?: string; html?: string; missing?: string[]; unknown?: string[]; errors?: string[];
@@ -109,7 +111,12 @@ export async function aiEmailAction(d: EditorDraft & { mode: AiMode; instruction
       contacto = Object.fromEntries(Object.entries(v).filter(([k]) => !["enlace_baja", "email", "telefono"].includes(k)));
     }
     const [icp] = await sql<{ sectors: string[]; roles: string[]; must_have: string | null }[]>`SELECT sectors, roles, must_have FROM icp_profile LIMIT 1`;
+    // Cómo ha respondido a los correos anteriores (abrió, hizo clic, respondió…): la IA adapta el mensaje.
+    const engagement = d.personId && isId(d.personId) ? engagementFacts((await contactEngagement([d.personId])).get(d.personId)) : null;
+    const dealFacts = d.dealId && isId(d.dealId) ? await conditionFacts(d.dealId) : null;
     const reply = await generate("write_email", {
+      historial_con_el_contacto: engagement, contexto_del_deal: dealFacts,
+      ...(d.personalized ? { reglas: "Escribe el correo ya personalizado para este contacto (sin variables {{…}}), en texto plano. Tenlo en cuenta: si abrió varias veces sin responder, retoma lo que vio; si no abre, cambia de ángulo y asunto; si respondió, contesta a lo que dijo. Firma con el nombre del remitente." } : {}),
       accion: d.mode, formato: d.format, instrucciones: d.instructions?.slice(0, 2000) ?? "", tono: d.tone ?? "",
       asunto_actual: d.subject, correo_actual: d.format === "html" ? d.body : d.body.slice(0, 20000),
       variables: VARIABLES.map((v) => ({ variable: `{{${v.key}}}`, que_es: v.label })),
