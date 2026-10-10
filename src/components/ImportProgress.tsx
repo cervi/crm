@@ -42,7 +42,7 @@ export function ImportProgress({ advance, labels, steps, initial }: {
   if (!p) return null;
   const total = Object.values(p.counts).reduce((n, c) => n + (c.created ?? 0) + (c.updated ?? 0) + (c.skipped ?? 0), 0);
   if (total !== lastTotal.current) { lastTotal.current = total; lastChange.current = now; }
-  const running = p.status === "running";
+  const isRunning = p.status === "running";
   const idx = steps.indexOf(p.step);
   const pct = p.status === "done" ? 100 : Math.max(3, Math.round((Math.max(0, idx) / steps.length) * 100));
   const elapsed = Math.max(0, Math.round((now - started.current) / 1000));
@@ -51,8 +51,8 @@ export function ImportProgress({ advance, labels, steps, initial }: {
   const cur = p.counts[p.step];
   const curN = cur ? (cur.created ?? 0) + (cur.updated ?? 0) + (cur.skipped ?? 0) : 0;
   return (
-    <div className={`import-progress${running ? " running" : ""}`} aria-live="polite">
-      {running && (
+    <div className={`import-progress${isRunning ? " running" : ""}`} aria-live="polite">
+      {isRunning && (
         <div className="import-now">
           <span className="spinner" aria-hidden="true" />
           <div>
@@ -68,15 +68,15 @@ export function ImportProgress({ advance, labels, steps, initial }: {
       <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div>
       <ol className="import-steps" aria-label="Pasos">
         {steps.map((st, i) => {
-          const state = p.status === "done" || i < idx ? "done" : i === idx && running ? "now" : "todo";
+          const state = p.status === "done" || i < idx ? "done" : i === idx && isRunning ? "now" : "todo";
           return <li key={st} className={state}>{state === "done" ? "✓ " : ""}{labels[st] ?? st}</li>;
         })}
       </ol>
-      {!running && <p className="meta">{p.status === "done" ? "Importación terminada." : p.error ?? p.status}</p>}
-      {running && <p className="meta" style={{ margin: 0 }}>Todo va bien mientras el contador avance. Si cierras esta pantalla, la importación sigue sola en segundo plano (más despacio).</p>}
+      {!isRunning && <p className="meta">{p.status === "done" ? "Importación terminada." : p.error ?? p.status}</p>}
+      {isRunning && <p className="meta" style={{ margin: 0 }}>Todo va bien mientras el contador avance. Si cierras esta pantalla, la importación sigue sola en segundo plano (más despacio).</p>}
       <ul className="import-counts">
         {Object.entries(p.counts).map(([k, c]) => (
-          <li key={k} className={k === p.step && running ? "now" : undefined}><strong>{labels[k] ?? k}</strong> <span className="meta">{c.created ?? 0} nuevos · {c.updated ?? 0} actualizados{c.skipped ? ` · ${c.skipped} omitidos` : ""}</span></li>
+          <li key={k} className={k === p.step && isRunning ? "now" : undefined}><strong>{labels[k] ?? k}</strong> <span className="meta">{c.created ?? 0} nuevos · {c.updated ?? 0} actualizados{c.skipped ? ` · ${c.skipped} omitidos` : ""}</span></li>
         ))}
       </ul>
     </div>
