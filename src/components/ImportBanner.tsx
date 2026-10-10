@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { importBannerAction } from "@/app/actions/import";
 
 type State = { status: string; step: string; total: number; quietFor?: number } | null;
 
@@ -26,12 +25,13 @@ export function ImportBanner({ initial, labels, canDrive }: { initial: State; la
     (async () => {
       while (alive.current) {
         // En la pantalla de importación ya la mueve su propio progreso: aquí solo se mira.
-        const next = await importBannerAction(canDrive && !onImportPage).catch(() => undefined);
+        const res = await fetch("/api/import/progress", { method: canDrive && !onImportPage ? "POST" : "GET", cache: "no-store" }).catch(() => null);
+        const next: State | undefined = res?.ok ? await res.json().catch(() => undefined) : undefined;
         if (!alive.current) break;
         if (next === undefined) { await new Promise((r) => setTimeout(r, 3000)); continue; }
         if (!next || next.status !== "running") { setS(null); setFinished(true); router.refresh(); break; }
         setS(next);
-        await new Promise((r) => setTimeout(r, canDrive && !onImportPage ? 300 : 2500));
+        await new Promise((r) => setTimeout(r, canDrive && !onImportPage ? 500 : 2500));
       }
     })();
     return () => { alive.current = false; };

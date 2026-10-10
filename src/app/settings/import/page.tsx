@@ -4,7 +4,7 @@ import { getSettings } from "@/lib/automations";
 import { encryptionConfigured } from "@/lib/crypto";
 import { dateTime } from "@/lib/format";
 import {
-  cancelImportAction, connectPipedriveAction, continueImportAction, disconnectPipedriveAction, setPipedriveSyncAction, startImportAction,
+  cancelImportAction, connectPipedriveAction, disconnectPipedriveAction, setPipedriveSyncAction, startImportAction,
 } from "@/app/actions/import";
 import { setPausedAction } from "@/app/actions/automations";
 import { ActionForm } from "@/components/ActionForm";
@@ -71,7 +71,7 @@ export default async function ImportPage() {
           <h2>{running ? "Importación en marcha" : "2. Importar"}</h2>
           {running ? (
             <>
-              <ImportProgress advance={continueImportAction} labels={STEP_LABELS} steps={[...STEPS]}
+              <ImportProgress labels={STEP_LABELS} steps={[...STEPS]}
                               initial={{ status: running.status, step: running.step, counts: running.counts, error: running.error }} />
               <ActionForm action={cancelImportAction.bind(null, running.id)} submitLabel="Cancelar" secondary className="form inline" />
             </>

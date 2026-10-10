@@ -10,8 +10,7 @@ type Progress = { status: string; step: string; counts: Record<string, { created
  * segundos por llamada) y muestra el progreso. Si se cierra, la revisión
  * periódica del servidor la continúa.
  */
-export function ImportProgress({ advance, labels, steps, initial }: {
-  advance: () => Promise<Progress>;
+export function ImportProgress({ labels, steps, initial }: {
   labels: Record<string, string>;
   steps: string[];
   initial: Progress;
@@ -23,14 +22,17 @@ export function ImportProgress({ advance, labels, steps, initial }: {
     running.current = true;
     (async () => {
       while (running.current) {
-        const next = await advance().catch(() => null);
+        // Por una ruta normal (no una acción de servidor): así se puede navegar mientras tanto.
+        const res = await fetch("/api/import/progress", { method: "POST", cache: "no-store" }).catch(() => null);
+        if (!res?.ok) { await new Promise((r) => setTimeout(r, 3000)); continue; }
+        const next = (await res.json().catch(() => null)) as Progress;
         setP(next);
         if (!next || next.status !== "running") { router.refresh(); break; }
         await new Promise((r) => setTimeout(r, 300));
       }
     })();
     return () => { running.current = false; };
-  }, [advance, router]);
+  }, [router]);
 
   // Para que se note que está vivo: tiempo transcurrido y hace cuánto llegó la última novedad.
   const [now, setNow] = useState(() => Date.now());
