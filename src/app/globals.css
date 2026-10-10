@@ -1627,3 +1627,23 @@ main.reports > .sales-head { margin-top: 18px !important; }
 .model-list li code { grid-column: 1; font-size: 12px; color: var(--muted); background: none; padding: 0; }
 .model-list li .meta { grid-column: 1 / -1; }
 .model-list li .meta + .meta { grid-column: 2; grid-row: 1; }
+
+/* Selector de periodo (informes) */
+.period-picker { position: relative; }
+.period-picker > .btn { gap: 8px; }
+.period-picker > .btn svg:last-child { width: 14px; height: 14px; color: var(--muted); }
+.period-pop {
+  position: absolute; z-index: 50; top: calc(100% + 6px); left: 0; width: min(560px, 92vw);
+  display: grid; grid-template-columns: 1fr 1fr 200px; gap: 8px 16px; padding: 14px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-pop);
+}
+@media (max-width: 640px) { .period-pop { grid-template-columns: 1fr; } }
+.period-presets { display: contents; }
+.period-group { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 2px 8px 6px; }
+.period-pop ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.period-pop li button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 8px; border: 0; background: none; border-radius: var(--r-sm); font: inherit; font-size: 13.5px; color: var(--text); cursor: pointer; text-align: left; }
+.period-pop li button:hover { background: var(--sunken); }
+.period-pop li button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 650; }
+.period-pop li button svg { width: 14px; height: 14px; }
+.period-custom { display: grid; gap: 8px; align-content: start; border-left: 1px solid var(--border); padding-left: 16px; }
+@media (max-width: 640px) { .period-custom { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 10px; } }

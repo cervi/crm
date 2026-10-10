@@ -12,7 +12,9 @@ import { ask, attribution, revenueMix, forecast, funnel, GOAL_METRICS, goalsProg
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
 import { toUserMessage } from "@/lib/errors";
-import { salesAnalytics, SEGMENTS, type Grain, type Segment } from "@/lib/sales-analytics";
+import { grainsFor, RANGE_PRESETS, resolveRange, salesAnalytics, SEGMENTS, type Grain, type Segment } from "@/lib/sales-analytics";
+import { PeriodPicker } from "@/components/charts/PeriodPicker";
+import { Suspense } from "react";
 import { GroupedBars, HBars, Lines, StackedBars } from "@/components/charts/SalesCharts";
 
 export const dynamic = "force-dynamic";
@@ -28,25 +30,31 @@ const monthLabel = (m: string | null) => {
 const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n * 100)} %`);
 const fmtGoal = (metric: keyof typeof GOAL_METRICS, n: number) => (GOAL_METRICS[metric].money ? money(n) : Math.round(n).toLocaleString("es-ES"));
 
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ pipeline?: string; owner?: string; q?: string; g?: string; seg?: string }> }) {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ pipeline?: string; owner?: string; q?: string; g?: string; seg?: string; r?: string; from?: string; to?: string }> }) {
   const [sp, me] = await Promise.all([searchParams, requireUser()]);
   const [pipelines, users, ai, dashboards] = await Promise.all([listPipelines(), listUsers(), getAiSettings(), listDashboards()]);
   const active = pipelines.filter((p) => p.is_active);
   const pipelineId = isId(sp.pipeline) ? sp.pipeline : null;
   const ownerId = isId(sp.owner) ? sp.owner : null;
   const funnelPipeline = pipelineId ?? active[0]?.id ?? null;
-  const grain: Grain = sp.g === "quarter" ? "quarter" : "month";
+  const period = resolveRange(sp.r, sp.from, sp.to);
+  const grains = grainsFor(period);
+  const grain: Grain = grains.allowed.includes(sp.g as Grain) ? (sp.g as Grain) : grains.auto;
   const segment: Segment = (Object.keys(SEGMENTS) as Segment[]).includes(sp.seg as Segment) ? (sp.seg as Segment) : "none";
   const [fc, vel, goals, fun, attr, mix, sa] = await Promise.all([
     forecast({ pipelineId, ownerId }), velocity(pipelineId), goalsProgress(), funnelPipeline ? funnel(funnelPipeline) : null, attribution(365), revenueMix(365),
-    salesAnalytics({ grain, segment, pipelineId, ownerId }),
+    salesAnalytics({ grain, segment, range: period, pipelineId, ownerId }),
   ]);
   const link = (patch: Record<string, string | null>) => {
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries({ pipeline: pipelineId, owner: ownerId, g: grain === "month" ? null : grain, seg: segment === "none" ? null : segment, ...patch })) if (v) q.set(k, v);
+    for (const [k, v] of Object.entries({ pipeline: pipelineId, owner: ownerId, r: period.preset === "12m" ? null : period.preset,
+      from: period.preset === "custom" ? period.fromIso : null, to: period.preset === "custom" ? period.toIso : null,
+      g: grain === grains.auto ? null : grain, seg: segment === "none" ? null : segment, ...patch })) if (v) q.set(k, v);
     return `/reports${q.size ? `?${q}` : ""}#ventas`;
   };
-  const range = grain === "month" ? "últimos 12 meses" : "últimos 8 trimestres";
+  const range = period.preset === "custom" ? period.label : period.label.charAt(0).toLowerCase() + period.label.slice(1);
+  const GRAIN_LABEL: Record<Grain, string> = { day: "Por día", week: "Por semana", month: "Por mes", quarter: "Por trimestre" };
+  const GRAIN_UNIT: Record<Grain, string> = { day: "día", week: "semana", month: "mes", quarter: "trimestre" };
   const delta = sa.totals.prevWon ? (sa.totals.won - sa.totals.prevWon) / sa.totals.prevWon : null;
   let answer: Answer | null = null, askError: string | null = null;
   if (sp.q) {
@@ -117,12 +125,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <div className="sales-head" id="ventas">
         <div>
           <h2>Análisis de ventas</h2>
-          <p className="meta">{range}{pipelineId ? ` · ${active.find((p) => p.id === pipelineId)?.name}` : ""}{ownerId ? ` · ${humans.find((u) => u.id === ownerId)?.name}` : ""}. Pasa el ratón por los gráficos para ver el detalle.</p>
+          <p className="meta">{period.label}{pipelineId ? ` · ${active.find((p) => p.id === pipelineId)?.name}` : ""}{ownerId ? ` · ${humans.find((u) => u.id === ownerId)?.name}` : ""}. Pasa el ratón por los gráficos para ver el detalle.</p>
         </div>
         <div className="sales-filters">
+          <Suspense><PeriodPicker groups={RANGE_PRESETS} current={period.preset} label={period.label} fromIso={period.fromIso} toIso={period.toIso} /></Suspense>
           <nav className="seg-links" aria-label="Agrupar por">
-            <Link href={link({ g: null })} aria-current={grain === "month" ? "page" : undefined}>Por mes</Link>
-            <Link href={link({ g: "quarter" })} aria-current={grain === "quarter" ? "page" : undefined}>Por trimestre</Link>
+            {grains.allowed.map((g) => (
+              <Link key={g} href={link({ g: g === grains.auto ? null : g })} aria-current={grain === g ? "page" : undefined}>{GRAIN_LABEL[g]}</Link>
+            ))}
           </nav>
           <nav className="seg-links" aria-label="Segmentar por">
             {(Object.entries(SEGMENTS) as [Segment, string][]).map(([k, l]) => (
@@ -144,7 +154,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <div className="charts-grid">
         <section className="chart-card wide" aria-label="Ingresos ganados">
           <h3>Ingresos ganados{segment !== "none" && <span className="muted"> · por {SEGMENTS[segment].toLowerCase()}</span>}</h3>
-          <p className="chart-sub">Importe de los deals ganados en cada {grain === "month" ? "mes" : "trimestre"}.</p>
+          <p className="chart-sub">Importe de los deals ganados en cada {GRAIN_UNIT[grain]}.</p>
           <StackedBars periods={sa.periods} series={sa.wonValue} f="money" />
         </section>
         <section className="chart-card" aria-label="Nuevo pipeline">
@@ -182,13 +192,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </section>
         <section className="chart-card" aria-label="Motivos de pérdida">
           <h3>Motivos de pérdida</h3>
-          <p className="chart-sub">Deals perdidos en los {range}, por motivo.</p>
+          <p className="chart-sub">Deals perdidos ({range}), por motivo.</p>
           <div className="hbars-wrap lost"><HBars f="number" rows={sa.lostReasons.map((r) => ({ label: r.label, value: r.n, note: money(r.value) }))} /></div>
         </section>
         {segment !== "none" && (
           <section className="chart-card" aria-label={`Comparativa por ${SEGMENTS[segment].toLowerCase()}`}>
             <h3>Comparativa por {SEGMENTS[segment].toLowerCase()}</h3>
-            <p className="chart-sub">Ganado en los {range}, tasa de cierre y pipeline abierto hoy.</p>
+            <p className="chart-sub">Ganado ({range}), tasa de cierre y pipeline abierto hoy.</p>
             <HBars f="money" rows={sa.bySegment.map((r) => ({ label: r.label, value: r.won, note: `${pct(r.winRate)} cierre` }))} />
             <div className="table-wrap">
               <table className="seg-table">

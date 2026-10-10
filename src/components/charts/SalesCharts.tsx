@@ -32,6 +32,7 @@ function niceMax(v: number) {
   for (const m of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p;
   return 10 * p;
 }
+const every = (n: number) => Math.max(1, Math.ceil(n / 14));
 const color = (s: Series, i: number) => s.color ?? `var(--series-${(i % 8) + 1})`;
 
 const W = 640, H = 240, PAD = { l: 52, r: 12, t: 12, b: 28 };
@@ -100,7 +101,7 @@ export function StackedBars({ periods, series, f, total = true }: { periods: Per
                   const h = Math.max(1, y0 - y1 - (top ? 0 : 2));
                   return <path key={s.key} d={top ? roundTop(x, y1, bw, h, 4) : `M${x},${y1 + (y0 - y1 - h)}h${bw}v${h}h${-bw}z`} fill={color(s, si)} opacity={hover === null || hover === i ? 1 : 0.55} />;
                 })}
-                <text x={PAD.l + band * i + band / 2} y={H - 8} textAnchor="middle" className="tick">{p.short}</text>
+                {i % every(periods.length) === 0 && <text x={PAD.l + band * i + band / 2} y={H - 8} textAnchor="middle" className="tick">{p.short}</text>}
               </g>
             );
           })}
@@ -143,7 +144,7 @@ export function GroupedBars({ periods, series, f }: { periods: Period[]; series:
                 const x = PAD.l + band * i + (band - gw) / 2 + si * (bw + 2);
                 return <path key={s.key} d={roundTop(x, y(v), bw, y(0) - y(v), 3)} fill={color(s, si)} opacity={hover === null || hover === i ? 1 : 0.55} />;
               })}
-              <text x={PAD.l + band * i + band / 2} y={H - 8} textAnchor="middle" className="tick">{p.short}</text>
+              {i % every(periods.length) === 0 && <text x={PAD.l + band * i + band / 2} y={H - 8} textAnchor="middle" className="tick">{p.short}</text>}
             </g>
           ))}
         </svg>
@@ -181,7 +182,7 @@ export function Lines({ periods, series, f, maxValue }: { periods: Period[]; ser
       <div className="chart-box">
         <svg ref={ref} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={series.map((s) => s.label).join(", ")} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
           <Axis max={max} f={f} />
-          {periods.map((p, i) => <text key={p.key} x={x(i)} y={H - 8} textAnchor="middle" className="tick">{p.short}</text>)}
+          {periods.map((p, i) => i % every(periods.length) === 0 && <text key={p.key} x={x(i)} y={H - 8} textAnchor="middle" className="tick">{p.short}</text>)}
           {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={H - PAD.b} className="crosshair" />}
           {series.map((s, si) => (
             <g key={s.key}>
