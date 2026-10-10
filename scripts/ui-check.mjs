@@ -1303,7 +1303,7 @@ if (MOCK) {
     await page.goto(`/pipelines/${pl.id}`);
     await page.getByRole("link", { name: `IA en la fase ${st.name}` }).click();
     await page.waitForURL(/\/agentes\?fase=/);
-    const stage = page.getByRole("listitem", { name: `Fase ${st.name}` });
+    const stage = page.getByRole("region", { name: `Fase ${st.name}` });
     await stage.getByLabel(`Instrucción en «${st.name}»`).fill("Cuando un deal entre aquí, escríbele para agendar una reunión con mis huecos (también a los que ya están).");
     await stage.getByRole("button", { name: "Ver cómo lo va a hacer" }).click();
     const plan = stage.getByLabel("Cómo lo ha entendido");
