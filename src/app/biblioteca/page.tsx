@@ -89,7 +89,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         rows={items.map((i) => ({
           id: i.id, label: i.name, className: i.archived_at ? "row-muted" : undefined,
           cells: {
-            doc: <span><Link href={qs({ ver: i.id })} scroll={false}><strong>{i.name}</strong></Link>
+            doc: <span><Link href={`${qs({ ver: i.id })}#quien-lo-ha-abierto`} title="Ver quién lo ha abierto"><strong>{i.name}</strong></Link>
               <div className="meta">{kindLabel(i.mime, i.kind)}{i.size ? ` · ${fileSize(i.size)}` : ""}{i.description ? ` · ${i.description.slice(0, 80)}` : ""}</div></span>,
             folder: i.folder,
             shared: i.shared || <span className="muted">—</span>,
@@ -130,7 +130,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       />
 
       {detail && (
-        <section className="panel" style={{ marginTop: 18 }} aria-label={`Quién ha abierto ${detail.name}`}>
+        <section className="panel" id="quien-lo-ha-abierto" style={{ marginTop: 18, scrollMarginTop: 80 }} aria-label={`Quién ha abierto ${detail.name}`}>
           <div className="sign-head"><h2>Quién ha abierto «{detail.name}»</h2><Link href={qs({ ver: null })} className="meta">Cerrar</Link></div>
           {links.length === 0 ? <p className="muted">Aún no se ha compartido. Usa «Copiar enlace» o adjúntalo como enlace al escribir un correo desde un deal.</p> : (
             <div className="table-wrap">

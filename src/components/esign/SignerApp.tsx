@@ -24,6 +24,15 @@ export function SignerApp({ v, t }: { v: View; t: SignTexts }) {
   const [finish, setFinish] = useState(false);
   const [declining, setDeclining] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [editing, setEditing] = useState<View["fields"][number] | null>(null);
+  // En el móvil los campos de texto son pequeños: se rellenan en una ventana aparte.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    const on = () => setNarrow(mq.matches);
+    on(); mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
 
   useEffect(() => { void fetch(`/api/public/firma/${v.token}/view`, { method: "POST" }).catch(() => null); }, [v.token]);
 
@@ -72,8 +81,9 @@ export function SignerApp({ v, t }: { v: View; t: SignTexts }) {
         <PdfPages url={`/api/public/firma/${v.token}/pdf`} pages={v.pages} label={v.title} loadingText={t.loading}
                   pageLabel={(n) => fill(t.page, { n })}
                   overlay={(page) => v.fields.filter((f) => f.page === page).map((f) => (
-                    <SignField key={f.id} f={f} t={t} value={f.mine ? values[f.id] : f.value} filled={f.mine ? filled(f) : Boolean(f.value)}
-                               onClick={() => clickField(f)} onText={(val) => setValues((x) => ({ ...x, [f.id]: val }))} />
+                    <SignField key={f.id} f={f} t={t} value={f.mine ? values[f.id] : f.value} filled={f.mine ? filled(f) : Boolean(f.value)} narrow={narrow}
+                               onClick={() => (narrow && (f.type === "name" || f.type === "text") ? setEditing(f) : clickField(f))}
+                               onText={(val) => setValues((x) => ({ ...x, [f.id]: val }))} />
                   ))} />
       </main>
 
@@ -88,14 +98,16 @@ export function SignerApp({ v, t }: { v: View; t: SignTexts }) {
           setPad(null);
         }} />
       )}
+      {editing && <TextDialog t={t} label={editing.hint ?? (editing.type === "name" ? t.nameHere : t.textHere)} value={values[editing.id] ?? ""}
+                              onClose={() => setEditing(null)} onSave={(val) => { setValues((x) => ({ ...x, [editing.id]: val })); setEditing(null); }} />}
       {finish && <FinishDialog v={v} t={t} values={values} onClose={() => setFinish(false)} onDone={() => router.refresh()} />}
       {declining && <DeclineDialog token={v.token} t={t} onClose={() => setDeclining(false)} onDone={() => router.refresh()} />}
     </div>
   );
 }
 
-function SignField({ f, t, value, filled, onClick, onText }: {
-  f: View["fields"][number]; t: SignTexts; value: string | null | undefined; filled: boolean; onClick: () => void; onText: (v: string) => void;
+function SignField({ f, t, value, filled, narrow, onClick, onText }: {
+  f: View["fields"][number]; t: SignTexts; value: string | null | undefined; filled: boolean; narrow: boolean; onClick: () => void; onText: (v: string) => void;
 }) {
   const style = { left: `${f.x * 100}%`, top: `${f.y * 100}%`, width: `${f.w * 100}%`, height: `${f.h * 100}%` };
   const cls = `sf sf-sign c${f.color} t-${f.type}${f.mine ? " mine" : " other"}${filled ? " filled" : ""}${f.mine && f.required && !filled ? " todo" : ""}`;
@@ -106,6 +118,13 @@ function SignField({ f, t, value, filled, onClick, onText }: {
           : value && f.type === "checkbox" ? <span className="sf-check">{value === "true" ? "✓" : ""}</span>
           : value ? <span className="sf-text">{value}</span> : <span className="sf-ph">{fill(t.forOther, { name: f.owner.split(" ")[0] })}</span>}
       </div>
+    );
+  }
+  if ((f.type === "name" || f.type === "text") && narrow) {
+    return (
+      <button type="button" className={cls} style={style} data-field={f.id} onClick={onClick} aria-label={f.hint ?? (f.type === "name" ? t.nameHere : t.textHere)}>
+        {value ? <span className="sf-text">{value}</span> : <span className="sf-ph">✎ {f.hint ?? (f.type === "name" ? t.nameHere : t.textHere)}</span>}
+      </button>
     );
   }
   if (f.type === "name" || f.type === "text") {
@@ -313,6 +332,29 @@ function DeclineDialog({ token, t, onClose, onDone }: { token: string; t: SignTe
             }}>{t.declineConfirm}</button>
             <button type="button" className="btn secondary" onClick={() => ref.current?.close()}>{t.cancel}</button>
           </div>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
+function TextDialog({ t, label, value, onClose, onSave }: { t: SignTexts; label: string; value: string; onClose: () => void; onSave: (v: string) => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [v, setV] = useState(value);
+  useEffect(() => { ref.current?.showModal(); }, []);
+  return (
+    <dialog ref={ref} className="drawer" aria-label={label} onClose={onClose}>
+      <div className="drawer-inner">
+        <header className="drawer-head"><h2>{label}</h2>
+          <button type="button" className="icon-btn" onClick={() => ref.current?.close()} aria-label={t.cancel}>✕</button></header>
+        <div className="drawer-body">
+          <form onSubmit={(e) => { e.preventDefault(); onSave(v.trim()); }}>
+            <label className="field"><span className="label">{label}</span><input value={v} onChange={(e) => setV(e.target.value)} maxLength={500} autoFocus /></label>
+            <div className="form-actions" style={{ marginTop: 12 }}>
+              <button className="btn">OK</button>
+              <button type="button" className="btn secondary" onClick={() => ref.current?.close()}>{t.cancel}</button>
+            </div>
+          </form>
         </div>
       </div>
     </dialog>

@@ -15,6 +15,7 @@ const fill = (s: string, v: Vars) => s.replace(/\{(\w+)\}/g, (_, k) => (k in v ?
 
 const T = {
   es: {
+    linkInactive: "Este enlace ya no está activo.", tooManyCodes: 'Has pedido demasiados códigos. Espera un rato.', invalidLink: 'Este enlace no es válido.',
     inviteSubject: "{sender} te ha enviado «{title}» para firmar",
     inviteIntro: "Hola, {name}:\n\n{sender} ({company}) te ha enviado «{title}» para que lo revises y lo firmes.",
     defaultMessage: "Te envío el documento para firmar. Cualquier duda, dime.",
@@ -47,6 +48,7 @@ const T = {
     signedOn: "Firmado el {date}",
   },
   en: {
+    linkInactive: "This link is no longer active.", tooManyCodes: 'You have requested too many codes. Please wait a while.', invalidLink: 'This link is not valid.',
     inviteSubject: "{sender} sent you “{title}” to sign",
     inviteIntro: "Hi {name},\n\n{sender} ({company}) sent you “{title}” to review and sign.",
     defaultMessage: "Here is the document for your signature. Let me know if you have any questions.",
@@ -78,6 +80,7 @@ const T = {
     signedOn: "Signed on {date}",
   },
   ca: {
+    linkInactive: "Aquest enllaç ja no està actiu.", tooManyCodes: 'Has demanat massa codis. Espera una estona.', invalidLink: 'Aquest enllaç no és vàlid.',
     inviteSubject: "{sender} t'ha enviat «{title}» per signar",
     inviteIntro: "Hola, {name}:\n\n{sender} ({company}) t'ha enviat «{title}» perquè el revisis i el signis.",
     defaultMessage: "T'envio el document per signar. Qualsevol dubte, digues-m'ho.",
@@ -109,6 +112,7 @@ const T = {
     signedOn: "Signat el {date}",
   },
   pt: {
+    linkInactive: "Esta ligação já não está ativa.", tooManyCodes: 'Pediu demasiados códigos. Aguarde um pouco.', invalidLink: 'Esta ligação não é válida.',
     inviteSubject: "{sender} enviou-lhe «{title}» para assinar",
     inviteIntro: "Olá {name},\n\n{sender} ({company}) enviou-lhe «{title}» para rever e assinar.",
     defaultMessage: "Envio-lhe o documento para assinatura. Qualquer dúvida, diga-me.",
@@ -140,6 +144,7 @@ const T = {
     signedOn: "Assinado a {date}",
   },
   fr: {
+    linkInactive: "Ce lien n’est plus actif.", tooManyCodes: 'Vous avez demandé trop de codes. Patientez un peu.', invalidLink: 'Ce lien n’est pas valide.',
     inviteSubject: "{sender} vous a envoyé « {title} » à signer",
     inviteIntro: "Bonjour {name},\n\n{sender} ({company}) vous a envoyé « {title} » à relire et à signer.",
     defaultMessage: "Voici le document à signer. N’hésitez pas si vous avez des questions.",
@@ -171,6 +176,7 @@ const T = {
     signedOn: "Signé le {date}",
   },
   de: {
+    linkInactive: "Dieser Link ist nicht mehr aktiv.", tooManyCodes: 'Sie haben zu viele Codes angefordert. Bitte warten Sie etwas.', invalidLink: 'Dieser Link ist ungültig.',
     inviteSubject: "{sender} hat Ihnen „{title}“ zur Unterschrift gesendet",
     inviteIntro: "Hallo {name},\n\n{sender} ({company}) hat Ihnen „{title}“ zur Prüfung und Unterschrift gesendet.",
     defaultMessage: "Anbei das Dokument zur Unterschrift. Bei Fragen melden Sie sich gern.",
@@ -202,6 +208,7 @@ const T = {
     signedOn: "Unterschrieben am {date}",
   },
   it: {
+    linkInactive: "Questo link non è più attivo.", tooManyCodes: 'Hai richiesto troppi codici. Attendi un po’.', invalidLink: 'Questo link non è valido.',
     inviteSubject: "{sender} ti ha inviato «{title}» da firmare",
     inviteIntro: "Ciao {name},\n\n{sender} ({company}) ti ha inviato «{title}» da rivedere e firmare.",
     defaultMessage: "Ti invio il documento da firmare. Per qualsiasi dubbio, scrivimi.",

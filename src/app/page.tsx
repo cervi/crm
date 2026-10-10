@@ -130,14 +130,14 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       FROM doc_links l LEFT JOIN library_items i ON i.id = l.library_id LEFT JOIN files f ON f.id = l.file_id LEFT JOIN persons p ON p.id = l.person_id
       LEFT JOIN deals d ON d.id = l.deal_id
       WHERE l.last_viewed_at > now() - interval '48 hours' AND ${mine("coalesce(d.owner_id, l.created_by)")}
-      ORDER BY l.last_viewed_at DESC LIMIT 3`.catch(() => []),
+      ORDER BY l.last_viewed_at DESC LIMIT 4`.catch(() => []),
     // Contratos esperando firma.
     sql<{ id: string; title: string; days: number; names: string }[]>`
       SELECT r.id, r.title, floor(extract(epoch FROM now() - r.sent_at) / 86400)::int AS days,
              string_agg(s.name, ', ' ORDER BY s.position) AS names
       FROM sign_requests r JOIN sign_signers s ON s.request_id = r.id AND s.status = 'pending'
       WHERE r.status = 'sent' AND ${mine("coalesce(r.sender_id, r.created_by)")}
-      GROUP BY r.id ORDER BY r.sent_at LIMIT 3`.catch(() => []),
+      GROUP BY r.id ORDER BY r.sent_at LIMIT 20`.catch(() => []),
   ]);
 
   const humans = users.filter((u) => u.kind === "human");
@@ -281,32 +281,26 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         {/* Deals calientes y que piden atención */}
         <section className="b-card b-hot" aria-label="Dónde poner el foco">
           <header><h2>Dónde poner el foco</h2><Link href="/activities" className="meta">Ver actividades</Link></header>
-          {d.hotOpens.length > 0 && (
+          {(d.hotOpens.length > 0 || hotDocs.length > 0) && (
             <>
-              <h3><span className="flame" aria-hidden="true">●</span>Calientes ahora</h3>
-              <ul className="b-hotlist">
-                {d.hotOpens.slice(0, 3).map((h, i) => (
-                  <li key={i}><Link href={h.href ?? "/emails"}>{h.title}</Link><div className="meta">{h.detail} · {time(h.at)}</div></li>
-                ))}
-              </ul>
-            </>
-          )}
-          {hotDocs.length > 0 && (
-            <>
-              <h3><span className="flame" aria-hidden="true">●</span>Están mirando tus documentos</h3>
+              <h3><span className="flame" aria-hidden="true">●</span>Calientes ahora <span className="muted">abren tus correos o documentos</span></h3>
               <ul className="b-hotlist">
                 {hotDocs.map((h) => (
                   <li key={h.id}><Link href={h.deal_id ? `/deals/${h.deal_id}#documentos-enviados` : "/biblioteca"}>{h.who ?? "Alguien"} ha abierto «{h.name}»</Link>
-                    <div className="meta">{h.views} {h.views === 1 ? "vez" : "veces"} · la última a las {time(h.last)}</div></li>
+                    <div className="meta">documento · {h.views} {h.views === 1 ? "vez" : "veces"} · la última a las {time(h.last)}</div></li>
+                ))}
+                {d.hotOpens.slice(0, Math.max(1, 4 - hotDocs.length)).map((h, i) => (
+                  <li key={`e${i}`}><Link href={h.href ?? "/emails"}>{h.title}</Link><div className="meta">{h.detail} · {time(h.at)}</div></li>
                 ))}
               </ul>
             </>
           )}
           {waitingSigns.length > 0 && (
             <>
-              <h3><span className="warn" aria-hidden="true">●</span>Contratos esperando firma</h3>
+              <h3><span className="warn" aria-hidden="true">●</span>Contratos esperando firma <span className="muted">{waitingSigns.length}</span>
+                {waitingSigns.length > 3 && <Link href="/firmas?f=sent" className="meta" style={{ marginLeft: "auto", textTransform: "none", letterSpacing: 0 }}>Ver todos</Link>}</h3>
               <ul className="b-attn">
-                {waitingSigns.map((w) => (
+                {waitingSigns.slice(0, 3).map((w) => (
                   <li key={w.id} className={w.days >= 3 ? "p1" : "p2"}>
                     <Link href={`/firmas/${w.id}`}><strong>{w.title}</strong><span className="v">{w.days === 0 ? "hoy" : `${w.days} d`}</span></Link>
                     <div className="meta">Falta: {w.names}</div>

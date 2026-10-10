@@ -34,12 +34,12 @@ export async function engagementReport(ownerId: string | null = null) {
              avg(extract(epoch FROM completed_at - sent_at) / 86400) FILTER (WHERE status = 'completed')::float8 AS avg_days
       FROM sign_requests WHERE coalesce(sent_at, created_at) > now() - interval '90 days'
         AND (${ownerId}::uuid IS NULL OR coalesce(sender_id, created_by) = ${ownerId}::uuid)`.catch(() => [{ sent: 0, completed: 0, pending: 0, declined: 0, avg_days: null }]),
-    sql<{ hour: number; replies: number }[]>`
-      SELECT extract(hour FROM (e.sent_at AT TIME ZONE ${process.env.TZ || "Europe/Madrid"}))::int AS hour, count(*)::int AS replies
+    sql<{ hour: number; sent: number; replies: number }[]>`
+      SELECT extract(hour FROM (e.sent_at AT TIME ZONE ${process.env.TZ || "Europe/Madrid"}))::int AS hour, count(*)::int AS sent,
+             count(*) FILTER (WHERE EXISTS (SELECT 1 FROM emails r WHERE r.direction = 'in' AND r.person_id = e.person_id AND r.sent_at > e.sent_at AND r.sent_at < e.sent_at + interval '3 days'))::int AS replies
       FROM emails e WHERE e.direction = 'out' AND e.status = 'sent' AND e.sent_at > now() - interval '180 days' AND e.person_id IS NOT NULL
         AND (${ownerId}::uuid IS NULL OR e.user_id = ${ownerId}::uuid)
-        AND EXISTS (SELECT 1 FROM emails r WHERE r.direction = 'in' AND r.person_id = e.person_id AND r.sent_at > e.sent_at AND r.sent_at < e.sent_at + interval '3 days')
-      GROUP BY 1 ORDER BY 1`,
+      GROUP BY 1 HAVING count(*) >= 5 ORDER BY 1`,
   ]);
   return { byOwner, weekly, docs, sign, replyHours: fastest };
 }

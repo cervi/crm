@@ -21,7 +21,7 @@ export type Autopilot = {
 };
 
 export const AUTOPILOT_DEFAULTS: Autopilot = {
-  nextStep: { on: true, days: 1 }, emailHot: { on: true, opens: 3 }, docHot: { on: true, views: 2 }, signWon: { on: true }, overdueNudge: { on: true, days: 2 },
+  nextStep: { on: true, days: 1 }, emailHot: { on: true, opens: 3 }, docHot: { on: true, views: 2 }, signWon: { on: true }, overdueNudge: { on: true, days: 3 },
 };
 
 export async function getAutopilot(): Promise<Autopilot & { paused: boolean }> {
@@ -136,20 +136,23 @@ export async function runAutopilot(): Promise<number> {
     }
   }
 
-  // 4. Actividades que llevan días vencidas: un aviso al responsable (una vez por actividad).
+  // 4. Lo que lleva días vencido: un solo aviso al día por persona, con lo más antiguo primero.
   if (a.overdueNudge.on) {
-    const late = await sql<{ id: string; subject: string; owner_id: string; deal_id: string | null; deal: string | null; days: number }[]>`
-      SELECT a.id, a.subject, a.owner_id, a.deal_id, d.title AS deal, floor(extract(epoch FROM now() - a.due_at) / 86400)::int AS days
+    const day = new Date().toISOString().slice(0, 10);
+    const late = await sql<{ owner_id: string; n: number; oldest: string; days: number }[]>`
+      SELECT a.owner_id, count(*)::int AS n, (array_agg(a.subject ORDER BY a.due_at))[1] AS oldest,
+             max(floor(extract(epoch FROM now() - a.due_at) / 86400))::int AS days
       FROM activities a LEFT JOIN deals d ON d.id = a.deal_id
       WHERE NOT a.done AND a.owner_id IS NOT NULL AND a.due_at < now() - make_interval(days => ${a.overdueNudge.days})
         AND (a.deal_id IS NULL OR d.status = 'open')
-        AND NOT EXISTS (SELECT 1 FROM autopilot_log l WHERE l.kind = 'overdue' AND l.ref = a.id::text)
-      LIMIT 60`;
+        AND NOT EXISTS (SELECT 1 FROM autopilot_log l WHERE l.kind = 'overdue' AND l.ref = a.owner_id::text || ':' || ${day})
+      GROUP BY a.owner_id`;
     for (const x of late) {
-      await notify(sql, { userId: x.owner_id, kind: "assigned", title: `Lleva ${x.days} días vencida: «${x.subject}»`,
-                          body: x.deal ? `Deal: ${x.deal}. Hazla, cámbiale la fecha o bórrala si ya no toca.` : "Hazla, cámbiale la fecha o bórrala si ya no toca.",
-                          link: x.deal_id ? `/deals/${x.deal_id}` : "/activities?period=overdue" });
-      await done("overdue", x.id, x.deal_id, `Aviso: «${x.subject}» lleva ${x.days} días vencida`);
+      await notify(sql, { userId: x.owner_id, kind: "assigned",
+                          title: x.n === 1 ? `Tienes 1 actividad vencida hace días: «${x.oldest}»` : `Tienes ${x.n} actividades vencidas hace días`,
+                          body: `La más antigua: «${x.oldest}» (${x.days} días). Hazlas, cámbiales la fecha o bórralas si ya no tocan.`,
+                          link: "/activities?period=overdue" });
+      await done("overdue", `${x.owner_id}:${day}`, null, `Resumen de ${x.n} vencida${x.n === 1 ? "" : "s"}`);
       n++;
     }
   }
@@ -157,15 +160,15 @@ export async function runAutopilot(): Promise<number> {
 }
 
 /** Al firmar todos un contrato del deal: se gana el deal (si está activado). */
-export async function onContractSigned(dealId: string | null, title: string) {
-  if (!dealId) return;
+export async function onContractSigned(dealId: string | null, title: string): Promise<boolean> {
+  if (!dealId) return false;
   const a = await getAutopilot();
-  if (a.paused || !a.signWon.on) return;
-  const [d] = await sql<{ status: string; owner_id: string | null; title: string }[]>`SELECT status, owner_id, title FROM deals WHERE id = ${dealId} AND deleted_at IS NULL`;
-  if (!d || d.status !== "open") return;
+  if (a.paused || !a.signWon.on) return false;
+  const [d] = await sql<{ status: string; title: string }[]>`SELECT status, title FROM deals WHERE id = ${dealId} AND deleted_at IS NULL`;
+  if (!d || d.status !== "open") return false;
   await winDeal(AI_ACTOR, dealId);
   await done("sign_won", dealId, dealId, `«${d.title}» ganado al firmar todos «${title}»`);
-  if (d.owner_id) await notify(sql, { userId: d.owner_id, kind: "sign.completed", title: `¡${d.title} ganado! Se ha firmado «${title}»`, body: "El piloto automático lo ha marcado como ganado.", link: `/deals/${dealId}` });
+  return true;   // el aviso va junto con el de «firmado por todos»
 }
 
 export type AutopilotLog = { id: number; kind: string; deal_id: string | null; deal: string | null; detail: string | null; at: Date };

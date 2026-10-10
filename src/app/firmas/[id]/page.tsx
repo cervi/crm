@@ -92,7 +92,7 @@ export default async function SignRequestPage({ params }: { params: Promise<{ id
           </p>
         </div>
         <div className="head-actions">
-          {r.has_signed && <a className="btn" href={`/api/firmas/${id}/pdf?v=signed&dl=1`}><Icon name="download" />Descargar firmado</a>}
+          {r.has_signed && <a className={r.status === "completed" ? "btn" : "btn secondary"} href={`/api/firmas/${id}/pdf?v=signed&dl=1`}><Icon name="download" />Descargar firmado</a>}
           <a className="btn secondary" href={`/api/firmas/${id}/pdf?dl=1`}><Icon name="download" />Original</a>
           {r.status === "sent" && (
             <ActionForm action={cancelSignAction.bind(null, id)} submitLabel="Cancelar la firma" secondary className="form inline"
@@ -125,7 +125,7 @@ export default async function SignRequestPage({ params }: { params: Promise<{ id
                   <td><span className={`badge ${s.status === "signed" ? "won" : s.status === "declined" ? "lost" : s.status === "pending" ? "warn" : ""}`}>{SIGNER_STATUS[s.status]}</span>
                     {s.decline_reason && <div className="meta">«{s.decline_reason}»</div>}</td>
                   <td className="nowrap">{s.first_viewed_at ? <>{dateTime(s.first_viewed_at)}<div className="meta">{s.view_count} {s.view_count === 1 ? "vez" : "veces"}</div></> : <span className="muted">Aún no</span>}</td>
-                  <td className="nowrap">{s.signed_at ? <>{dateTime(s.signed_at)}{s.ip && <div className="meta">IP {s.ip}</div>}</> : <span className="muted">—</span>}</td>
+                  <td className="nowrap">{s.signed_at ? dateTime(s.signed_at) : <span className="muted">—</span>}</td>
                   <td className="row-actions">
                     {r.status === "sent" && s.status === "pending" && (
                       <>
@@ -155,12 +155,19 @@ export default async function SignRequestPage({ params }: { params: Promise<{ id
               <li key={e.id} className={`k-${e.kind}`}>
                 <span className="meta nowrap">{dateTime(e.at)}</span>
                 <span><strong>{EVENT_TEXT[e.kind] ?? e.kind}</strong>{e.signer_name ? ` · ${e.signer_name}` : ""}
-                  {e.detail && <span className="meta"> · {e.detail}</span>}{e.ip && <span className="meta"> · IP {e.ip}</span>}</span>
+                  {e.detail && e.kind !== "completed" && <span className="meta"> · {e.detail}</span>}</span>
               </li>
             ))}
           </ol>
-          <p className="meta">Huella del original (SHA-256): <code className="hash">{r.original_sha256}</code></p>
-          {r.signed_sha256 && <p className="meta">Huella del firmado: <code className="hash">{r.signed_sha256}</code></p>}
+          <details className="audit-data">
+            <summary className="meta">Datos de auditoría (IP y huellas)</summary>
+            <ul className="plain-list meta">
+              {signers.filter((x) => x.ip).map((x) => <li key={x.id}>{x.name}: IP {x.ip}{x.user_agent ? ` · ${x.user_agent.slice(0, 80)}` : ""}</li>)}
+            </ul>
+            <p className="meta">Huella del original (SHA-256): <code className="hash">{r.original_sha256}</code></p>
+            {r.signed_sha256 && <p className="meta">Huella del firmado: <code className="hash">{r.signed_sha256}</code></p>}
+            <p className="meta">El PDF firmado lleva todo esto en su última página.</p>
+          </details>
         </section>
       </div>
     </main>

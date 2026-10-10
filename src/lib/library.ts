@@ -184,8 +184,11 @@ export async function recordDocView(token: string, ip: string | null, ua: string
   if (!l) return null;
   const [v] = await sql<{ id: string }[]>`INSERT INTO doc_views (link_id, ip, user_agent) VALUES (${l.id}, ${ip}, ${ua?.slice(0, 300) ?? null}) RETURNING id`;
   await sql`UPDATE doc_links SET view_count = view_count + 1, first_viewed_at = coalesce(first_viewed_at, now()), last_viewed_at = now() WHERE id = ${l.id}`;
-  // Aviso: la primera vez y luego como mucho cada media hora.
-  const quiet = l.last_viewed_at && Date.now() - new Date(l.last_viewed_at).getTime() < 30 * 60000;
+  // Aviso solo la primera vez (si vuelve a mirarlo, el piloto automático programa una llamada).
+  const quiet = l.view_count > 0;
+  if (l.deal_id && l.view_count > 0 && !(l.last_viewed_at && Date.now() - new Date(l.last_viewed_at).getTime() < 30 * 60000)) {
+    await recordEvent(sql, INTEGRATION_ACTOR, "deal", l.deal_id, "doc.viewed", { name: l.name, person: l.person, count: l.view_count + 1 });
+  }
   if (!quiet) {
     const n = l.view_count + 1;
     const who = l.person ?? "Alguien";

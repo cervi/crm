@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { saveAutopilotAction, setPausedAction } from "@/app/actions/automations";
 import { ActionForm } from "@/components/ActionForm";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { requireAdminPage } from "@/lib/auth";
 import { autopilotStats, getAutopilot, listAutopilotLog } from "@/lib/autopilot";
 import { sql } from "@/lib/db";
@@ -24,7 +25,7 @@ export default async function AutopilotPage() {
   ]);
   const Row = ({ name, on, title, text, children }: { name: string; on: boolean; title: string; text: string; children?: React.ReactNode }) => (
     <div className="ap-row">
-      <label className="ap-toggle"><input type="checkbox" name={name} defaultChecked={on} /><span className="ap-switch" aria-hidden="true" /></label>
+      <label className="ap-toggle"><input type="checkbox" name={name} defaultChecked={on} aria-label={title} /><span className="ap-switch" aria-hidden="true" /></label>
       <div><strong>{title}</strong><p className="meta">{text}</p>{children && <div className="ap-params">{children}</div>}</div>
     </div>
   );
@@ -37,9 +38,9 @@ export default async function AutopilotPage() {
           <p className="muted" style={{ margin: 0 }}>Lo que el CRM hace solo para que ningún deal se quede parado. Sin reglas que montar: enciende lo que quieras.</p>
         </div>
         <div className="head-actions">
-          <form action={setPausedAction.bind(null, !a.paused)}>
-            <button className={a.paused ? "btn" : "btn secondary"}>{a.paused ? "Reanudar todo" : "Pausar todo"}</button>
-          </form>
+          {a.paused
+            ? <form action={setPausedAction.bind(null, false)}><button className="btn">Reanudar todo</button></form>
+            : <form action={setPausedAction.bind(null, true)}><ConfirmButton label="Pausar todo" className="btn secondary" confirm="Se para todo lo automático: piloto, agentes y automatizaciones." /></form>}
         </div>
       </div>
       {a.paused && <p className="callout bad">Está todo en pausa (también los agentes y las automatizaciones). Nada se hace solo hasta que lo reanudes.</p>}

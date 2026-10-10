@@ -2237,3 +2237,14 @@ code.hash { font-size: 11px; word-break: break-all; }
 .mini-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .mini-kpis > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--sunken); }
 .mini-kpis strong { font-size: 22px; }
+/* Firmar en el móvil: zona táctil mínima y acciones abajo */
+button.sf-sign.mine::after { content: ""; position: absolute; inset: -10px; }
+button.sf-sign.mine { overflow: visible; }
+@media (max-width: 640px) {
+  .signer-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: var(--panel); border-top: 1px solid var(--border); box-shadow: 0 -4px 16px rgba(0,0,0,.08); }
+  .signer-actions .btn { flex: 1; justify-content: center; }
+  .signer-doc { padding-bottom: 96px; }
+  .signer-menu { top: auto; bottom: calc(100% + 6px); }
+}
+.save-block { display: inline-flex; align-items: center; gap: 10px; }

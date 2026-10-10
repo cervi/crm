@@ -449,8 +449,7 @@ export async function recordView(t: string, ip: string | null, ua: string | null
   const [recent] = await sql`SELECT 1 FROM sign_events WHERE request_id = ${g.request.id} AND signer_id = ${g.me.id} AND kind = 'viewed' AND at > now() - interval '1 hour'`;
   if (!recent) await log(sql, g.request.id, "viewed", { signerId: g.me.id, ip, ua });
   if (first) {
-    const owner = g.request.sender_id ?? g.request.created_by;
-    if (owner && owner !== g.me.user_id) await notify(sql, { userId: owner, kind: "sign.viewed", title: `${g.me.name} ha abierto «${g.request.title}»`, body: "Aún no ha firmado.", link: `/firmas/${g.request.id}` });
+    // Sin aviso: se ve en Firmas y en «Hoy» (el aviso es al firmar, rechazar o completarse).
   }
 }
 
@@ -458,9 +457,10 @@ const hashCode = (signerId: string, code: string) => createHash("sha256").update
 
 export async function sendCode(t: string, ip: string | null) {
   const g = await bySignerToken(t);
-  if (!g || g.request.status !== "sent" || g.me.status !== "pending") throw new UserError("Este enlace ya no está activo.");
+  if (!g) throw new UserError(st("es", "invalidLink"));
+  if (g.request.status !== "sent" || g.me.status !== "pending") throw new UserError(st(g.request.language, "linkInactive"));
   const [recent] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM sign_events WHERE signer_id = ${g.me.id} AND kind = 'code_sent' AND at > now() - interval '1 hour'`;
-  if (recent.n >= 5) throw new UserError("Has pedido demasiados códigos. Espera un rato.");
+  if (recent.n >= 5) throw new UserError(st(g.request.language, "tooManyCodes"));
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   await sql`UPDATE sign_signers SET code_hash = ${hashCode(g.me.id, code)}, code_expires_at = now() + make_interval(mins => ${CODE_MINUTES}), code_attempts = 0
             WHERE id = ${g.me.id}`;
@@ -472,7 +472,7 @@ export async function sendCode(t: string, ip: string | null) {
 
 export async function submitSignature(t: string, v: { values: Record<string, string>; code?: string | null; consent: boolean }, ip: string | null, ua: string | null) {
   const g = await bySignerToken(t);
-  if (!g) throw new UserError("Este enlace no es válido.");
+  if (!g) throw new UserError(st("es", "invalidLink"));
   const { request: r, me } = g;
   await expireIfDue(r);
   const lang = r.language;
@@ -530,7 +530,7 @@ export async function submitSignature(t: string, v: { values: Record<string, str
 
 export async function declineRequest(t: string, reason: string, ip: string | null, ua: string | null) {
   const g = await bySignerToken(t);
-  if (!g) throw new UserError("Este enlace no es válido.");
+  if (!g) throw new UserError(st("es", "invalidLink"));
   const { request: r, me } = g;
   if (r.status !== "sent" || me.status !== "pending") throw new UserError(st(r.language, "cancelled"));
   const why = reason.trim().slice(0, 1000) || null;
@@ -595,9 +595,10 @@ export async function completeRequest(id: string) {
     }
   }
   // Piloto automático: con el contrato firmado, el deal se da por ganado (si está activado).
-  await onContractSigned(r.deal_id, r.title).catch((err) => console.error("[firma] ganar el deal", err));
+  const won = await onContractSigned(r.deal_id, r.title).catch((err) => { console.error("[firma] ganar el deal", err); return false; });
   const owner = r.sender_id ?? r.created_by;
-  if (owner) await notify(sql, { userId: owner, kind: "sign.completed", title: `¡«${r.title}» está firmado por todos!`, body: "El PDF firmado ya está en el deal y les ha llegado a todos por correo.", link: `/firmas/${id}` });
+  if (owner) await notify(sql, { userId: owner, kind: "sign.completed", title: `¡«${r.title}» está firmado por todos!${won ? ` ${r.deal_title} pasa a ganado.` : ""}`,
+                                  body: "El PDF firmado ya está en el deal y les ha llegado a todos por correo.", link: `/firmas/${id}` });
 }
 
 // ---------------------------------------------------------------------------

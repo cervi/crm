@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { saveSignFieldsAction, saveSignSetupAction, sendSignAction } from "@/app/actions/esign";
@@ -86,7 +85,7 @@ export function SignEditor({ id, init, pages, signers: initSigners, fields: init
 
       {step === 1 && (
         <StepSetup s={s} set={set} signers={signers} setSigners={setSigners} suggestions={suggestions} senders={senders}
-                   onNext={() => go(2)} busy={busy} back={back} />
+                   onNext={() => go(2)} busy={busy} onExit={async () => { if (await saveSetup()) router.push(back); }} />
       )}
       {step === 2 && (
         <StepFields id={id} pages={pages} signers={signers} fields={fields} setFields={setFields} onBack={() => go(1)} onNext={() => go(3)} />
@@ -102,10 +101,10 @@ export function SignEditor({ id, init, pages, signers: initSigners, fields: init
 // ---------------------------------------------------------------------------
 // Paso 1
 
-function StepSetup({ s, set, signers, setSigners, suggestions, senders, onNext, busy, back }: {
+function StepSetup({ s, set, signers, setSigners, suggestions, senders, onNext, busy, onExit }: {
   s: Parameters<typeof SignEditor>[0]["init"]; set: <K extends keyof Parameters<typeof SignEditor>[0]["init"]>(k: K, v: Parameters<typeof SignEditor>[0]["init"][K]) => void;
   signers: EditorSigner[]; setSigners: (f: (x: EditorSigner[]) => EditorSigner[]) => void; suggestions: Suggest[];
-  senders: { id: string; name: string; email: string }[]; onNext: () => void; busy: boolean; back: string;
+  senders: { id: string; name: string; email: string }[]; onNext: () => void; busy: boolean; onExit: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const free = suggestions.filter((x) => !signers.some((y) => y.email.toLowerCase() === x.email.toLowerCase()));
@@ -222,7 +221,7 @@ function StepSetup({ s, set, signers, setSigners, suggestions, senders, onNext, 
       </section>
 
       <div className="sign-foot">
-        <Link href={back} className="btn secondary">Salir (se guarda como borrador)</Link>
+        <button type="button" className="btn secondary" onClick={onExit} disabled={busy}>Guardar y salir</button>
         <button type="button" className="btn" onClick={onNext} disabled={busy || signers.length === 0}>{busy ? "Guardando…" : "Siguiente: colocar los campos"}</button>
       </div>
     </div>
@@ -363,7 +362,10 @@ function StepFields({ id, pages, signers, fields, setFields, onBack, onNext }: {
           {fields.length} campo{fields.length === 1 ? "" : "s"}
           {missing.length > 0 && <> · sin campo de firma: {missing.map((m) => m.name).join(", ")} (firmarán en una página que se añade al final)</>}
         </span>
-        <button type="button" className="btn" onClick={onNext} disabled={save === "saving"}>Siguiente: revisar y enviar</button>
+        {save === "error"
+          ? <span className="save-block"><span className="tone-bad" role="alert">No se han guardado los últimos cambios.</span>
+              <button type="button" className="btn" onClick={() => setFields((l) => [...l])}>Reintentar</button></span>
+          : <button type="button" className="btn" onClick={onNext} disabled={save === "saving"}>Siguiente: revisar y enviar</button>}
       </div>
     </div>
   );

@@ -72,8 +72,9 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
           <label className="field"><span className="label">Entrar con contraseña</span>
             <select name="password_login" defaultValue={sso.passwordLogin ? "on" : "off"}>
               <option value="on">Permitido para todos</option>
-              <option value="off">Solo administradores (el resto entra con Google o Microsoft)</option>
-            </select></label>
+              <option value="off" disabled={providers.length === 0 || !encryptionConfigured()}>Solo administradores (el resto entra con Google o Microsoft)</option>
+            </select>
+            <span className="meta">Si la quitas, quien no tenga cuenta de Google o Microsoft con su mismo correo dejará de poder entrar.</span></label>
         </ActionForm>
       </section>
 

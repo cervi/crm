@@ -222,9 +222,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         )}
       </div>
 
-      <h2 className="sales-head" style={{ margin: "36px 0 0" }}>Correos, documentos y firmas <span className="muted">últimos 90 días</span></h2>
+      <h2 className="sales-head" style={{ margin: "36px 0 0" }}>Correos, documentos y firmas</h2>
       <div className="charts-grid">
-        <ChartCard wide label="Respuesta a los correos" title="Cómo responden a vuestros correos"
+        <ChartCard wide label="Respuesta a los correos" title={<>Cómo responden a vuestros correos <span className="muted">· 12 semanas</span></>}
                    info="Por semana: correos enviados a contactos, cuántos se abrieron (de los que llevaban seguimiento) y cuántos tuvieron respuesta en 14 días."
                    insights={eng.weekly.some((w) => w.sent) ? [`De ${eng.weekly.reduce((a, w) => a + w.sent, 0)} correos en 12 semanas, respondieron al ${pct(eng.weekly.reduce((a, w) => a + w.replied, 0) / Math.max(1, eng.weekly.reduce((a, w) => a + w.sent, 0)))}.`] : []}>
           <Lines periods={eng.weekly.map((w) => ({ key: w.week, label: `Semana ${w.week}`, short: w.week.slice(-3) }))} f="percent" maxValue={1}
@@ -232,19 +232,19 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                           { key: "reply", label: "Respondidos", values: eng.weekly.map((w) => (w.sent ? w.replied / w.sent : null)) }]}
                  notes={eng.weekly.map((w) => (w.sent ? `${w.sent} enviados` : null))} />
         </ChartCard>
-        <ChartCard label="Respuesta por persona" title="Respuesta por persona"
+        <ChartCard label="Respuesta por persona" title={<>Respuesta por persona <span className="muted">· 90 días</span></>}
                    info="Porcentaje de correos a contactos que tuvieron respuesta en 14 días, por quien los envió (con al menos 3 correos).">
           <HBars f="percent" rows={eng.byOwner.map((o) => ({ label: o.name, value: o.sent ? o.replied / o.sent : 0, note: `${o.sent} enviados · ${pct(o.sent ? o.opened / o.sent : null)} abiertos` }))} />
         </ChartCard>
-        <ChartCard label="A qué hora responden" title="Mejor hora para escribir"
-                   info="Correos que tuvieron respuesta en 3 días, según la hora a la que se enviaron (últimos 6 meses). Te dice cuándo conviene escribir.">
-          <HBars f="number" rows={eng.replyHours.map((h) => ({ label: `${String(h.hour).padStart(2, "0")}:00`, value: h.replies }))} />
+        <ChartCard label="A qué hora responden" title={<>Mejor hora para escribir <span className="muted">· 6 meses</span></>}
+                   info="De los correos enviados a cada hora, qué porcentaje tuvo respuesta en 3 días (solo horas con al menos 5 correos). Te dice cuándo conviene escribir.">
+          <HBars f="percent" rows={eng.replyHours.map((h) => ({ label: `${String(h.hour).padStart(2, "0")}:00`, value: h.sent ? h.replies / h.sent : 0, note: `${h.sent} enviados` }))} />
         </ChartCard>
-        <ChartCard label="Documentos más vistos" title="Documentos más vistos"
+        <ChartCard label="Documentos más vistos" title={<>Documentos más vistos <span className="muted">· 90 días</span></>}
                    info="Documentos compartidos con enlace (biblioteca o del deal): cuántas veces los han abierto y cuántos de los enlaces se llegaron a abrir.">
           <HBars f="number" rows={eng.docs.map((d) => ({ label: d.name, value: d.views, note: `${d.opened}/${d.shared} enlaces abiertos` }))} />
         </ChartCard>
-        <ChartCard label="Firmas" title="Firmas de contratos"
+        <ChartCard label="Firmas" title={<>Firmas de contratos <span className="muted">· 90 días</span></>}
                    info="Documentos enviados a firmar en los últimos 90 días y cuánto se tarda de media en tener todas las firmas.">
           <div className="mini-kpis">
             <div><strong>{eng.sign.sent}</strong><span className="meta">enviados</span></div>

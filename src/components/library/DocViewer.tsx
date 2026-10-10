@@ -7,7 +7,8 @@ import { PdfPages } from "../esign/PdfPages";
  * Visor de un documento compartido. Avisa al abrirse y, mientras está a la
  * vista, cada 10 s manda cuánto tiempo lleva y la página más lejana vista.
  */
-export function DocViewer({ token, name, mime, sender }: { token: string; name: string; mime: string | null; sender: string | null }) {
+export function DocViewer({ token, name, mime, sender, t }: { token: string; name: string; mime: string | null; sender: string | null;
+  t: { by: string; download: string; noPreview: string } }) {
   const view = useRef<string | null>(null);
   const seconds = useRef(0);
   const maxPage = useRef(1);
@@ -33,8 +34,8 @@ export function DocViewer({ token, name, mime, sender }: { token: string; name: 
   return (
     <div className="doc-viewer">
       <header className="signer-bar">
-        <div className="signer-title"><strong>{name}</strong>{sender && <span className="meta">Compartido por {sender}</span>}</div>
-        <div className="signer-actions"><a className="btn secondary" href={`${url}?dl=1`}>Descargar</a></div>
+        <div className="signer-title"><strong>{name}</strong>{sender && <span className="meta">{t.by} {sender}</span>}</div>
+        <div className="signer-actions"><a className="btn secondary" href={`${url}?dl=1`}>{t.download}</a></div>
       </header>
       <main className="signer-doc">
         {pdf ? <PdfPages url={url} label={name} onPageSeen={seen} />
@@ -42,8 +43,8 @@ export function DocViewer({ token, name, mime, sender }: { token: string; name: 
           : (
             <div className="sign-msg">
               <h1>{name}</h1>
-              <p className="muted">Este archivo no se puede ver en el navegador. Descárgalo para abrirlo.</p>
-              <p><a className="btn" href={`${url}?dl=1`}>Descargar</a></p>
+              <p className="muted">{t.noPreview}</p>
+              <p><a className="btn" href={`${url}?dl=1`}>{t.download}</a></p>
             </div>
           )}
       </main>

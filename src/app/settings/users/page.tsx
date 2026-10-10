@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createUserAction, resetPasswordAction, setUserSsoAction, signOutUserAction, updateUserAction } from "@/app/actions/auth";
 import { METHOD_LABEL } from "@/lib/login-log";
+import { PROVIDERS } from "@/lib/integrations";
+import { encryptionConfigured } from "@/lib/crypto";
 import { ActionForm } from "@/components/ActionForm";
 import { Avatar } from "@/components/Avatar";
 import { Drawer } from "@/components/Drawer";
@@ -31,10 +33,11 @@ function RoleSelect({ value }: { value?: string }) {
 export default async function UsersPage() {
   const me = await requireAdminPage();
   const users = await listAllUsers();
+  const ssoReady = encryptionConfigured() && (PROVIDERS.google.configured() || PROVIDERS.microsoft.configured());
   const access = (u: (typeof users)[number]) =>
     !u.is_active ? { label: "Desactivado", cls: "", hint: "No puede entrar. Sus deals y su historia se conservan." }
     : u.locked ? { label: "Bloqueado", cls: "lost", hint: "Demasiados intentos fallidos. Ponle una contraseña temporal para desbloquearlo." }
-    : !u.has_password && u.sso_enabled ? { label: "Con Google/Microsoft", cls: "won", hint: "Entra con su cuenta de Google o Microsoft (sin contraseña)." }
+    : !u.has_password && u.sso_enabled && ssoReady ? { label: "Con Google/Microsoft", cls: "won", hint: "Entra con su cuenta de Google o Microsoft (sin contraseña)." }
     : !u.has_password ? { label: "Sin acceso", cls: "", hint: "Existe (por ejemplo, traído de Pipedrive) pero aún no puede entrar. Dale acceso con una contraseña inicial." }
     : u.must_change_password ? { label: "Contraseña temporal", cls: "warn", hint: "Tendrá que cambiarla al entrar." }
     : { label: "Activo", cls: "won", hint: "Puede entrar." };
@@ -118,7 +121,12 @@ export default async function UsersPage() {
                             </ActionForm>
                           </section>
                         );
-                        const sso = (
+                        const sso = !ssoReady ? (
+                          <section className="drawer-section" key="sso">
+                            <h3>Google o Microsoft</h3>
+                            <p className="meta" style={{ marginTop: 0 }}>Para que pueda entrar con su cuenta de Google o Microsoft, primero hay que configurar la conexión (Ajustes → <Link href="/settings/security">Accesos y seguridad</Link>).</p>
+                          </section>
+                        ) : (
                           <section className="drawer-section" key="sso">
                             <h3>Google o Microsoft</h3>
                             <p className="meta" style={{ marginTop: 0 }}>{u.sso_enabled

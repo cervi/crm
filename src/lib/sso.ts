@@ -1,5 +1,6 @@
 import { sql } from "./db";
 import { logLogin } from "./login-log";
+import { UserError } from "./errors";
 
 // ===========================================================================
 // Entrar con Google o Microsoft: el correo de la cuenta tiene que ser el de
@@ -17,8 +18,13 @@ export async function getSsoSettings(): Promise<SsoSettings> {
 
 export async function saveSsoSettings(data: Record<string, unknown>) {
   const domain = String(data.sso_domain ?? "").trim().toLowerCase().replace(/^@/, "") || null;
-  if (domain && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Error("Dominio no válido (p. ej. aikit.io).");
+  if (domain && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new UserError("Dominio no válido (p. ej. aikit.io).");
   const role = data.sso_default_role === "viewer" ? "viewer" : "member";
+  // Sin Google ni Microsoft configurados, quitar la contraseña dejaría al equipo fuera.
+  const { PROVIDERS } = await import("./integrations");
+  const { encryptionConfigured } = await import("./crypto");
+  const ssoReady = encryptionConfigured() && (PROVIDERS.google.configured() || PROVIDERS.microsoft.configured());
+  if (data.password_login === "off" && !ssoReady) throw new UserError("Antes de quitar la contraseña, configura la entrada con Google o Microsoft: si no, el equipo no podría entrar.");
   await sql`UPDATE app_settings SET sso_domain = ${domain}, sso_default_role = ${role}, password_login = ${data.password_login !== "off"}`;
 }
 
