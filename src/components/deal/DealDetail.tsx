@@ -26,7 +26,7 @@ import { activeActivityTypes } from "@/lib/activity-types";
 import {
   addParticipantAction, loseDealAction, moveDealFormAction, removeParticipantAction, reopenDealAction, winDealAction,
 } from "@/app/actions/deals";
-import { completeActivityAction, createActivityAction, createNoteAction } from "@/app/actions/records";
+import { completeActivityAction, createActivityAction, createNoteAction, deleteActivityAction } from "@/app/actions/records";
 import { ActionForm } from "../ActionForm";
 import { Avatar } from "../Avatar";
 import { CustomFieldValues } from "../CustomFieldValues";
@@ -773,6 +773,11 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                         </label>
                       )}
                     </ActionForm>
+                  </details>
+                  <details>
+                    <summary className="meta">Borrar</summary>
+                    <ActionForm action={deleteActivityAction.bind(null, a.id, back)} submitLabel="Borrar actividad" pendingLabel="Borrando…" secondary className="form inline"
+                                confirm={`Se borra «${a.subject}». No se puede deshacer; queda anotado en la historia del deal.`} />
                   </details>
                 </li>
               ))}

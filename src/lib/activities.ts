@@ -154,6 +154,16 @@ export async function completeActivity(actor: Actor, activityId: string, data: u
   });
 }
 
+/** Borra una actividad pendiente (p. ej. una creada por error). Queda constancia en la historia del deal. */
+export async function deleteActivity(actor: Actor, activityId: string) {
+  await transaction(async (tx) => {
+    const [a] = await tx<{ deal_id: string | null; subject: string; type: string }[]>`
+      DELETE FROM activities WHERE id = ${activityId} AND NOT done RETURNING deal_id, subject, type`;
+    if (!a) throw new UserError("Esa actividad ya no está pendiente.");
+    if (a.deal_id) await recordEvent(tx, actor, "deal", a.deal_id, "activity.deleted", { subject: a.subject, type: a.type });
+  });
+}
+
 export async function reopenActivity(activityId: string) {
   await sql`UPDATE activities SET done = false, outcome = NULL WHERE id = ${activityId}`;
 }

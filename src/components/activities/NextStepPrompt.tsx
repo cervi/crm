@@ -23,24 +23,23 @@ export function NextStepPrompt({ dealId, dealTitle, onDone }: { dealId: string; 
   const [state, setState] = useState<{ done?: { id: string; label: string }; error?: string; undone?: boolean }>({});
 
   // En el aviso flotante, la confirmación se queda unos segundos y luego se cierra sola.
+  // La confirmación (con «Deshacer») se queda unos segundos; luego se refresca la página y, si es flotante, se cierra.
   useEffect(() => {
-    if (!onDone || !(state.done || state.undone)) return;
-    const t = setTimeout(onDone, state.undone ? 1500 : 6000);
+    if (!(state.done || state.undone)) return;
+    const t = setTimeout(() => { router.refresh(); onDone?.(); }, state.undone ? 1500 : 6000);
     return () => clearTimeout(t);
-  }, [state.done, state.undone, onDone]);
+  }, [state.done, state.undone, onDone, router]);
 
   const pick = (key: (typeof PRESETS)[number]["key"], label: string) => start(async () => {
     const r = await scheduleNextAction(dealId, key);
     if (r.error || !r.activityId) { setState({ error: r.error ?? "No se pudo programar." }); return; }
     setState({ done: { id: r.activityId, label } });
-    router.refresh();
   });
   const undo = () => start(async () => {
     if (!state.done) return;
     const r = await undoScheduledAction(dealId, state.done.id);
     if (r.error) { setState((s) => ({ ...s, error: r.error })); return; }
     setState({ undone: true });
-    router.refresh();
   });
 
   if (state.undone) return <p className="next-step done" role="status">Deshecho: el deal vuelve a no tener siguiente paso.</p>;
@@ -50,7 +49,7 @@ export function NextStepPrompt({ dealId, dealTitle, onDone }: { dealId: string; 
         <Icon name="check" /><span>Programado: <strong>{state.done.label.toLowerCase()}</strong>{dealTitle ? <> en {dealTitle}</> : null}.</span>
         <span className="next-step-btns">
           <button type="button" className="btn secondary small" onClick={undo} disabled={pending}>Deshacer</button>
-          {onDone && <button type="button" className="btn secondary small" onClick={onDone}>Cerrar</button>}
+          <button type="button" className="btn secondary small" onClick={() => { router.refresh(); onDone?.(); }}>{onDone ? "Cerrar" : "Vale"}</button>
         </span>
         {state.error && <span className="meta tone-bad" role="alert">{state.error}</span>}
       </div>

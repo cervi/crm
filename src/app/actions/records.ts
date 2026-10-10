@@ -7,7 +7,7 @@ import { attempt, toUserMessage, type ActionState } from "@/lib/errors";
 import { listFieldDefinitions, readCustomValues } from "@/lib/custom-fields";
 import { createOrganization, getOrganization, updateOrganization } from "@/lib/organizations";
 import { changeCompany, createPerson, getPerson, updatePerson } from "@/lib/persons";
-import { createActivity, completeActivity, reopenActivity } from "@/lib/activities";
+import { createActivity, completeActivity, deleteActivity, reopenActivity } from "@/lib/activities";
 import { dealWithoutNext, scheduleNext, undoScheduled, type NextPreset } from "@/lib/next-activity";
 import { sql } from "@/lib/db";
 import { createNote } from "@/lib/notes";
@@ -162,6 +162,15 @@ export async function scheduleNextAction(dealId: string, preset: NextPreset): Pr
   revalidatePath(`/deals/${dealId}`);
   revalidatePath("/deals");
   return { message: "Siguiente paso programado.", activityId };
+}
+
+export async function deleteActivityAction(activityId: string, back: string, _: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const res = await attempt(() => deleteActivity(g.actor, activityId));
+  revalidatePath(back);
+  revalidatePath("/activities");
+  return res;
 }
 
 export async function undoScheduledAction(dealId: string, activityId: string): Promise<{ error?: string }> {
