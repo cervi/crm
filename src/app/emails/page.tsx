@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { DataTable } from "@/components/DataTable";
+import { attachmentsFor } from "@/lib/attachments";
 import { requireUser } from "@/lib/auth";
 import { dateTime } from "@/lib/format";
 import { SENT_FILTERS, isSentFilter, listSent, sentStats } from "@/lib/emails";
@@ -19,6 +20,7 @@ export default async function SentPage({ searchParams }: { searchParams: Promise
   const page = Math.max(0, Number(sp.page) || 0);
   const userId = who === "mine" ? me.id : null;
   const [rows, stats] = await Promise.all([listSent({ userId, filter, q: sp.q, page }), sentStats(userId)]);
+  const atts = await attachmentsFor(rows.slice(0, 100).map((e) => e.id));
   const more = rows.length > 100;
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -71,7 +73,8 @@ export default async function SentPage({ searchParams }: { searchParams: Promise
         rows={rows.slice(0, 100).map((e) => ({
           id: e.id, label: e.subject,
           cells: {
-            subject: <Link href={`/emails/${e.id}`}><strong>{e.subject || "(sin asunto)"}</strong></Link>,
+            subject: <><Link href={`/emails/${e.id}`}><strong>{e.subject || "(sin asunto)"}</strong></Link>
+              {atts.get(e.id)?.length ? <div className="meta" title={atts.get(e.id)!.map((a) => a.name).join(", ")}>📎 {atts.get(e.id)!.map((a) => a.name).join(", ")}</div> : null}</>,
             to: e.person_id ? <Link href={`/persons/${e.person_id}`}>{e.to_name ?? e.to_email}</Link> : e.to_name ?? e.to_email,
             deal: e.deal_id ? <Link href={`/deals/${e.deal_id}`}>{e.deal_title}</Link> : null,
             sent: dateTime(e.sent_at),

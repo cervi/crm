@@ -417,7 +417,7 @@ export async function signerView(t: string): Promise<SignerView | null> {
   await expireIfDue(r);
   const prev = g.signers.filter((s) => s.position < me.position && s.status !== "signed");
   const state: SignerView["state"] =
-    r.status === "completed" ? "completed" : r.status === "expired" ? "expired" : r.status === "cancelled" ? "cancelled"
+    r.status === "completed" ? "completed" : r.status === "expired" ? "expired" : r.status === "cancelled" || r.status === "draft" ? "cancelled"
     : me.status === "declined" ? "declined" : r.status === "declined" ? "stopped" : me.status === "signed" ? "signed"
     : me.status === "waiting" ? "waiting" : "sign";
   return {

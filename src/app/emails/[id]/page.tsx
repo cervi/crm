@@ -5,6 +5,10 @@ import { dateTime } from "@/lib/format";
 import { getSentEmail } from "@/lib/emails";
 import { DEVICE_LABEL } from "@/lib/reader";
 import { isId } from "@/lib/validation";
+import { attachmentsFor } from "@/lib/attachments";
+import { fileSize } from "@/lib/files";
+import { sql } from "@/lib/db";
+import { duration } from "@/lib/library";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Correo enviado" };
@@ -18,6 +22,15 @@ export default async function SentEmailPage({ params }: { params: Promise<{ id: 
   const human = e.opens.filter((o) => !o.automatic);
   const auto = e.opens.length - human.length;
   const days = new Set(human.map((o) => new Date(o.at).toDateString())).size;
+  const [atts, docs] = await Promise.all([
+    attachmentsFor([e.id]).then((m) => m.get(e.id) ?? []),
+    // Documentos de la biblioteca enviados como enlace a este contacto (y si los ha abierto).
+    e.person_id ? sql<{ name: string; views: number; seconds: number; last: Date | null }[]>`
+      SELECT coalesce(i.name, f.name) AS name, l.view_count AS views, l.seconds, l.last_viewed_at AS last
+      FROM doc_links l LEFT JOIN library_items i ON i.id = l.library_id LEFT JOIN files f ON f.id = l.file_id
+      WHERE l.person_id = ${e.person_id} AND l.created_at BETWEEN ${e.sent_at ?? new Date()}::timestamptz - interval '1 day' AND ${e.sent_at ?? new Date()}::timestamptz + interval '1 hour'
+      ORDER BY l.created_at`.catch(() => []) : Promise.resolve([]),
+  ]);
 
   return (
     <main className="page medium">
@@ -30,6 +43,10 @@ export default async function SentEmailPage({ params }: { params: Promise<{ id: 
         {e.deal_id && <div className="dl-row"><dt>Deal</dt><dd><Link href={`/deals/${e.deal_id}`}>{e.deal_title}</Link></dd></div>}
         {e.sequence_name && <div className="dl-row"><dt>Secuencia</dt><dd>{e.sequence_name}</dd></div>}
         <div className="dl-row"><dt>Respondido</dt><dd>{e.replied_at ? dateTime(e.replied_at) : "Todavía no"}</dd></div>
+        {atts.length > 0 && <div className="dl-row"><dt>Adjuntos</dt><dd>{atts.map((a) => `${a.name} (${fileSize(a.size)})`).join(", ")}</dd></div>}
+        {docs.length > 0 && <div className="dl-row"><dt>Documentos con enlace</dt><dd>{docs.map((d, i) => (
+          <div key={i}>{d.name} · {d.views ? <span className="tone-good">abierto {d.views} {d.views === 1 ? "vez" : "veces"}{d.seconds ? `, ${duration(d.seconds)}` : ""}</span> : <span className="muted">sin abrir</span>}</div>
+        ))}</dd></div>}
       </dl>
 
       <section className="panel" aria-label="Lectura">
