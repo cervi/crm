@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { listConnections, listOutboundMailboxes, availableSlots, providerOf, warmupLimit, type Connection } from "@/lib/mailbox";
-import { disconnectOutboundAction, updateMailboxAction } from "@/app/actions/outbound";
+import { disconnectOutboundFormAction, updateMailboxAction } from "@/app/actions/outbound";
 import { sql } from "@/lib/db";
 import { PROVIDER_LIST, PROVIDERS, redirectUri, type Provider } from "@/lib/integrations";
 import { encryptionConfigured } from "@/lib/crypto";
@@ -14,6 +14,8 @@ import { ActionForm } from "@/components/ActionForm";
 import { RichTextField } from "@/components/RichTextField";
 import { saveMailboxSignatureAction, saveSignatureAction } from "@/app/actions/email-editor";
 import { Avatar } from "@/components/Avatar";
+import { Drawer } from "@/components/Drawer";
+import { Icon } from "@/components/Icon";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Correo, calendario y documentos" };
@@ -112,138 +114,174 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
         </ul>
       </section>
 
-      <h2 className="section-title" style={{ marginTop: 22 }}>{me.role === "admin" ? "Cuentas del equipo" : "Tu cuenta"}</h2>
-      <div className="rules">
-        {humans.map((u) => {
-          const conn = connections.find((c) => c.user_id === u.id);
-          const p = conn ? providerOf(conn) : null;
-          return (
-            <article key={u.id} className="panel mailbox" aria-label={`Cuenta de ${u.name}`}>
-              <div className="rule-head">
-                <div className="mailbox-who">
-                  <Avatar name={u.name} />
-                  <div>
-                    <h3>{u.name}</h3>
-                    {conn && p ? (
-                      <p className="meta" style={{ margin: 0 }}>
-                        {p.label} · {conn.email} · <span className={`badge ${conn.status === "active" ? "won" : "lost"}`}>{conn.status === "active" ? "Conectada" : "Hay que reconectar"}</span>
-                        {" "}· Última sincronización: {conn.mail_synced_at || conn.calendar_synced_at ? dateTime(conn.calendar_synced_at ?? conn.mail_synced_at) : "todavía no"}
-                      </p>
-                    ) : <p className="meta" style={{ margin: 0 }}>Sin cuenta conectada</p>}
-                  </div>
-                </div>
-                <div className="head-actions">
-                  {conn && conn.status === "active" && (
-                    <ActionForm action={syncMailboxAction.bind(null, u.id)} submitLabel="Sincronizar ahora" pendingLabel="Sincronizando…" secondary className="form inline" />
-                  )}
-                  {conn && conn.status !== "active" && PROVIDERS[conn.provider].configured() && encryption && (
-                    <a className="btn" href={`/api/integrations/${conn.provider}/connect?user=${u.id}`}>Reconectar {PROVIDERS[conn.provider].label}</a>
-                  )}
-                  {!conn && available.map((ap) => (
-                    <a key={ap.key} className="btn secondary" href={`/api/integrations/${ap.key}/connect?user=${u.id}`}>Conectar {ap.label}</a>
-                  ))}
-                  {!conn && available.length === 0 && <span className="meta">Activa un proveedor para poder conectar</span>}
-                  {conn && (
-                    <ActionForm action={disconnectMailboxAction.bind(null, u.id)} submitLabel="Desconectar" pendingLabel="…" secondary className="form inline" />
-                  )}
-                </div>
-              </div>
-              {conn?.last_error && <p className="callout bad" style={{ margin: "12px 0 0" }}>{conn.last_error}</p>}
-
-              <details className="ee-variant" open={!sigs.get(u.id) && u.id === me.id}>
-                <summary className="meta">{sigs.get(u.id) ? "Firma de los correos ✓" : "Firma de los correos (sin firma todavía)"}</summary>
-                <ActionForm action={saveSignatureAction.bind(null, u.id)} submitLabel="Guardar firma" secondary>
-                  <RichTextField name="signature" initial={sigs.get(u.id) ?? ""} label={`Firma de ${u.name}`}
-                                 hint="Va al final de los correos que salen de esta cuenta: desde la ficha del deal, las secuencias y los agentes. Admite variables como {{remitente}} y {{remitente_email}}. Puedes pegar la que ya usas en Outlook o Gmail." />
-                </ActionForm>
-              </details>
-              {conn && (
-                <div className="mailbox-body">
-                  <ActionForm action={updateMailboxSettingsAction.bind(null, u.id)} submitLabel="Guardar preferencias" secondary>
-                    <fieldset className="fieldset">
-                      <legend>Huecos que se ofrecen</legend>
-                      <div className="field">
-                        <span className="label">Días</span>
-                        <div className="day-picks">
-                          {WEEKDAYS.map((d, i) => (
-                            <label key={d} className="checkbox">
-                              <input type="checkbox" name={`day_${i + 1}`} defaultChecked={conn.scheduling.days.includes(i + 1)} />{d}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="grid-4">
-                        <label className="field"><span className="label">Desde</span><input type="time" name="start" defaultValue={conn.scheduling.start} /></label>
-                        <label className="field"><span className="label">Hasta</span><input type="time" name="end" defaultValue={conn.scheduling.end} /></label>
-                        <label className="field"><span className="label">Duración (min)</span><input type="number" name="duration" min={10} max={240} defaultValue={conn.scheduling.duration} /></label>
-                        <label className="field"><span className="label">Margen entre reuniones (min)</span><input type="number" name="buffer" min={0} max={120} defaultValue={conn.scheduling.buffer} /></label>
-                        <label className="field"><span className="label">Antelación mínima (horas)</span><input type="number" name="notice_hours" min={0} defaultValue={conn.scheduling.notice_hours} /></label>
-                        <label className="field"><span className="label">Mirar los próximos (días)</span><input type="number" name="horizon_days" min={1} max={60} defaultValue={conn.scheduling.horizon_days} /></label>
-                        <label className="field"><span className="label">Huecos a ofrecer</span><input type="number" name="count" min={1} max={10} defaultValue={conn.scheduling.count} /></label>
-                        <label className="field"><span className="label">Máximo por día</span><input type="number" name="per_day" min={1} max={10} defaultValue={conn.scheduling.per_day} /></label>
-                      </div>
-                      <label className="field"><span className="label">Zona horaria</span><input name="timezone" defaultValue={conn.scheduling.timezone} placeholder="Europe/Madrid" /></label>
-                    </fieldset>
-                    <div className="day-picks">
-                      <label className="checkbox"><input type="checkbox" name="sync_mail" defaultChecked={conn.sync_mail} />Registrar los correos con contactos del CRM</label>
-                      <label className="checkbox"><input type="checkbox" name="sync_calendar" defaultChecked={conn.sync_calendar} />Registrar las reuniones con contactos del CRM</label>
-                    </div>
-                  </ActionForm>
-                  {conn.status === "active" && (
-                    <div>
-                      <h3>Tus próximos huecos</h3>
-                      <p className="meta">Así aparecerán en los correos con <code>{"{huecos}"}</code>.</p>
-                      <SlotsPreview conn={conn} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+      <section aria-label={me.role === "admin" ? "Cuentas del equipo" : "Tu cuenta"} className="settings-block">
+        <div className="block-head">
+          <h2>{me.role === "admin" ? "Cuentas del equipo" : "Tu cuenta"}</h2>
+          <p className="meta">Cada persona conecta la suya. La firma va al final de los correos que salen del CRM.</p>
+        </div>
+        <div className="table-wrap">
+          <table className="accounts-table">
+            <thead><tr><th>Persona</th><th>Cuenta conectada</th><th>Estado</th><th>Última sincronización</th><th>Firma</th><th><span className="sr-only">Acciones</span></th></tr></thead>
+            <tbody>
+              {[...humans].sort((a, b) => (a.id === me.id ? -1 : b.id === me.id ? 1 : a.name.localeCompare(b.name))).map((u) => {
+                const conn = connections.find((c) => c.user_id === u.id);
+                const p = conn ? providerOf(conn) : null;
+                const sig = sigs.get(u.id);
+                return (
+                  <tr key={u.id} aria-label={`Cuenta de ${u.name}`}>
+                    <td><span className="cell-main"><Avatar name={u.name} size="sm" /><span><strong>{u.name}</strong>{u.id === me.id && <span className="meta"> (tú)</span>}</span></span></td>
+                    <td>{conn && p ? <>{conn.email}<div className="meta">{p.label}</div></> : <span className="muted">Sin conectar</span>}</td>
+                    <td>{!conn ? <span className="badge">Sin conectar</span>
+                      : conn.status === "active" ? <span className="badge won">Conectada</span>
+                      : <span className="badge lost" title={conn.last_error ?? undefined}>Hay que reconectar</span>}</td>
+                    <td className="nowrap">{conn ? (conn.mail_synced_at || conn.calendar_synced_at ? dateTime(conn.calendar_synced_at ?? conn.mail_synced_at) : <span className="muted">Todavía no</span>) : <span className="muted">—</span>}</td>
+                    <td>{sig ? <span className="badge won">Puesta</span> : <span className="muted">Sin firma</span>}</td>
+                    <td className="row-actions">
+                      {!conn && available.length > 0 && (u.id === me.id || me.role === "admin") && available.map((ap) => (
+                        <a key={ap.key} className={u.id === me.id ? "btn small" : "btn secondary small"} href={`/api/integrations/${ap.key}/connect?user=${u.id}`}>Conectar {ap.label}</a>
+                      ))}
+                      {conn && conn.status !== "active" && PROVIDERS[conn.provider].configured() && encryption && (
+                        <a className="btn small" href={`/api/integrations/${conn.provider}/connect?user=${u.id}`}>Reconectar</a>
+                      )}
+                      <Drawer label="Configurar" title={u.name} buttonTitle={`Configurar la cuenta de ${u.name}`}
+                              subtitle={conn && p ? `${p.label} · ${conn.email}` : "Sin cuenta conectada"}
+                              defaultOpen={false}>
+                        {conn?.last_error && <p className="callout bad" style={{ marginTop: 0 }}>{conn.last_error}</p>}
+                        <section className="drawer-section">
+                          <h3>Firma de los correos</h3>
+                          <ActionForm action={saveSignatureAction.bind(null, u.id)} submitLabel="Guardar firma">
+                            <RichTextField name="signature" initial={sig ?? ""} label={`Firma de ${u.name}`}
+                                           hint="Va al final de los correos que salen de esta cuenta: desde la ficha del deal, las secuencias y los agentes. Admite {{remitente}} y {{remitente_email}}. Puedes pegar la que ya usas en Outlook o Gmail." />
+                          </ActionForm>
+                        </section>
+                        {conn && (
+                          <section className="drawer-section">
+                            <h3>Huecos que se ofrecen para reuniones</h3>
+                            <ActionForm action={updateMailboxSettingsAction.bind(null, u.id)} submitLabel="Guardar preferencias" secondary>
+                              <div className="field">
+                                <span className="label">Días</span>
+                                <div className="day-picks">
+                                  {WEEKDAYS.map((d, i) => (
+                                    <label key={d} className="checkbox"><input type="checkbox" name={`day_${i + 1}`} defaultChecked={conn.scheduling.days.includes(i + 1)} />{d}</label>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="grid-2">
+                                <label className="field"><span className="label">Desde</span><input type="time" name="start" defaultValue={conn.scheduling.start} /></label>
+                                <label className="field"><span className="label">Hasta</span><input type="time" name="end" defaultValue={conn.scheduling.end} /></label>
+                                <label className="field"><span className="label">Duración (min)</span><input type="number" name="duration" min={10} max={240} defaultValue={conn.scheduling.duration} /></label>
+                                <label className="field"><span className="label">Margen entre reuniones (min)</span><input type="number" name="buffer" min={0} max={120} defaultValue={conn.scheduling.buffer} /></label>
+                                <label className="field"><span className="label">Antelación mínima (horas)</span><input type="number" name="notice_hours" min={0} defaultValue={conn.scheduling.notice_hours} /></label>
+                                <label className="field"><span className="label">Mirar los próximos (días)</span><input type="number" name="horizon_days" min={1} max={60} defaultValue={conn.scheduling.horizon_days} /></label>
+                                <label className="field"><span className="label">Huecos a ofrecer</span><input type="number" name="count" min={1} max={10} defaultValue={conn.scheduling.count} /></label>
+                                <label className="field"><span className="label">Máximo por día</span><input type="number" name="per_day" min={1} max={10} defaultValue={conn.scheduling.per_day} /></label>
+                              </div>
+                              <label className="field"><span className="label">Zona horaria</span><input name="timezone" defaultValue={conn.scheduling.timezone} placeholder="Europe/Madrid" /></label>
+                              <label className="checkbox"><input type="checkbox" name="sync_mail" defaultChecked={conn.sync_mail} />Registrar los correos con contactos del CRM</label>
+                              <label className="checkbox"><input type="checkbox" name="sync_calendar" defaultChecked={conn.sync_calendar} />Registrar las reuniones con contactos del CRM</label>
+                            </ActionForm>
+                            {conn.status === "active" && (
+                              <details className="drawer-more">
+                                <summary className="meta">Ver los próximos huecos</summary>
+                                <p className="meta">Así aparecerán en los correos con <code>{"{huecos}"}</code>.</p>
+                                <SlotsPreview conn={conn} />
+                              </details>
+                            )}
+                          </section>
+                        )}
+                        {conn && (
+                          <section className="drawer-section">
+                            <h3>Conexión</h3>
+                            <div className="head-actions" style={{ marginLeft: 0 }}>
+                              {conn.status === "active" && <ActionForm action={syncMailboxAction.bind(null, u.id)} submitLabel="Sincronizar ahora" pendingLabel="Sincronizando…" secondary className="form inline" />}
+                              <ActionForm action={disconnectMailboxAction.bind(null, u.id)} submitLabel="Desconectar la cuenta" pendingLabel="…" secondary className="form inline"
+                                          confirm={`¿Desconectar la cuenta de ${u.name}? Los correos dejarán de registrarse y de salir desde su buzón hasta que la vuelva a conectar.`} />
+                            </div>
+                          </section>
+                        )}
+                      </Drawer>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {available.length === 0 && <p className="meta">Para conectar cuentas, activa antes Microsoft 365 o Google Workspace en «Proveedores».</p>}
+      </section>
 
       {me.role === "admin" && (
-        <section className="panel" style={{ marginTop: 22 }} aria-label="Buzones de outbound">
-          <h2>Buzones de outbound</h2>
-          <p className="muted">
-            Para las campañas, usad buzones de <strong>dominios secundarios</strong> (p. ej. <code>aikit-mail.com</code>), nunca el principal: si una campaña
-            rebota o la marcan como spam, vuestro dominio de siempre no se resiente. Cada buzón empieza enviando 10 correos al día y sube 5 cada día hasta su
-            límite (calentamiento); si rebota más del 5 % en una semana, se pausa solo y te avisa.
-          </p>
-          {outbound.map((m) => {
-            const h = health.find((x) => x.mailbox_id === m.id);
-            const rate = h && h.sent_7d ? Math.round((h.bounced_7d / h.sent_7d) * 1000) / 10 : 0;
-            return (
-              <div key={m.id} className="mailbox-row">
-                <div className="provider-row">
-                  <strong>{m.email}</strong>
-                  <span className="meta">{providerOf(m).label} · de {m.user_name} · hoy {h?.sent_today ?? 0} de {warmupLimit(m)} · 7 días: {h?.sent_7d ?? 0} enviados, {rate} % rebotes</span>
-                  <span className={`badge ${m.paused || m.status !== "active" ? "lost" : "won"}`}>{m.status !== "active" ? "Reconectar" : m.paused ? "En pausa" : "Activo"}</span>
-                </div>
-                {m.paused_reason && m.paused && <p className="meta tone-bad" style={{ margin: 0 }}>{m.paused_reason}</p>}
-                <ActionForm action={updateMailboxAction.bind(null, m.id)} submitLabel="Guardar" secondary className="form inline">
-                  <label className="field"><span className="label">Límite diario</span><input name="daily_limit" type="number" min={1} max={500} defaultValue={m.daily_limit} style={{ width: 90 }} /></label>
-                  <label className="field"><span className="label">Calentamiento desde</span><input name="warmup_start" type="date" defaultValue={m.warmup_start} /></label>
-                  <label className="checkbox"><input type="checkbox" name="paused" defaultChecked={m.paused} />En pausa</label>
-                </ActionForm>
-                <details>
-                  <summary className="meta">{m.signature ? "Firma propia de este buzón ✓" : `Firma: la de ${m.user_name}${m.user_signature ? "" : " (no tiene)"} · poner una propia`}</summary>
-                  <ActionForm action={saveMailboxSignatureAction.bind(null, m.id)} submitLabel="Guardar firma del buzón" secondary>
-                    <RichTextField name="signature" initial={m.signature ?? ""} label={`Firma de ${m.email}`}
-                                   hint="Con dominios secundarios conviene una firma coherente con el buzón (nombre, web). Vacía, se usa la de la persona." />
-                  </ActionForm>
-                </details>
-                <form action={disconnectOutboundAction.bind(null, m.id)}><button type="submit" className="link-btn meta">Desconectar</button></form>
-              </div>
-            );
-          })}
-          <div className="head-actions" style={{ marginTop: 10 }}>
-            {available.map((p) => (
-              <a key={p.key} className="btn secondary" href={`/api/integrations/${p.key}/connect?user=${me.id}&purpose=outbound`}>Conectar un buzón de {p.label}</a>
-            ))}
-            {available.length === 0 && <span className="meta">Activa antes Microsoft 365 o Google Workspace (arriba).</span>}
+        <section aria-label="Buzones de outbound" className="settings-block">
+          <div className="block-head row">
+            <div>
+              <h2>Buzones de outbound</h2>
+              <p className="meta" title="Si una campaña rebota o la marcan como spam, vuestro dominio de siempre no se resiente. Cada buzón empieza enviando 10 correos al día y sube 5 cada día hasta su límite; si rebota más del 5 % en una semana, se pausa solo y te avisa.">
+                Para las campañas, usad buzones de dominios secundarios (p. ej. <code>aikit-mail.com</code>), nunca el principal. <Icon name="info" />
+              </p>
+            </div>
+            <div className="head-actions">
+              {available.map((p) => (
+                <a key={p.key} className="btn secondary" href={`/api/integrations/${p.key}/connect?user=${me.id}&purpose=outbound`}><Icon name="plus" />Buzón de {p.label}</a>
+              ))}
+            </div>
           </div>
+          {outbound.length === 0 ? (
+            <div className="empty-state">
+              <strong>Todavía no hay buzones de outbound.</strong>
+              <span className="meta">{available.length ? "Conecta uno con los botones de arriba para empezar a enviar campañas." : "Activa antes Microsoft 365 o Google Workspace en «Proveedores»."}</span>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Buzón</th><th>De</th><th className="num">Hoy</th><th className="num">Enviados 7 días</th><th className="num">Rebotes</th><th>Estado</th><th><span className="sr-only">Acciones</span></th></tr></thead>
+                <tbody>
+                  {outbound.map((m) => {
+                    const hh = health.find((x) => x.mailbox_id === m.id);
+                    const rate = hh && hh.sent_7d ? Math.round((hh.bounced_7d / hh.sent_7d) * 1000) / 10 : 0;
+                    return (
+                      <tr key={m.id}>
+                        <td><strong>{m.email}</strong><div className="meta">{providerOf(m).label}</div></td>
+                        <td>{m.user_name}</td>
+                        <td className="num" title="Enviados hoy de su límite de hoy (con el calentamiento)">{hh?.sent_today ?? 0} / {warmupLimit(m)}</td>
+                        <td className="num">{hh?.sent_7d ?? 0}</td>
+                        <td className={rate > 5 ? "num tone-bad" : "num"}>{rate} %</td>
+                        <td><span className={`badge ${m.paused || m.status !== "active" ? "lost" : "won"}`} title={m.paused ? m.paused_reason ?? undefined : undefined}>
+                          {m.status !== "active" ? "Hay que reconectar" : m.paused ? "En pausa" : "Activo"}</span></td>
+                        <td className="row-actions">
+                          <Drawer label="Configurar" title={m.email} subtitle={`${providerOf(m).label} · de ${m.user_name}`} buttonTitle={`Configurar ${m.email}`}>
+                            {m.paused_reason && m.paused && <p className="callout bad" style={{ marginTop: 0 }}>{m.paused_reason}</p>}
+                            <section className="drawer-section">
+                              <h3>Envío</h3>
+                              <ActionForm action={updateMailboxAction.bind(null, m.id)} submitLabel="Guardar">
+                                <div className="grid-2">
+                                  <label className="field"><span className="label">Límite diario</span><input name="daily_limit" type="number" min={1} max={500} defaultValue={m.daily_limit} /></label>
+                                  <label className="field"><span className="label">Calentamiento desde</span><input name="warmup_start" type="date" defaultValue={m.warmup_start} /></label>
+                                </div>
+                                <label className="checkbox"><input type="checkbox" name="paused" defaultChecked={m.paused} />En pausa (no envía nada)</label>
+                              </ActionForm>
+                            </section>
+                            <section className="drawer-section">
+                              <h3>Firma del buzón</h3>
+                              <p className="meta" style={{ marginTop: 0 }}>{m.signature ? "Tiene firma propia." : `Ahora usa la de ${m.user_name}${m.user_signature ? "" : " (que no tiene)"}.`} Con dominios secundarios conviene una firma coherente con el buzón.</p>
+                              <ActionForm action={saveMailboxSignatureAction.bind(null, m.id)} submitLabel="Guardar firma del buzón" secondary>
+                                <RichTextField name="signature" initial={m.signature ?? ""} label={`Firma de ${m.email}`} hint="Vacía, se usa la de la persona." />
+                              </ActionForm>
+                            </section>
+                            <section className="drawer-section">
+                              <h3>Desconectar</h3>
+                              <ActionForm action={disconnectOutboundFormAction.bind(null, m.id)}
+                                          submitLabel="Desconectar el buzón" secondary
+                                          confirm={`¿Desconectar ${m.email}? Las campañas que lo usan dejarán de enviar desde él.`} />
+                            </section>
+                          </Drawer>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
     </main>

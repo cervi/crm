@@ -136,3 +136,12 @@ export async function disconnectOutboundAction(mailboxId: string): Promise<void>
   await disconnectMailbox(mailboxId);
   revalidatePath("/settings/mailbox");
 }
+
+/** Igual que disconnectOutboundAction, para usar con ActionForm (con confirmación). */
+export async function disconnectOutboundFormAction(mailboxId: string): Promise<{ ok?: boolean; error?: string }> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
+  await disconnectMailbox(mailboxId);
+  revalidatePath("/settings/mailbox");
+  return { ok: true };
+}

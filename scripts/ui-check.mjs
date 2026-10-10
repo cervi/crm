@@ -451,16 +451,21 @@ if (MOCK) {
     const [{ owner_id }] = await sql`SELECT owner_id FROM deals WHERE id = ${PACO_OPEN}`;
     const [u] = await sql`SELECT name FROM users WHERE id = ${owner_id}`;
     await page.goto("/settings/mailbox");
-    await page.getByRole("article", { name: `Cuenta de ${u.name}` }).getByRole("link", { name: "Conectar Microsoft 365" }).click();
+    await page.getByRole("row", { name: `Cuenta de ${u.name}` }).getByRole("link", { name: "Conectar Microsoft 365" }).click();
     await page.waitForURL(/\/settings\/mailbox\?connected=/);
     await page.getByText("Cuenta conectada: jesus@aikit.example").waitFor();
-    await page.getByRole("article", { name: `Cuenta de ${u.name}` }).locator(".slots-preview").filter({ hasText: "(hora de Madrid)" }).waitFor();
+    await page.getByRole("button", { name: `Configurar la cuenta de ${u.name}` }).click();
+    const drawer = page.getByRole("dialog", { name: u.name });
+    await drawer.getByText("Ver los próximos huecos").click();
+    await drawer.locator(".slots-preview").filter({ hasText: "(hora de Madrid)" }).waitFor();
+    await page.keyboard.press("Escape");
     await shot("correo");
   });
 
   await step("preferencias de huecos: quitar el viernes", async () => {
     await page.goto("/settings/mailbox");
-    const card = page.locator("article.mailbox", { has: page.getByText("jesus@aikit.example") });
+    await page.locator("tr", { hasText: "jesus@aikit.example" }).getByRole("button", { name: /Configurar la cuenta de/ }).click();
+    const card = page.locator("dialog[open]");
     await card.getByLabel("Vie").uncheck();
     await card.getByRole("button", { name: "Guardar preferencias" }).click();
     await page.waitForTimeout(500);
@@ -578,11 +583,13 @@ if (MOCK) {
 
   await step("conectar Google Workspace para otra persona", async () => {
     await page.goto("/settings/mailbox");
-    const card = page.locator("article.mailbox", { has: page.getByRole("link", { name: "Conectar Google Workspace" }) }).first();
+    const card = page.locator("tr", { has: page.getByRole("link", { name: "Conectar Google Workspace" }) }).first();
     const name = (await card.getAttribute("aria-label")).replace("Cuenta de ", "");
     await card.getByRole("link", { name: "Conectar Google Workspace" }).click();
     await page.waitForURL(/connected=jesus%40empresa-google\.example/);
-    await page.getByRole("article", { name: `Cuenta de ${name}` }).getByText("Google Workspace · jesus@empresa-google.example").waitFor();
+    const row = page.getByRole("row", { name: `Cuenta de ${name}` });
+    await row.getByText("jesus@empresa-google.example").waitFor();
+    await row.getByText("Google Workspace").waitFor();
   });
 
   await step("programar una demo invitando desde el calendario", async () => {
@@ -989,11 +996,12 @@ await step("mención en una nota avisa; borrar un lead y recuperarlo; fusionar d
 
 await step("dar acceso a un comercial, que entra, cambia su contraseña temporal y no ve los ajustes de admin", async () => {
   await page.goto("/settings/users");
-  const card = page.getByRole("article", { name: "Usuario Customer Success" });
-  await card.locator("summary").click();
+  await page.getByRole("button", { name: "Editar a Customer Success" }).click();
+  const card = page.getByRole("dialog", { name: "Customer Success" });
   await card.getByLabel("Contraseña inicial").fill("temporal-cs-12345");
   await card.getByRole("button", { name: "Dar acceso" }).click();
-  await card.locator("p.meta", { hasText: "contraseña temporal" }).waitFor();
+  await page.locator("tr", { hasText: "Customer Success" }).getByText("Contraseña temporal").waitFor();
+  await page.keyboard.press("Escape");
   // Sale el administrador y entra el comercial.
   await page.getByRole("button", { name: /Tu cuenta/ }).click();
   await page.getByRole("menuitem", { name: "Cerrar sesión" }).click();
@@ -1335,8 +1343,8 @@ if (MOCK) {
 
   await step("ajustes de correo: firma de cada cuenta", async () => {
     await page.goto("/settings/mailbox");
-    const card = page.locator("article.mailbox").first();
-    await card.getByText(/Firma de los correos/).click();
+    await page.getByRole("button", { name: /Configurar la cuenta de/ }).first().click();
+    const card = page.locator("dialog[open]");
     await card.getByRole("button", { name: "HTML" }).click();
     await card.getByLabel("HTML de la firma").fill(`<p><b>Firma ajustes ${stamp}</b><script>alert(1)</script></p>`);
     await card.getByRole("button", { name: "Aplicar" }).click();

@@ -1647,3 +1647,43 @@ main.reports > .sales-head { margin-top: 18px !important; }
 .period-pop li button svg { width: 14px; height: 14px; }
 .period-custom { display: grid; gap: 8px; align-content: start; border-left: 1px solid var(--border); padding-left: 16px; }
 @media (max-width: 640px) { .period-custom { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 10px; } }
+
+/* ---------------------------------------------------------------- Panel lateral (drawer) */
+dialog.drawer {
+  position: fixed; inset: 0 0 0 auto; margin: 0; height: 100vh; max-height: 100vh; width: min(560px, 100vw); max-width: 100vw;
+  padding: 0; border: 0; border-left: 1px solid var(--border); background: var(--bg); color: var(--text); box-shadow: var(--shadow-pop);
+}
+dialog.drawer::backdrop { background: rgba(15, 20, 30, .32); }
+dialog.drawer[open] { animation: drawer-in .18s ease-out; }
+@keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { dialog.drawer[open] { animation: none; } }
+.drawer-inner { display: flex; flex-direction: column; height: 100%; }
+.drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 24px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.drawer-head h2 { margin: 0; font-size: 18px; }
+.drawer-head p { margin: 4px 0 0; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 20px 24px 32px; display: grid; gap: 18px; align-content: start; }
+.drawer-section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); padding: 16px 18px; display: grid; gap: 10px; }
+.drawer-section h3 { margin: 0; font-size: 14.5px; }
+.drawer-section .form { display: grid; gap: 12px; }
+.drawer-more > summary { cursor: pointer; }
+
+/* Tablas de ajustes */
+.settings-block { display: grid; gap: 12px; margin-top: 28px; }
+.block-head h2 { margin: 0; font-size: 17px; }
+.block-head p { margin: 2px 0 0; display: inline-flex; gap: 4px; align-items: center; }
+.block-head p svg { width: 13px; height: 13px; cursor: help; }
+.block-head.row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+td.row-actions { text-align: right; white-space: nowrap; }
+td.row-actions > * { margin-left: 6px; vertical-align: middle; }
+td.row-actions form { display: inline-flex; }
+tr.row-muted td { color: var(--muted); }
+.users-table td, .accounts-table td { vertical-align: middle; }
+.role-legend { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.role-legend li { display: grid; gap: 2px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); font-size: 13px; }
+.role-legend li span { color: var(--muted); }
+.empty-state { display: grid; gap: 4px; justify-items: start; padding: 22px 20px; background: var(--panel); border: 1px dashed var(--control-border); border-radius: var(--r); }
+
+/* Formularios: confirmación y «hecho» */
+.form-confirm { margin: 0; padding: 9px 12px; border-radius: var(--r-sm); background: var(--bad-soft); color: var(--bad); font-weight: 600; font-size: 13px; }
+.form-saved { align-self: center; color: var(--good); font-weight: 600; font-size: 13px; }
+.form-actions { align-items: center; flex-wrap: wrap; }
