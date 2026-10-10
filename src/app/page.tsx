@@ -9,6 +9,7 @@ import { refreshFocusAction, sendDigestNowAction } from "@/app/actions/ai";
 import { ActionForm } from "@/components/ActionForm";
 import { HealthBadge } from "@/components/HealthBadge";
 import { isId } from "@/lib/validation";
+import { requireUser } from "@/lib/auth";
 import { Icon } from "@/components/Icon";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +65,7 @@ function Delta({ now, before, suffix = "que el mes pasado" }: { now: number; bef
 const initials = (n: string) => n.split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase();
 
 export default async function TodayPage({ searchParams }: { searchParams: Promise<{ owner?: string }> }) {
-  const sp = await searchParams;
+  const [sp, me] = await Promise.all([searchParams, requireUser()]);
   const ownerId = isId(sp.owner) ? sp.owner : null;
   const mine = (col: string) => (ownerId ? sql`${sql.unsafe(col)} = ${ownerId}` : sql`true`);
 
@@ -100,20 +101,29 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       LEFT JOIN deals d ON d.stage_id = s.id AND d.status = 'open' AND d.deleted_at IS NULL AND ${mine("d.owner_id")}
       WHERE p.is_active GROUP BY p.id, p.name, p.position, s.id, s.name, s.position ORDER BY p.position, s.position`,
     sql<{ id: string; name: string; v: number; n: number; target: number | null }[]>`
-      SELECT u.id, u.name, coalesce(sum(d.value), 0)::float8 AS v, count(d.id)::int AS n, u.monthly_target::float8 AS target
+      SELECT u.id, u.name, coalesce(sum(d.value), 0)::float8 AS v, count(d.id)::int AS n,
+             (SELECT max(g.target)::float8 FROM goals g WHERE g.user_id = u.id AND g.metric = 'won_value' AND g.period = 'month' AND g.pipeline_id IS NULL) AS target
       FROM users u LEFT JOIN deals d ON d.owner_id = u.id AND d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= date_trunc('month', now())
-      WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name, u.monthly_target ORDER BY v DESC, n DESC, u.name LIMIT 6`
-      .catch(() => sql<{ id: string; name: string; v: number; n: number; target: number | null }[]>`
-        SELECT u.id, u.name, coalesce(sum(d.value), 0)::float8 AS v, count(d.id)::int AS n, NULL::float8 AS target
-        FROM users u LEFT JOIN deals d ON d.owner_id = u.id AND d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= date_trunc('month', now())
-        WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name ORDER BY v DESC, n DESC, u.name LIMIT 6`),
+      WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name ORDER BY v DESC, n DESC, u.name LIMIT 8`,
     sql<{ id: string; title: string; value: number | null; currency: string; owner: string | null; won_at: Date }[]>`
       SELECT d.id, d.title, d.value::float8 AS value, d.currency, u.name AS owner, d.won_at FROM deals d LEFT JOIN users u ON u.id = d.owner_id
       WHERE d.status = 'won' AND d.deleted_at IS NULL AND d.won_at > now() - interval '30 days' AND ${mine("d.owner_id")}
       ORDER BY d.won_at DESC LIMIT 4`,
-    sql<{ target: number; people: number }[]>`
-      SELECT coalesce(sum(monthly_target), 0)::float8 AS target, count(monthly_target)::int AS people FROM users
-      WHERE is_active AND kind = 'human' AND (${ownerId}::uuid IS NULL OR id = ${ownerId}::uuid)`.catch(() => [{ target: 0, people: 0 }]),
+    // Objetivo de importe ganado del mes (Informes → Objetivos): el de la persona o, para el equipo, el del equipo
+    // (o la suma de los individuales). Lo ganado se cuenta solo de quienes tienen objetivo, para no inflar el %.
+    sql<{ target: number; won: number }[]>`
+      WITH g AS (
+        SELECT user_id, target FROM goals WHERE metric = 'won_value' AND period = 'month' AND pipeline_id IS NULL
+      ), pick AS (
+        SELECT * FROM g WHERE ${ownerId}::uuid IS NOT NULL AND user_id = ${ownerId}::uuid
+        UNION ALL SELECT * FROM g WHERE ${ownerId}::uuid IS NULL AND user_id IS NULL
+        UNION ALL SELECT * FROM g WHERE ${ownerId}::uuid IS NULL AND user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM g WHERE user_id IS NULL)
+      )
+      SELECT coalesce(sum(target), 0)::float8 AS target,
+             (SELECT coalesce(sum(d.value), 0)::float8 FROM deals d
+              WHERE d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= date_trunc('month', now())
+                AND (EXISTS (SELECT 1 FROM pick WHERE user_id IS NULL) OR d.owner_id IN (SELECT user_id FROM pick))) AS won
+      FROM pick`.catch(() => [{ target: 0, won: 0 }]),
   ]);
 
   const humans = users.filter((u) => u.kind === "human");
@@ -191,16 +201,16 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           <strong>{compact(d.pipeline.value)}</strong>
           <span className="meta">{d.pipeline.count} deals en juego</span>
         </Link>
-        <Link href="/reports" className="b-kpi k2">
+        <Link href={goal.target > 0 ? "/reports#objetivos" : "/reports"} className="b-kpi k2">
           <span className="b-kpi-label"><Icon name="rocket" />Ganado este mes</span>
-          <strong>{compact(won.month)}{goal.target > 0 && <small> de {compact(goal.target)}</small>}</strong>
+          <strong>{compact(won.month)}{goal.target > 0 && <small> · objetivo {compact(goal.target)}</small>}</strong>
           {goal.target > 0 ? (
             <>
-              <span className={`b-delta ${won.month / goal.target >= monthPace ? "up" : "down"}`}
-                    title={`A estas alturas del mes, a ritmo constante, irías por el ${Math.round(monthPace * 100)} %.`}>
-                {pct(won.month, goal.target)} % del objetivo · {won.month / goal.target >= monthPace ? "vas por delante del ritmo" : `faltan ${compact(Math.max(0, goal.target - won.month))}`}
+              <span className={`b-delta ${goal.won / goal.target >= monthPace ? "up" : "down"}`}
+                    title={`La raya marca dónde deberías ir a estas alturas del mes (${Math.round(monthPace * 100)} %), a ritmo constante.`}>
+                {pct(goal.won, goal.target)} % del objetivo · {goal.won / goal.target >= monthPace ? "vas por delante del ritmo" : `faltan ${compact(Math.max(0, goal.target - goal.won))}`}
               </span>
-              <span className="b-goal" aria-hidden="true"><i style={{ width: `${Math.min(100, pct(won.month, goal.target))}%` }} /><b style={{ left: `${monthPace * 100}%` }} /></span>
+              <span className="b-goal" aria-hidden="true"><i style={{ width: `${Math.min(100, pct(goal.won, goal.target))}%` }} /><b style={{ left: `${monthPace * 100}%` }} /></span>
             </>
           ) : (
             <>
@@ -324,8 +334,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         </section>
 
         {/* Ranking del mes */}
-        <section className="b-card b-board" aria-label="Ganado este mes por persona">
-          <header><h2>Ganado este mes</h2><span className="meta">{won.n} deal{won.n === 1 ? "" : "s"}</span></header>
+        <section className="b-card b-board" aria-label="Ranking del mes">
+          <header><h2>Ranking del mes</h2><span className="meta">por importe ganado · {won.n} deal{won.n === 1 ? "" : "s"}</span></header>
           {board.every((b) => !b.v && !b.n) ? <p className="b-empty">Nadie ha cerrado nada todavía este mes. El primero se pone en cabeza.</p> : (
           <ol className="b-podium">
             {board.map((b, i) => (
@@ -333,7 +343,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
                 <span className={`pos p${i + 1}`}>{i + 1}</span>
                 <span className="b-av">{initials(b.name)}</span>
                 <span className="who">{b.name}<span className="bar"><i style={{ width: `${(b.v / maxBoard) * 100}%` }} /></span></span>
-                <span className="v">{b.v ? compact(b.v) : "—"}{b.target ? <span className="meta"> · {pct(b.v, b.target)} %</span> : null}</span>
+                <span className="v">{b.v ? compact(b.v) : "—"}{b.target && (b.id === me.id || me.role === "admin") ? <span className="meta" title="% de su objetivo del mes (solo lo ves tú o un administrador)"> · {pct(b.v, b.target)} %</span> : null}</span>
               </li>
             ))}
           </ol>

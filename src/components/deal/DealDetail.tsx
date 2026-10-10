@@ -732,23 +732,10 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
           )}
 
           <section>
-            <h2 className="section-title">Enfoque <span className="muted">{pending.length}</span></h2>
+            <h2 className="section-title">Siguiente paso <span className="muted">{pending.length}</span></h2>
             {pending.length === 0 && (isOpen ? (
               <div className="next-prompt" role="region" aria-label="Siguiente actividad">
                 <NextStepPrompt dealId={dealId} />
-                <details className="next-custom">
-                  <summary className="meta">Elegir tipo, asunto y fecha</summary>
-                <ActionForm action={createActivityAction.bind(null, back)} submitLabel="Programar" resetOnSuccess className="form inline">
-                  <input type="hidden" name="deal_id" value={dealId} />
-                  {primary && <input type="hidden" name="person_id" value={primary.person_id} />}
-                  <label className="field"><span className="label">Tipo</span>
-                    <select name="type" defaultValue={stageInfo?.required_activity_type ?? "call"}>
-                      {types.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-                    </select></label>
-                  <label className="field" style={{ flex: 1 }}><span className="label">Asunto *</span><input name="subject" required placeholder="Llamada de seguimiento" /></label>
-                  <label className="field"><span className="label">Cuándo *</span><input type="datetime-local" name="due_at" required /></label>
-                </ActionForm>
-                </details>
               </div>
             ) : <p className="muted">No hay nada pendiente.</p>)}
             <ul className="items">

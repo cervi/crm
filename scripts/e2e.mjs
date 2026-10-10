@@ -50,7 +50,7 @@ const UA_IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleW
 
 const pages = {
   "/pipelines": null, [`/pipelines/${P.inbound}`]: ["Demo solicitada"], [`/pipelines/${P.ampl}`]: ["Paco — ampliación de servicio", "Parado"],
-  "/deals/new": ["Nuevo deal"], [`/deals/${DEAL_OPEN}`]: ["Necesidad detectada", "no se presentó", "Enfoque", "Historia"],
+  "/deals/new": ["Nuevo deal"], [`/deals/${DEAL_OPEN}`]: ["Necesidad detectada", "no se presentó", "Siguiente paso", "Historia"],
   [`/deals/${DEAL_WON}`]: ["Ganado el"], [`/deals/${DEAL_LOST}`]: ["Eligió a la competencia"], [`/deals/${DEAL_OPEN}/edit`]: ["Editar deal"],
   "/leads": null, "/leads?status=all": ["Webinar: automatizar la captación"], [`/leads/${LEAD}`]: ["Ana García"], "/leads/new": ["Nuevo lead"],
   "/organizations": ["Paco S.L."], "/organizations?q=paco": ["Paco S.L."], [`/organizations/${ORG}`]: ["Antiguos contactos", "Luis Martín"],
@@ -91,7 +91,7 @@ for (const path of ["/deals/no-existe", `/deals/00000000-0000-0000-0000-00000000
   const sorted = await (await get(`/pipelines/${P.inbound}?sort=value`)).text();
   check(sorted.includes("Ordenar: importe"), "tablero ordenado por importe");
   const panel = await (await get(`/pipelines/${P.ampl}?deal=${DEAL_OPEN}`)).text();
-  check(panel.includes("deal-panel") && panel.includes("Enfoque") && panel.includes("Cerrar (Esc)"), "panel lateral del deal en el tablero");
+  check(panel.includes("deal-panel") && panel.includes("Siguiente paso") && panel.includes("Cerrar (Esc)"), "panel lateral del deal en el tablero");
   const bogus = await get(`/pipelines/${P.ampl}?deal=00000000-0000-0000-0000-00000000dead`);
   check(bogus.status === 200 && (await bogus.text()).includes("ya no existe"), "panel con un deal inexistente no rompe el tablero");
 }

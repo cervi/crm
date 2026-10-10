@@ -17,13 +17,13 @@ export async function listUsers(): Promise<UserRow[]> {
 export type AdminUserRow = {
   id: string; name: string; email: string | null; role: Role; is_active: boolean;
   has_password: boolean; last_login_at: Date | null; locked: boolean; must_change_password: boolean;
-  open_deals: number; sessions: number; monthly_target: string | null;
+  open_deals: number; sessions: number;
 };
 
 export async function listAllUsers(): Promise<AdminUserRow[]> {
   return sql<AdminUserRow[]>`
     SELECT u.id, u.name, u.email, u.role, u.is_active, u.password_hash IS NOT NULL AS has_password,
-           u.last_login_at, coalesce(u.locked_until > now(), false) AS locked, u.must_change_password, u.monthly_target::text,
+           u.last_login_at, coalesce(u.locked_until > now(), false) AS locked, u.must_change_password,
            (SELECT count(*)::int FROM deals d WHERE d.owner_id = u.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_deals,
            (SELECT count(*)::int FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS sessions
     FROM users u WHERE u.kind = 'human'
@@ -69,10 +69,8 @@ async function adminsLeft(exceptId: string): Promise<number> {
 }
 
 export async function updateUser(byId: string, userId: string, input: Record<string, unknown>) {
-  const v = parse(z.object({ name: NAME, email: EMAIL, role: ROLE, is_active: z.boolean(),
-                            monthly_target: z.coerce.number({ message: "Objetivo no válido" }).min(0, "El objetivo no puede ser negativo").max(1e12).nullable() }), {
+  const v = parse(z.object({ name: NAME, email: EMAIL, role: ROLE, is_active: z.boolean() }), {
     ...input, is_active: input.is_active === "on" || input.is_active === true,
-    monthly_target: input.monthly_target === undefined || input.monthly_target === "" ? null : input.monthly_target,
   });
   const [cur] = await sql<{ role: Role; is_active: boolean }[]>`SELECT role, is_active FROM users WHERE id = ${userId} AND kind = 'human'`;
   if (!cur) throw new UserError("Ese usuario no existe.");
@@ -80,7 +78,7 @@ export async function updateUser(byId: string, userId: string, input: Record<str
   if (losesAdmin && (await adminsLeft(userId)) === 0) throw new UserError("Tiene que quedar al menos un administrador.");
   if (userId === byId && !v.is_active) throw new UserError("No puedes desactivar tu propio usuario.");
   await sql`
-    UPDATE users SET name = ${v.name}, email = ${v.email}, role = ${v.role}, is_active = ${v.is_active}, monthly_target = ${v.monthly_target}, updated_at = now()
+    UPDATE users SET name = ${v.name}, email = ${v.email}, role = ${v.role}, is_active = ${v.is_active}, updated_at = now()
     WHERE id = ${userId}`;
   // Al desactivar a alguien, se le cierran las sesiones.
   if (!v.is_active) await sql`DELETE FROM sessions WHERE user_id = ${userId}`;

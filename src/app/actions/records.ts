@@ -8,7 +8,7 @@ import { listFieldDefinitions, readCustomValues } from "@/lib/custom-fields";
 import { createOrganization, getOrganization, updateOrganization } from "@/lib/organizations";
 import { changeCompany, createPerson, getPerson, updatePerson } from "@/lib/persons";
 import { createActivity, completeActivity, reopenActivity } from "@/lib/activities";
-import { dealWithoutNext, scheduleNext, type NextPreset } from "@/lib/next-activity";
+import { dealWithoutNext, scheduleNext, undoScheduled, type NextPreset } from "@/lib/next-activity";
 import { sql } from "@/lib/db";
 import { createNote } from "@/lib/notes";
 import { addActivityToCalendar } from "@/lib/mailbox";
@@ -149,18 +149,33 @@ export async function toggleActivityDoneAction(activityId: string, done: boolean
 }
 
 /** Programa el siguiente paso de un deal con un clic (llamar mañana, seguimiento en N días…). */
-export async function scheduleNextAction(dealId: string, preset: NextPreset): Promise<{ error?: string; message?: string }> {
+export async function scheduleNextAction(dealId: string, preset: NextPreset): Promise<{ error?: string; message?: string; activityId?: string }> {
   const g = await guard("write");
   if ("error" in g) return g;
+  let activityId = "";
   try {
-    await scheduleNext(g.actor, dealId, preset);
+    activityId = await scheduleNext(g.actor, dealId, preset);
   } catch (err) {
     return { error: toUserMessage(err) };
   }
   revalidatePath("/activities");
   revalidatePath(`/deals/${dealId}`);
   revalidatePath("/deals");
-  return { message: "Siguiente paso programado." };
+  return { message: "Siguiente paso programado.", activityId };
+}
+
+export async function undoScheduledAction(dealId: string, activityId: string): Promise<{ error?: string }> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  try {
+    await undoScheduled(g.actor, activityId);
+  } catch (err) {
+    return { error: toUserMessage(err) };
+  }
+  revalidatePath("/activities");
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath("/deals");
+  return {};
 }
 
 /** Marca varias actividades como hechas a la vez. */

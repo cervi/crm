@@ -5,7 +5,7 @@ import { Avatar } from "@/components/Avatar";
 import { Drawer } from "@/components/Drawer";
 import { Icon } from "@/components/Icon";
 import { ROLE_LABELS, requireAdminPage } from "@/lib/auth";
-import { dateTime, money } from "@/lib/format";
+import { dateTime } from "@/lib/format";
 import { listAllUsers } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -70,7 +70,7 @@ export default async function UsersPage() {
 
       <div className="table-wrap">
         <table className="users-table">
-          <thead><tr><th>Persona</th><th>Rol</th><th>Acceso</th><th>Última entrada</th><th className="num">Deals abiertos</th><th className="num">Objetivo mensual</th><th><span className="sr-only">Acciones</span></th></tr></thead>
+          <thead><tr><th>Persona</th><th>Rol</th><th>Acceso</th><th>Última entrada</th><th className="num">Deals abiertos</th><th><span className="sr-only">Acciones</span></th></tr></thead>
           <tbody>
             {sorted.map((u) => {
               const a = access(u);
@@ -85,7 +85,6 @@ export default async function UsersPage() {
                   <td><span className={`badge ${a.cls}`} title={a.hint}>{a.label}</span>{(a.label === "Sin acceso" || a.label === "Bloqueado") && <div className="meta">{a.label === "Bloqueado" ? "Ponle una contraseña temporal" : "Aún no puede entrar"}</div>}</td>
                   <td className="nowrap">{u.last_login_at ? dateTime(u.last_login_at) : <span className="muted">Nunca</span>}</td>
                   <td className="num">{u.open_deals || <span className="muted">—</span>}</td>
-                  <td className="num">{u.monthly_target !== null ? money(u.monthly_target) : <span className="muted">—</span>}</td>
                   <td className="row-actions">
                     <Drawer label={u.has_password || !u.is_active ? "Editar" : "Dar acceso"} buttonClass={u.has_password || !u.is_active ? "btn secondary small" : "btn small"}
                             title={u.name} subtitle={`${u.email ?? "sin email"} · ${ROLE_LABELS[u.role]}`} buttonTitle={`${u.has_password || !u.is_active ? "Editar" : "Dar acceso"} a ${u.name}`}>
@@ -108,9 +107,6 @@ export default async function UsersPage() {
                               <label className="field"><span className="label">Nombre *</span><input name="name" required defaultValue={u.name} /></label>
                               <label className="field"><span className="label">Email *</span><input name="email" type="email" required defaultValue={u.email ?? ""} /></label>
                               <RoleSelect value={u.role} />
-                              <label className="field"><span className="label">Objetivo mensual (€)</span>
-                                <input name="monthly_target" type="number" min={0} step="any" defaultValue={u.monthly_target ?? ""} placeholder="sin objetivo" />
-                                <span className="meta">Lo que debería ganar cada mes. En «Hoy» verá cómo va.</span></label>
                               <label className="checkbox"><input type="checkbox" name="is_active" defaultChecked={u.is_active} disabled={u.id === me.id} />
                                 {u.has_password ? "Cuenta activa (puede entrar al CRM)" : "Cuenta activa (aún no puede entrar: falta darle acceso)"}
                                 {u.id === me.id && <span className="meta"> · no puedes desactivarte a ti mismo</span>}</label>

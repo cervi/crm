@@ -254,12 +254,14 @@ export async function refreshDigestFocus(ownerId: string | null) {
 }
 
 /** Envía ahora el parte de una persona a su correo conectado. */
-export async function sendDigestNow(userId: string) {
+export async function sendDigestNow(userId: string, extra?: { title: string; body: string }[]) {
   const conn = (await listConnections()).find((c) => c.user_id === userId && c.status === "active");
   if (!conn) throw new UserError("Para recibir el parte por correo, conecta tu cuenta en Ajustes → Correo, calendario y documentos.");
   const d = await buildDigest(userId, { ai: "generate" });
   const { subject, body } = digestEmail(d, appUrl());
-  await sendPlainEmail(conn, conn.email, subject, body);
+  // El lunes, el plan de la semana (y la del equipo) van en el mismo correo.
+  const full = extra?.length ? [body, ...extra.map((x) => `\n——————————\n${x.title}\n\n${x.body}`)].join("\n") : body;
+  await sendPlainEmail(conn, conn.email, extra?.length ? `${subject} · y tu semana` : subject, full);
   await sql`INSERT INTO digest_log (user_id, day, sent_to) VALUES (${userId}, ${localNow().day}, ${conn.email})
             ON CONFLICT (user_id, day) DO UPDATE SET sent_at = now(), sent_to = EXCLUDED.sent_to`;
   return conn.email;
@@ -277,10 +279,24 @@ export async function sendDueDigests(now = new Date()): Promise<number> {
   for (const c of conns) {
     const [done] = await sql`SELECT 1 FROM digest_log WHERE user_id = ${c.user_id} AND day = ${local.day}`;
     if (done) continue;
-    const [u] = await sql<{ notification_prefs: { daily?: boolean } }[]>`SELECT notification_prefs FROM users WHERE id = ${c.user_id} AND is_active`;
+    const [u] = await sql<{ notification_prefs: { daily?: boolean; weekPlan?: boolean; teamWeek?: boolean }; role: string }[]>`SELECT notification_prefs, role FROM users WHERE id = ${c.user_id} AND is_active`;
     if (!u || u.notification_prefs?.daily === false) continue;
     try {
-      await sendDigestNow(c.user_id);
+      const extra: { title: string; body: string }[] = [];
+      if (local.weekday === 1) {
+        // Se apuntan como enviados para que no salgan además por separado.
+        const m = await import("./notification-mail");
+        const week = m.isoWeek(now);
+        if (u.notification_prefs?.weekPlan !== false) {
+          extra.push({ title: "TU SEMANA", body: (await m.weekPlanEmail(c.user_id)).body });
+          await sql`INSERT INTO summary_log (user_id, kind, period) VALUES (${c.user_id}, 'week_plan', ${week}) ON CONFLICT DO NOTHING`;
+        }
+        if (u.notification_prefs?.teamWeek ?? u.role === "admin") {
+          extra.push({ title: "EL EQUIPO", body: (await m.teamWeekEmail()).body });
+          await sql`INSERT INTO summary_log (user_id, kind, period) VALUES (${c.user_id}, 'team_week', ${week}) ON CONFLICT DO NOTHING`;
+        }
+      }
+      await sendDigestNow(c.user_id, extra);
       sent++;
     } catch (err) {
       console.error("[parte del día]", c.email, err);

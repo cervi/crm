@@ -17,10 +17,10 @@ const GO: Record<string, { href: string; label: string }> = {
   r: { href: "/reports", label: "Informes" },
 };
 const NEW: Record<string, { href: string; label: string }> = {
-  d: { href: "/deals/new", label: "Deal" },
-  c: { href: "/persons/new", label: "Contacto" },
-  e: { href: "/organizations/new", label: "Empresa" },
-  l: { href: "/leads/new", label: "Lead" },
+  d: { href: "/deals/new", label: "Nuevo deal" },
+  c: { href: "/persons/new", label: "Nuevo contacto" },
+  e: { href: "/organizations/new", label: "Nueva empresa" },
+  l: { href: "/leads/new", label: "Nuevo lead" },
 };
 
 export function Shortcuts() {
@@ -80,7 +80,7 @@ export function Shortcuts() {
           </ul>
           <h3>Crear</h3>
           <ul className="shortcut-list">
-            {Object.entries(NEW).map(([k, v]) => <Row key={k} keys={["n", k]} label={`Nuevo ${v.label.toLowerCase()}`} />)}
+            {Object.entries(NEW).map(([k, v]) => <Row key={k} keys={["n", k]} label={v.label} />)}
           </ul>
           <h3>En el tablero, con un deal abierto en el panel</h3>
           <ul className="shortcut-list">

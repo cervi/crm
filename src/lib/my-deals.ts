@@ -68,8 +68,8 @@ export async function listMyDeals(opts: { ownerId: string | null; filter: MyDeal
 }
 
 /** Cuántos hay en cada filtro de abiertos (para las pestañas). */
-export async function myDealCounts(ownerId: string | null, pipelineId?: string | null) {
-  const all = await listMyDeals({ ownerId, filter: "open", pipelineId });
+export async function myDealCounts(ownerId: string | null, pipelineId?: string | null, q?: string) {
+  const all = await listMyDeals({ ownerId, filter: "open", pipelineId, q });
   const monthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59);
   return {
     open: all.length,
@@ -77,6 +77,7 @@ export async function myDealCounts(ownerId: string | null, pipelineId?: string |
     overdue: all.filter((r) => r.overdue > 0).length,
     closing: all.filter((r) => r.expected_close_date && new Date(r.expected_close_date) <= monthEnd).length,
     rotten: all.filter((r) => r.is_rotten).length,
-    value: all.reduce((n, r) => n + Number(r.value ?? 0), 0),
+    // Importe por moneda (no se suman euros con dólares).
+    byCurrency: Object.entries(all.reduce<Record<string, number>>((acc, r) => { acc[r.currency] = (acc[r.currency] ?? 0) + Number(r.value ?? 0); return acc; }, {})),
   };
 }

@@ -24,7 +24,7 @@ export default async function MyDealsPage({ searchParams }: {
   const ownerId = sp.owner === "all" ? null : isId(sp.owner) ? sp.owner : me.id;
   const pipelineId = isId(sp.pipeline) ? sp.pipeline : null;
   const [rows, counts, pipelines, users] = await Promise.all([
-    listMyDeals({ ownerId, filter, pipelineId, q: sp.q }), myDealCounts(ownerId, pipelineId), listPipelines(), listUsers(),
+    listMyDeals({ ownerId, filter, pipelineId, q: sp.q }), myDealCounts(ownerId, pipelineId, sp.q), listPipelines(), listUsers(),
   ]);
   const humans = users.filter((u) => u.kind === "human");
   const qs = (patch: Record<string, string | undefined>) => {
@@ -43,7 +43,10 @@ export default async function MyDealsPage({ searchParams }: {
       <div className="page-head">
         <div>
           <h1>{ownerId === me.id ? "Mis deals" : who}</h1>
-          <p className="muted" style={{ margin: 0 }}>{counts.open} abiertos en todos los pipelines · {money(counts.value)}. Arriba, los que no tienen siguiente paso.</p>
+          <p className="muted" style={{ margin: 0 }}>
+            {counts.open} abiertos {pipelineId ? `en ${pipelines.find((p) => p.id === pipelineId)?.name ?? "este pipeline"}` : "en todos los pipelines"}
+            {counts.byCurrency.length > 0 && <> · {counts.byCurrency.map(([c, v]) => money(v, c)).join(" + ")}</>}. Arriba, los que no tienen siguiente paso.
+          </p>
         </div>
         <div className="head-actions">
           <Link href="/deals/new" className="btn"><Icon name="plus" />Nuevo deal</Link>
@@ -78,9 +81,9 @@ export default async function MyDealsPage({ searchParams }: {
       </form>
 
       <DataTable id="my-deals"
-        empty={filter === "no_next" ? <>Todos tienen un siguiente paso. Así da gusto.</>
+        empty={sp.q || pipelineId ? <>No hay deals con estos filtros. <Link href={qs({ q: undefined, pipeline: undefined })}>Quitar filtros</Link></>
+          : filter === "no_next" ? <>Todos tienen un siguiente paso. Así da gusto.</>
           : filter === "overdue" ? <>Nada vencido.</>
-          : sp.q || pipelineId ? <>No hay deals con estos filtros. <Link href={qs({ q: undefined, pipeline: undefined })}>Quitar filtros</Link></>
           : ownerId === me.id && counts.open === 0 ? <>No tienes deals a tu nombre. <Link href={qs({ owner: "all" })}>Ver los de todo el equipo</Link></>
           : <>No hay deals aquí.</>}
         columns={[
@@ -88,10 +91,10 @@ export default async function MyDealsPage({ searchParams }: {
           { key: "next", label: closed ? "Cerrado" : "Siguiente paso" },
           { key: "value", label: "Importe", className: "num" },
           { key: "stage", label: "Fase" },
-          { key: "pipeline", label: "Pipeline" },
-          { key: "health", label: "Salud" },
+          { key: "pipeline", label: "Pipeline", hidden: true },
+          { key: "health", label: "Salud", hidden: true },
           { key: "close", label: "Cierre previsto", className: "nowrap" },
-          { key: "last", label: "Última actividad", className: "nowrap" },
+          { key: "last", label: "Última actividad", className: "nowrap", hidden: true },
           { key: "person", label: "Contacto", hidden: true },
           { key: "owner", label: "Responsable", hidden: ownerId !== null },
           { key: "created", label: "Creado", hidden: true, className: "nowrap" },
@@ -99,7 +102,7 @@ export default async function MyDealsPage({ searchParams }: {
         rows={rows.map((r) => {
           const late = r.expected_close_date && new Date(r.expected_close_date) < new Date(new Date().toDateString());
           return {
-            id: r.id, label: r.title, className: !closed && !r.next_id ? "row-attn" : undefined,
+            id: r.id, label: r.title,
             cells: {
               deal: <span><Link href={`/deals/${r.id}`}><strong>{r.title}</strong></Link>{r.organization && <div className="meta">{r.organization}</div>}</span>,
               next: closed ? date(r.closed_at)
@@ -110,7 +113,7 @@ export default async function MyDealsPage({ searchParams }: {
                   </span>
                 ) : <Link href={`/deals/${r.id}#nueva-actividad`} className="badge warn">Sin siguiente paso · programar</Link>,
               value: money(r.value, r.currency),
-              stage: <>{r.stage}<div className={r.is_rotten ? "meta tone-bad" : "meta"}>{r.days_in_stage} día{r.days_in_stage === 1 ? "" : "s"}{r.is_rotten ? " · parado" : ""}</div></>,
+              stage: <>{r.stage}{!pipelineId && <div className="meta">{r.pipeline}</div>}<div className={r.is_rotten ? "meta tone-bad" : "meta"}>{r.days_in_stage} día{r.days_in_stage === 1 ? "" : "s"}{r.is_rotten ? " · parado" : ""}</div></>,
               pipeline: <Link href={`/pipelines/${r.pipeline_id}`}>{r.pipeline}</Link>,
               health: <HealthBadge score={r.health} compact />,
               close: r.expected_close_date ? <span className={late && !closed ? "tone-bad" : undefined}>{date(r.expected_close_date)}</span> : <span className="muted">—</span>,

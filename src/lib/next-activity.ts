@@ -55,3 +55,11 @@ export async function scheduleNext(actor: Actor, dealId: string, preset: NextPre
     due_at: workdayAt(p.days).toISOString(), owner_id: deal.owner_id ?? actor.id ?? undefined,
   });
 }
+
+/** Deshace un «siguiente paso» recién programado (solo si lo creó la misma persona hace poco y sigue pendiente). */
+export async function undoScheduled(actor: Actor, activityId: string) {
+  const [a] = await sql<{ id: string }[]>`
+    DELETE FROM activities WHERE id = ${activityId} AND created_by_id = ${actor.id} AND NOT done
+      AND created_at > now() - interval '15 minutes' RETURNING id`;
+  if (!a) throw new UserError("Ya no se puede deshacer: edítala o bórrala desde la ficha del deal.");
+}

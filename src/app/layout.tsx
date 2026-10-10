@@ -11,6 +11,7 @@ import { getNavPrefs } from "@/lib/nav-prefs";
 import { runningJob, STEP_LABELS } from "@/lib/pipedrive-import";
 import { ImportBanner } from "@/components/ImportBanner";
 import { Shortcuts } from "@/components/Shortcuts";
+import { NextStepHost } from "@/components/activities/NextStepPrompt";
 import "@fontsource-variable/instrument-sans";
 import "./globals.css";
 
@@ -63,6 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             )}
             <div className="content">{children}</div>
             <Shortcuts />
+            <NextStepHost />
           </div>
         </div>
       </body>

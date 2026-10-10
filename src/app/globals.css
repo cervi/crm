@@ -2014,7 +2014,8 @@ tr.row-attn td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .next-step-q { display: inline-flex; align-items: center; gap: 8px; }
 .next-step-q svg { width: 18px; height: 18px; stroke: var(--warn); flex: none; }
 .next-step-btns { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.next-step.done { background: var(--good-soft); border-color: transparent; color: var(--good); font-weight: 600; margin: 0; }
+.next-step.done { background: var(--good-soft); border-color: transparent; margin: 0; }
+.next-step.done > svg { flex: none; }
 .next-step.done svg { width: 16px; height: 16px; stroke: var(--good); }
 .next-step-pop { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; width: min(760px, calc(100vw - 32px));
   box-shadow: var(--shadow-pop); border-radius: var(--r); background: var(--panel); white-space: normal; text-align: left; }
@@ -2034,3 +2035,7 @@ tr.row-attn td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .kbds { display: inline-flex; gap: 4px; }
 kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
   border-bottom-width: 2px; background: var(--panel-2); font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+@media (max-width: 640px) {
+  .next-step-pop { bottom: 12px; }
+  .next-step .btn.small { min-height: 44px; padding: 0 14px; }
+}

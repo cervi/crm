@@ -1,8 +1,6 @@
 -- =====================================================================
--- 0034 — Objetivo mensual de cada comercial
---   Lo pone un administrador en Usuarios; «Hoy» enseña cómo se va.
+-- 0034 — Sin cambios.
+--   Se pensó para un objetivo mensual por persona, pero ya existe en
+--   Informes → Objetivos (tabla goals), que es lo que usa «Hoy».
 -- =====================================================================
-
-BEGIN;
-ALTER TABLE users ADD COLUMN monthly_target numeric(14, 2) CHECK (monthly_target IS NULL OR monthly_target >= 0);
-COMMIT;
+SELECT 1;

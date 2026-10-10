@@ -253,7 +253,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </section>
       </div>
 
-      <section className="panel">
+      <section className="panel" id="objetivos">
         <h2>Objetivos</h2>
         {goals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
         <ul className="goals">

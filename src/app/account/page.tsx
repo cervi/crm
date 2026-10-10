@@ -104,9 +104,9 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
               <fieldset className="prefs-group">
                 <legend>Resúmenes por correo</legend>
                 <label className="checkbox"><input type="checkbox" name="daily" defaultChecked={prefs.daily} /><span><strong>Parte del día</strong> <span className="meta">— lo que toca hoy, cada mañana</span></span></label>
-                <label className="checkbox"><input type="checkbox" name="week_plan" defaultChecked={prefs.weekPlan} /><span><strong>Plan de la semana</strong> <span className="meta">— el lunes: reuniones, deals por cerrar y deals sin siguiente paso</span></span></label>
+                <label className="checkbox"><input type="checkbox" name="week_plan" defaultChecked={prefs.weekPlan} /><span><strong>Plan de la semana</strong> <span className="meta">— el lunes: reuniones, deals por cerrar y deals sin siguiente paso (va dentro del parte del día si lo recibes)</span></span></label>
                 <label className="checkbox"><input type="checkbox" name="week_review" defaultChecked={prefs.weekReview} /><span><strong>Balance del viernes</strong> <span className="meta">— a las 16:00: ganados, perdidos, actividad y lo que queda para el lunes</span></span></label>
-                {user.role === "admin" && <label className="checkbox"><input type="checkbox" name="team_week" defaultChecked={prefs.teamWeek} /><span><strong>Semana del equipo</strong> <span className="meta">— el lunes: cifras de cada comercial y del pipeline</span></span></label>}
+                {user.role === "admin" && <label className="checkbox"><input type="checkbox" name="team_week" defaultChecked={prefs.teamWeek} /><span><strong>Semana del equipo</strong> <span className="meta">— el lunes: cifras de cada comercial y del pipeline (también dentro del parte)</span></span></label>}
                 <label className="checkbox"><input type="checkbox" name="meeting_prep" defaultChecked={prefs.meetingPrep} /><span><strong>Ficha de cada reunión</strong> <span className="meta">— por correo, poco antes de empezar</span></span></label>
               </fieldset>
 

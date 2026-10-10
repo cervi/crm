@@ -14,10 +14,15 @@ export function ComposerTabs({ note, activity, email, call, files, filesLabel = 
   const box = useRef<HTMLDivElement>(null);
   // Con #nueva-actividad en la dirección, se abre directamente en «Actividad».
   useEffect(() => {
-    if (window.location.hash !== "#nueva-actividad") return;
-    setTab("activity");
-    box.current?.scrollIntoView({ block: "center" });
-    setTimeout(() => box.current?.querySelector<HTMLInputElement>("[role=tabpanel]:not([hidden]) input[name=subject], div:not([hidden]) > form input[name=subject]")?.focus(), 50);
+    const open = () => {
+      if (window.location.hash !== "#nueva-actividad") return;
+      setTab("activity");
+      box.current?.scrollIntoView({ block: "center" });
+      setTimeout(() => box.current?.querySelector<HTMLInputElement>("div:not([hidden]) > form input[name=subject]")?.focus(), 50);
+    };
+    open();
+    window.addEventListener("hashchange", open);
+    return () => window.removeEventListener("hashchange", open);
   }, []);
   const tabs = [
     { key: "note" as const, label: "Nota", content: note },
