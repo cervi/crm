@@ -14,6 +14,7 @@ const SECTIONS: { href: string; title: string; text: string; icon: IconName; eve
   { href: "/settings/icp", icon: "target", title: "Perfil de cliente ideal", text: "A quién queréis vender: con él, el agente cualifica cada lead (encaja, no encaja o falta saber) y las campañas lo usan de partida." },
   { href: "/settings/signals", icon: "pulse", title: "Señales y avisos", text: "Avisos cuando abren tus correos y propuestas, competidores a vigilar y cómo se calcula la salud de los deals." },
   { href: "/settings/ai", icon: "spark", title: "Modelo de IA", text: "Proveedor, modelo, clave y prompts de los resúmenes (Claude, OpenAI, Grok u otro)." },
+  { href: "/settings/autopilot", icon: "rocket", title: "Piloto automático", text: "Lo que el CRM hace solo para que nada se pare: siguiente paso, llamadas cuando abren una y otra vez, ganar al firmar el contrato." },
   { href: "/settings/automations", icon: "spark", title: "Automatizaciones e IA", text: "Qué puede hacer la IA sola, qué te pregunta antes y qué reglas sigue." },
   { href: "/settings/pipelines", icon: "deals", title: "Pipelines y fases", text: "Crea pipelines, ordena sus fases y define cuándo un deal se considera parado y qué sesión toca en cada fase." },
   { href: "/settings/products", icon: "deals", title: "Productos", text: "Catálogo de productos para los deals y las propuestas." },

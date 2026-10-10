@@ -18,6 +18,7 @@ import { zonedToUtc } from "./slots";
 import { getDigestSettings, sendDueDigests } from "./digest";
 import { sendNotificationMail } from "./notification-mail";
 import { runEsignJobs } from "./esign";
+import { runAutopilot } from "./autopilot";
 import { applyExtraction, extractionFor } from "./deal-agent";
 import { bookingPageLink } from "./booking";
 
@@ -1399,6 +1400,8 @@ export async function runAutomations(): Promise<RunResult> {
       result.digests = await sendDueDigests().catch((err) => { console.error("[parte del día]", err); return 0; });
       // Firmas: caducar, recordatorios automáticos y avisos de lo que lleva días esperando.
       await runEsignJobs().catch((err) => console.error("[firmas]", err));
+      // Piloto automático: siguiente paso, llamadas cuando abren una y otra vez, avisos de lo vencido.
+      await runAutopilot().catch((err) => console.error("[piloto automático]", err));
       // Avisos por correo (al momento o agrupados), resúmenes semanales y correos sin respuesta.
       result.notices = await getDigestSettings().then((s) => sendNotificationMail(new Date(), s.hour))
         .catch((err) => { console.error("[avisos por correo]", err); return 0; });

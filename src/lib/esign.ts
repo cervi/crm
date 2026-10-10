@@ -8,6 +8,7 @@ import { notify } from "./notifications";
 import { isId } from "./validation";
 import { isSignLang, signDate, st, type SignLang } from "./esign-i18n";
 import { appendSignaturePage, inspectPdf, sha256, stampPdf, type PageInfo } from "./esign-pdf";
+import { onContractSigned } from "./autopilot";
 
 // ===========================================================================
 // Firma electrónica de contratos (como «Smart Docs» de Pipedrive).
@@ -593,6 +594,8 @@ export async function completeRequest(id: string) {
       }
     }
   }
+  // Piloto automático: con el contrato firmado, el deal se da por ganado (si está activado).
+  await onContractSigned(r.deal_id, r.title).catch((err) => console.error("[firma] ganar el deal", err));
   const owner = r.sender_id ?? r.created_by;
   if (owner) await notify(sql, { userId: owner, kind: "sign.completed", title: `¡«${r.title}» está firmado por todos!`, body: "El PDF firmado ya está en el deal y les ha llegado a todos por correo.", link: `/firmas/${id}` });
 }

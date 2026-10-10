@@ -2221,3 +2221,16 @@ code.hash { font-size: 11px; word-break: break-all; }
   .login { grid-template-columns: 1fr; }
   .login-side { display: none; }
 }
+
+/* Piloto automático */
+.ap-row { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.ap-row:last-of-type { border-bottom: 0; }
+.ap-row p { margin: 2px 0 0; }
+.ap-params { margin-top: 8px; }
+.ap-toggle { position: relative; display: inline-block; width: 42px; height: 24px; margin-top: 2px; }
+.ap-toggle input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; z-index: 1; }
+.ap-switch { position: absolute; inset: 0; border-radius: 999px; background: var(--border-strong, var(--border)); transition: background .15s; }
+.ap-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: var(--shadow); transition: transform .15s; }
+.ap-toggle input:checked + .ap-switch { background: var(--good); }
+.ap-toggle input:checked + .ap-switch::after { transform: translateX(18px); }
+.ap-toggle input:focus-visible + .ap-switch { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -1,5 +1,7 @@
 "use server";
 
+import { saveAutopilot } from "@/lib/autopilot";
+
 import { adminOnly, guard } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
@@ -109,4 +111,12 @@ export async function setAgentAutonomyAction(agent: string, autonomy: Autonomy):
     if (level) await setRuleAutonomy(r.id, level);
   }
   refresh();
+}
+
+export async function saveAutopilotAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
+  const res = await attempt(() => saveAutopilot(Object.fromEntries(form)));
+  revalidatePath("/settings/autopilot");
+  return res;
 }
