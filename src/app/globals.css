@@ -1825,10 +1825,8 @@ tr.row-muted td { color: var(--muted); }
 .prefs-inline select { width: auto; }
 .prefs-try { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
 
-/* ======================================================= Hoy · versión B */
+/* ======================================================= Hoy (portada) */
 .b-home { display: grid; gap: 22px; }
-.b-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.b-tag { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--series-7); background: color-mix(in srgb, var(--series-7) 12%, transparent); padding: 4px 10px; border-radius: 999px; }
 
 .b-hero {
   position: relative; overflow: hidden; border-radius: 20px; padding: 30px 34px;
@@ -1844,7 +1842,14 @@ tr.row-muted td { color: var(--muted); }
 .b-hero-text { display: grid; gap: 8px; min-width: 0; position: relative; z-index: 1; }
 .b-date { margin: 0; opacity: .8; font-weight: 600; font-size: 14px; }
 .b-hero h1 { margin: 0; font-size: clamp(28px, 3.4vw, 40px); letter-spacing: -.02em; color: #fff; }
-.b-focus { margin: 2px 0 6px; display: flex; gap: 8px; align-items: flex-start; font-size: 15.5px; max-width: 70ch; opacity: .95; }
+.b-focus { margin: 2px 0 6px; display: flex; gap: 10px; align-items: flex-start; font-size: 15px; max-width: 78ch; }
+.b-focus p, .b-focus ol { margin: 2px 0 0; }
+.b-focus ol { padding-left: 20px; display: grid; gap: 2px; }
+.b-focus-src { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .75; }
+.b-focus-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.b-focus-actions .btn.secondary { background: rgba(255,255,255,.14); color: #fff; border-color: rgba(255,255,255,.3); }
+.b-focus-actions .btn.secondary:hover { background: rgba(255,255,255,.24); }
+.b-focus-actions .form-error { font-size: 13px; }
 .b-focus svg { flex: none; width: 18px; height: 18px; margin-top: 2px; }
 .b-people { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .b-people a { display: inline-flex; align-items: center; gap: 6px; color: #fff; padding: 4px 10px 4px 4px; border-radius: 999px; background: rgba(255,255,255,.12); font-size: 13px; font-weight: 600; }
@@ -1988,9 +1993,11 @@ tr.row-muted td { color: var(--muted); }
   .b-ring { width: 120px; height: 120px; }
   .b-stage { grid-template-columns: 90px 1fr 28px; } .b-stage .v { display: none; }
 }
-
-/* Enlace a la versión B desde la home */
-.b-link { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 5px 11px; border-radius: 999px; color: #fff !important;
-  background: linear-gradient(120deg, #1f4fd0, #8a4fd1); }
-.b-link:hover { text-decoration: none; filter: brightness(1.08); }
-.b-link svg { width: 15px; height: 15px; }
+.b-third { grid-column: span 4; }
+.b-feed { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.b-feed li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; }
+.b-feed a { color: var(--text); font-weight: 600; }
+.b-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; background: var(--series-1); }
+.b-dot.ai { background: var(--series-7); } .b-dot.good { background: var(--good); } .b-dot.bad { background: var(--bad); }
+.b-agents { margin: -6px 0 12px; }
+@media (max-width: 1200px) { .b-third { grid-column: span 12; } }

@@ -1,249 +1,375 @@
 import Link from "next/link";
-import { buildDigest, type DigestItem } from "@/lib/digest";
-import { HealthBadge } from "@/components/HealthBadge";
-import { getDealBrief } from "@/lib/briefs";
-import { listConnections } from "@/lib/mailbox";
+import { buildDigest } from "@/lib/digest";
 import { listUsers } from "@/lib/users";
+import { sql } from "@/lib/db";
+import { money } from "@/lib/format";
+import { listConnections } from "@/lib/mailbox";
 import { aiReady, getAiSettings } from "@/lib/ai";
-import { dateTime, money } from "@/lib/format";
-import { isId } from "@/lib/validation";
 import { refreshFocusAction, sendDigestNowAction } from "@/app/actions/ai";
 import { ActionForm } from "@/components/ActionForm";
-import { sql } from "@/lib/db";
+import { HealthBadge } from "@/components/HealthBadge";
+import { isId } from "@/lib/validation";
 import { Icon } from "@/components/Icon";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Hoy" };
 
+// ===========================================================================
+// «Hoy»: la portada. Lo que toca hoy, cómo va el pipeline y el ritmo del
+// equipo, de un vistazo; lo de las últimas 24 h, al final.
+// ===========================================================================
+
 const TZ = process.env.TZ || "Europe/Madrid";
 const time = (d: Date | null | undefined) =>
   d ? new Intl.DateTimeFormat("es-ES", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(d)) : "";
+const compact = (n: number) =>
+  new Intl.NumberFormat("es-ES", { notation: "compact", maximumFractionDigits: n >= 1_000_000 ? 1 : 0, style: "currency", currency: "EUR" }).format(n);
+const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 
-function List({ items, empty, showTime, showDate }: { items: DigestItem[]; empty: string; showTime?: boolean; showDate?: boolean }) {
-  if (items.length === 0) return <p className="muted today-empty">{empty}</p>;
+/** Línea de tendencia (SVG) con área suave. */
+function Spark({ values, label }: { values: number[]; label: string }) {
+  const w = 120, h = 36, max = Math.max(1, ...values);
+  const pts = values.map((v, i) => [(i / Math.max(1, values.length - 1)) * w, h - 3 - (v / max) * (h - 6)]);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
   return (
-    <ul className="today-list">
-      {items.map((i, n) => (
-        <li key={n} className={i.tone ? `tone-${i.tone}-edge` : undefined}>
-          {showTime && <span className="today-time">{time(i.at)}</span>}
-          <div>
-            {i.href ? <Link href={i.href}>{i.title}</Link> : <span>{i.title}</span>}
-            {(i.detail || showDate) && <div className="meta">{[i.detail, showDate && i.at ? dateTime(i.at) : null].filter(Boolean).join(" · ")}</div>}
-          </div>
-        </li>
-      ))}
-    </ul>
+    <svg className="b-spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={label}>
+      <path d={`${line}L${w},${h}L0,${h}Z`} className="area" />
+      <path d={line} className="line" />
+      {pts.length > 0 && <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="2.6" className="dot" />}
+    </svg>
   );
 }
+
+/** Anillo de progreso. */
+function Ring({ value, total, children }: { value: number; total: number; children: React.ReactNode }) {
+  const r = 52, c = 2 * Math.PI * r, p = total ? Math.min(1, value / total) : 0;
+  return (
+    <div className="b-ring">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r={r} className="track" />
+        {p > 0 && <circle cx="60" cy="60" r={r} className="fill" strokeDasharray={`${c * p} ${c}`} transform="rotate(-90 60 60)" />}
+      </svg>
+      <div className="b-ring-label">{children}</div>
+    </div>
+  );
+}
+
+function Delta({ now, before, suffix = "que el mes pasado" }: { now: number; before: number; suffix?: string }) {
+  if (!before && !now) return <span className="b-delta flat">sin datos aún</span>;
+  if (!before) return <span className="b-delta up">nuevo</span>;
+  const d = Math.round(((now - before) / before) * 100);
+  return <span className={`b-delta ${d > 0 ? "up" : d < 0 ? "down" : "flat"}`}>{d > 0 ? "▲" : d < 0 ? "▼" : "="} {Math.abs(d)} % {suffix}</span>;
+}
+
+const initials = (n: string) => n.split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase();
 
 export default async function TodayPage({ searchParams }: { searchParams: Promise<{ owner?: string }> }) {
   const sp = await searchParams;
   const ownerId = isId(sp.owner) ? sp.owner : null;
-  const [users, d, connections, ai] = await Promise.all([
-    listUsers(), buildDigest(ownerId, { ai: "cached" }), listConnections(), getAiSettings(),
+  const mine = (col: string) => (ownerId ? sql`${sql.unsafe(col)} = ${ownerId}` : sql`true`);
+
+  const [connections, ai, users, d, [won], wonWeeks, actDays, [mail], [today], stages, board, recentWins] = await Promise.all([
+    listConnections(), getAiSettings(),
+    listUsers(),
+    buildDigest(ownerId, { ai: "cached" }),
+    sql<{ month: number; prev: number; n: number }[]>`
+      SELECT coalesce(sum(value) FILTER (WHERE won_at >= date_trunc('month', now())), 0)::float8 AS month,
+             coalesce(sum(value) FILTER (WHERE won_at >= date_trunc('month', now()) - interval '1 month' AND won_at < now() - interval '1 month'), 0)::float8 AS prev,
+             count(*) FILTER (WHERE won_at >= date_trunc('month', now()))::int AS n
+      FROM deals WHERE status = 'won' AND deleted_at IS NULL AND ${mine("owner_id")}`,
+    sql<{ v: number }[]>`
+      SELECT coalesce(sum(d.value), 0)::float8 AS v
+      FROM generate_series(date_trunc('week', now()) - interval '11 weeks', date_trunc('week', now()), interval '1 week') w
+      LEFT JOIN deals d ON d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= w AND d.won_at < w + interval '1 week' AND ${mine("d.owner_id")}
+      GROUP BY w ORDER BY w`,
+    sql<{ day: string; n: number }[]>`
+      SELECT to_char(g, 'YYYY-MM-DD') AS day, count(a.id)::int AS n
+      FROM generate_series(date_trunc('week', now()) - interval '11 weeks', date_trunc('week', now()) + interval '6 days', interval '1 day') g
+      LEFT JOIN activities a ON a.done AND a.done_at >= g AND a.done_at < g + interval '1 day' AND ${mine("a.owner_id")}
+      GROUP BY g ORDER BY g`,
+    sql<{ sent: number; opened: number; replied: number }[]>`
+      SELECT count(*)::int AS sent, count(*) FILTER (WHERE e.open_count > 0)::int AS opened,
+             count(*) FILTER (WHERE EXISTS (SELECT 1 FROM emails r WHERE r.direction = 'in' AND r.person_id = e.person_id AND r.sent_at > e.sent_at))::int AS replied
+      FROM emails e WHERE e.direction = 'out' AND e.status = 'sent' AND e.track AND e.sent_at > now() - interval '30 days' AND ${mine("e.user_id")}`,
+    sql<{ done: number; total: number }[]>`
+      SELECT count(*) FILTER (WHERE done)::int AS done, count(*)::int AS total FROM activities
+      WHERE due_at >= date_trunc('day', now()) AND due_at < date_trunc('day', now()) + interval '1 day' AND ${mine("owner_id")}`,
+    sql<{ pipeline_id: string; pipeline: string; stage: string; n: number; v: number }[]>`
+      SELECT p.id AS pipeline_id, p.name AS pipeline, s.name AS stage, count(d.id)::int AS n, coalesce(sum(d.value), 0)::float8 AS v
+      FROM pipelines p JOIN stages s ON s.pipeline_id = p.id
+      LEFT JOIN deals d ON d.stage_id = s.id AND d.status = 'open' AND d.deleted_at IS NULL AND ${mine("d.owner_id")}
+      WHERE p.is_active GROUP BY p.id, p.name, p.position, s.id, s.name, s.position ORDER BY p.position, s.position`,
+    sql<{ id: string; name: string; v: number; n: number }[]>`
+      SELECT u.id, u.name, coalesce(sum(d.value), 0)::float8 AS v, count(d.id)::int AS n
+      FROM users u LEFT JOIN deals d ON d.owner_id = u.id AND d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= date_trunc('month', now())
+      WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name ORDER BY v DESC, n DESC, u.name LIMIT 6`,
+    sql<{ id: string; title: string; value: number | null; currency: string; owner: string | null; won_at: Date }[]>`
+      SELECT d.id, d.title, d.value::float8 AS value, d.currency, u.name AS owner, d.won_at FROM deals d LEFT JOIN users u ON u.id = d.owner_id
+      WHERE d.status = 'won' AND d.deleted_at IS NULL AND d.won_at > now() - interval '30 days' AND ${mine("d.owner_id")}
+      ORDER BY d.won_at DESC LIMIT 4`,
   ]);
+
   const humans = users.filter((u) => u.kind === "human");
-  const conn = ownerId ? connections.find((c) => c.user_id === ownerId && c.status === "active") : null;
   const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
   const greeting = hour < 14 ? "Buenos días" : hour < 21 ? "Buenas tardes" : "Buenas noches";
-  const today = new Intl.DateTimeFormat("es-ES", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(new Date());
-  // El primer deal de la lista lleva su resumen completo.
-  const top = d.attention[0] ? await getDealBrief(d.attention[0].deal.id) : null;
+  const dateLabel = new Intl.DateTimeFormat("es-ES", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(new Date());
+  const focusLines = d.focus.split("\n").map((l) => l.replace(/^\d+\.\s*/, "").trim()).filter(Boolean);
+  const conn = ownerId ? connections.find((c) => c.user_id === ownerId && c.status === "active") : null;
 
-  const pipelines = await sql<{ id: string; name: string; value: number; count: number }[]>`
-    SELECT p.id, p.name, coalesce(sum(d.value), 0)::float8 AS value, count(d.id)::int AS count
-    FROM pipelines p JOIN deals d ON d.pipeline_id = p.id AND d.status = 'open' AND d.deleted_at IS NULL
-      AND (${ownerId}::uuid IS NULL OR d.owner_id = ${ownerId}::uuid)
-    WHERE p.is_active GROUP BY p.id, p.name, p.position ORDER BY value DESC, p.position`;
-  const maxPipe = Math.max(1, ...pipelines.map((p) => p.value));
-  const todayCount = d.agenda.length + d.tasks.length;
-  const pendingTotal = d.overdue.length + todayCount + d.attention.length;
-  const SHOW = 5;
+  // Pipelines con sus fases (el embudo).
+  const pipes = Object.values(stages.reduce<Record<string, { id: string; name: string; stages: (typeof stages)[number][] }>>((acc, s) => {
+    (acc[s.pipeline_id] ??= { id: s.pipeline_id, name: s.pipeline, stages: [] }).stages.push(s);
+    return acc;
+  }, {})).filter((p) => p.stages.some((s) => s.n > 0))
+    .sort((a, b) => b.stages.reduce((x, s) => x + s.v, 0) - a.stages.reduce((x, s) => x + s.v, 0) || b.stages.reduce((x, s) => x + s.n, 0) - a.stages.reduce((x, s) => x + s.n, 0));
+  const PIPES = 6;
+
+  // Mapa de calor: 12 semanas × 7 días.
+  const maxDay = Math.max(1, ...actDays.map((x) => x.n));
+  const weeks = Array.from({ length: 12 }, (_, w) => actDays.slice(w * 7, w * 7 + 7));
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+  const thisWeek = weeks[11]?.reduce((a, x) => a + x.n, 0) ?? 0, lastWeek = weeks[10]?.reduce((a, x) => a + x.n, 0) ?? 0;
+
+  // Agenda en una línea de tiempo de 8:00 a 20:00.
+  const tl = (at: Date | null | undefined) => {
+    if (!at) return 0;
+    const [hh, mm] = time(at).split(":").map(Number);
+    return Math.min(100, Math.max(0, ((hh + mm / 60 - 8) / 12) * 100));
+  };
+  const nowPos = Math.min(100, Math.max(0, ((hour + new Date().getMinutes() / 60 - 8) / 12) * 100));
+  const maxBoard = Math.max(1, ...board.map((b) => b.v));
 
   return (
-    <main className="page today">
-      <div className="page-head">
-        <div>
-          <h1>{greeting}{d.ownerName ? `, ${d.ownerName}` : ""}</h1>
-          <p className="muted" style={{ margin: 0, textTransform: "none" }}>
-            {pendingTotal ? `Hoy, ${today}, tienes ${pendingTotal} cosa${pendingTotal === 1 ? "" : "s"} pendiente${pendingTotal === 1 ? "" : "s"}.` : `Hoy, ${today}. No tienes nada pendiente.`}
-          </p>
-        </div>
-        <div className="head-actions">
-          <Link href={ownerId ? `/b?owner=${ownerId}` : "/b"} className="b-link" title="Una propuesta más visual de esta página, para comparar"><Icon name="spark" />Ver versión B</Link>
-          <nav className="chips" aria-label="Ver el parte de">
-            <Link href="/" aria-current={!ownerId ? "page" : undefined}>Todo el equipo</Link>
-            {humans.map((u) => <Link key={u.id} href={`/?owner=${u.id}`} aria-current={ownerId === u.id ? "page" : undefined}>{u.name}</Link>)}
+    <main className="page b-home">
+      {/* Cabecera */}
+      <section className="b-hero">
+        <div className="b-hero-text">
+          <p className="b-date">{dateLabel}</p>
+          <h1>{greeting}{d.ownerName ? `, ${d.ownerName.split(" ")[0]}` : ""}</h1>
+          <section className="b-focus" aria-label="Enfoque del día">
+            <Icon name="spark" />
+            <div>
+              <span className="b-focus-src">Enfoque del día · {d.focusSource === "ai" ? "redactado por la IA" : "según tus deals y tu agenda"}</span>
+              {focusLines.length > 1 ? <ol>{focusLines.map((l, i) => <li key={i}>{l}</li>)}</ol> : <p>{focusLines[0]}</p>}
+              {(aiReady(ai) || conn) && (
+                <div className="b-focus-actions">
+                  {aiReady(ai) && <ActionForm action={refreshFocusAction.bind(null, ownerId)} submitLabel={d.focusSource === "ai" ? "Rehacer con IA" : "Redactar con IA"} pendingLabel="Redactando…" secondary className="form inline" />}
+                  {conn && <ActionForm action={sendDigestNowAction.bind(null, ownerId!)} submitLabel="Enviármelo por correo" pendingLabel="Enviando…" secondary className="form inline" />}
+                </div>
+              )}
+            </div>
+          </section>
+          <nav className="b-people" aria-label="Ver el panel de">
+            <Link href="/" aria-current={!ownerId ? "page" : undefined}>Equipo</Link>
+            {humans.map((u) => (
+              <Link key={u.id} href={`/?owner=${u.id}`} aria-current={ownerId === u.id ? "page" : undefined} title={u.name}>
+                <span className="b-av">{initials(u.name)}</span><span className="b-av-name">{u.name.split(" ")[0]}</span>
+              </Link>
+            ))}
           </nav>
         </div>
-      </div>
-
-      {/* Primera plana: lo que toca hoy y cómo va el pipeline. */}
-      <div className="today-hero">
-        <section className="hero-todo" aria-label="Lo que toca hoy">
-          <header className="hero-head">
-            <h2>Lo que toca hoy</h2>
-            <nav className="hero-counts" aria-label="Resumen">
-              <a href="#vencidas" className={d.overdue.length ? "bad" : ""}><strong>{d.overdue.length}</strong><span>vencidas</span></a>
-              <a href="#hoy"><strong>{todayCount}</strong><span>para hoy</span></a>
-              <a href="#atencion" className={d.attention.length ? "warn" : ""}><strong>{d.attention.length}</strong><span>deals con atención</span></a>
-            </nav>
-          </header>
-
-          {d.decisions.count > 0 && (
-            <Link href="/inbox" className="hero-decisions">
-              <Icon name="spark" /><span><strong>La IA tiene {d.decisions.count} propuesta{d.decisions.count === 1 ? "" : "s"}</strong> esperando tu decisión</span><span className="go">Revisar →</span>
-            </Link>
-          )}
-
-          {pendingTotal === 0 && (
-            <div className="hero-empty"><strong>Todo al día.</strong><span className="muted">No hay nada vencido ni para hoy, y ningún deal pide atención. Buen momento para prospectar.</span></div>
-          )}
-
-          {d.overdue.length > 0 && (
-            <div className="todo-group" id="vencidas">
-              <h3>Vencidas <span className="muted">{d.overdue.length}</span></h3>
-              <ul className="todo-list">
-                {d.overdue.slice(0, SHOW).map((i, n) => (
-                  <li key={n} className="todo bad">
-                    <span className="todo-dot" aria-hidden="true" />
-                    <div>{i.href ? <Link href={i.href}>{i.title}</Link> : i.title}
-                      <div className="meta">{[i.detail, i.at ? `vencía ${dateTime(i.at)}` : null].filter(Boolean).join(" · ")}</div></div>
-                  </li>
-                ))}
-              </ul>
-              {d.overdue.length > SHOW && <Link href="/activities?period=overdue" className="todo-more">Ver las {d.overdue.length} vencidas</Link>}
-            </div>
-          )}
-
-          {todayCount > 0 && (
-            <div className="todo-group" id="hoy">
-              <h3>Hoy <span className="muted">{todayCount}</span></h3>
-              <ul className="todo-list">
-                {d.agenda.map((i, n) => (
-                  <li key={`a${n}`} className="todo"><span className="todo-time">{time(i.at)}</span>
-                    <div>{i.href ? <Link href={i.href}>{i.title}</Link> : i.title}{i.detail && <div className="meta">{i.detail}</div>}</div></li>
-                ))}
-                {d.tasks.slice(0, SHOW).map((i, n) => (
-                  <li key={`t${n}`} className="todo"><span className="todo-dot" aria-hidden="true" />
-                    <div>{i.href ? <Link href={i.href}>{i.title}</Link> : i.title}{i.detail && <div className="meta">{i.detail}</div>}</div></li>
-                ))}
-              </ul>
-              {d.tasks.length > SHOW && <Link href="/activities?period=today" className="todo-more">Ver las {d.tasks.length} tareas de hoy</Link>}
-            </div>
-          )}
-
-          {d.attention.length > 0 && (
-            <div className="todo-group" id="atencion">
-              <h3>Deals que piden atención <span className="muted">{d.attention.length}</span></h3>
-              <ul className="todo-list">
-                {d.attention.slice(0, SHOW).map((a) => (
-                  <li key={a.deal.id} className={`todo ${a.step.priority === 1 ? "bad" : "warn"}`}>
-                    <span className="todo-dot" aria-hidden="true" />
-                    <div>
-                      <Link href={`/deals/${a.deal.id}`}><strong>{a.deal.title}</strong></Link> · {a.step.text}
-                      <div className="meta">{[a.step.why, a.deal.stage_name, money(a.deal.value, a.deal.currency), !ownerId ? a.deal.owner_name : null].filter(Boolean).join(" · ")}</div>
-                    </div>
-                    <span className={`badge ${a.step.priority === 1 ? "lost" : "warn"}`}>{a.step.priority === 1 ? "Urgente" : "Esta semana"}</span>
-                  </li>
-                ))}
-              </ul>
-              {d.attention.length > SHOW && <a href="#mas-atencion" className="todo-more">Ver los {d.attention.length} deals</a>}
-            </div>
-          )}
-        </section>
-
-        <section className="hero-pipeline" aria-label="Pipeline abierto">
-          <h2>Pipeline abierto</h2>
-          <Link href="/pipelines" className="hero-total"><strong>{money(d.pipeline.value)}</strong><span className="meta">{d.pipeline.count} deals abiertos</span></Link>
-          <ul className="pipe-list">
-            {pipelines.map((p) => (
-              <li key={p.id}>
-                <Link href={`/pipelines/${p.id}`}>
-                  <span className="pipe-name">{p.name}</span>
-                  <span className="pipe-value">{money(p.value)}</span>
-                  <span className="pipe-bar" aria-hidden="true"><i style={{ width: `${(p.value / maxPipe) * 100}%` }} /></span>
-                  <span className="meta">{p.count} deal{p.count === 1 ? "" : "s"}</span>
-                </Link>
-              </li>
-            ))}
-            {pipelines.length === 0 && <li className="muted">Sin deals abiertos.</li>}
-          </ul>
-        </section>
-      </div>
-
-      {/* Lo demás, al hacer scroll. */}
-      <h2 className="today-more-title">Para profundizar</h2>
-      <section className="panel today-focus" aria-label="Enfoque del día">
-        <div className="today-focus-head">
-          <h2><Icon name="spark" />Enfoque del día</h2>
-          <span className="meta">{d.focusSource === "ai" ? "Redactado por la IA" : "Según tus deals y tu agenda"}</span>
-          <span className="spacer" />
-          {aiReady(ai) && (
-            <ActionForm action={refreshFocusAction.bind(null, ownerId)} submitLabel={d.focusSource === "ai" ? "Rehacer con IA" : "Redactar con IA"} pendingLabel="Redactando…" secondary className="form inline" />
-          )}
-          {conn && <ActionForm action={sendDigestNowAction.bind(null, ownerId!)} submitLabel="Enviármelo por correo" pendingLabel="Enviando…" secondary className="form inline" />}
-        </div>
-        <p className="today-focus-text">{d.focus}</p>
+        <Ring value={today.done} total={today.total}>
+          <strong>{today.done}<small>/{today.total}</small></strong>
+          <span>hecho hoy</span>
+        </Ring>
       </section>
 
-      <div className="today-more">
-        {d.attention.length > 0 && (
-          <section className="panel" id="mas-atencion" aria-label="Deals que piden atención en detalle">
-            <h2>Deals que piden atención, en detalle <span className="muted">{d.attention.length}</span></h2>
-            <ol className="attention">
-              {d.attention.map((a, i) => (
-                <li key={a.deal.id} className={`p${a.step.priority}`}>
-                  <div className="attention-main">
-                    <Link href={`/deals/${a.deal.id}`} className="attention-title">{a.deal.title}</Link>
-                    <span className="meta">{[a.deal.organization_name, a.deal.stage_name, money(a.deal.value, a.deal.currency), a.deal.owner_name].filter(Boolean).join(" · ")}</span>
-                    <div className="attention-step"><strong>{a.step.text}</strong> <span className="muted">{a.step.why}</span></div>
-                    {i === 0 && top && (
-                      <details className="brief-why">
-                        <summary>Resumen del deal</summary>
-                        <div className="attention-brief">
-                          <p>{top.resumen}</p>
-                          {top.riesgos.length > 0 && <ul>{top.riesgos.map((r) => <li key={r}>{r}</li>)}</ul>}
-                        </div>
-                      </details>
-                    )}
-                  </div>
+      {/* Cifras clave */}
+      <section className="b-kpis" aria-label="Cifras clave">
+        <Link href="/pipelines" className="b-kpi k1">
+          <span className="b-kpi-label"><Icon name="deals" />Pipeline abierto</span>
+          <strong>{compact(d.pipeline.value)}</strong>
+          <span className="meta">{d.pipeline.count} deals en juego</span>
+        </Link>
+        <Link href="/reports" className="b-kpi k2">
+          <span className="b-kpi-label"><Icon name="rocket" />Ganado este mes</span>
+          <strong>{compact(won.month)}</strong>
+          <Delta now={won.month} before={won.prev} />
+          <Spark values={wonWeeks.map((w) => w.v)} label="Ganado por semana, últimas 12 semanas" />
+        </Link>
+        <Link href="/activities" className="b-kpi k3">
+          <span className="b-kpi-label"><Icon name="activities" />Actividades esta semana</span>
+          <strong>{thisWeek}</strong>
+          <Delta now={thisWeek} before={lastWeek} suffix="que la anterior" />
+          <Spark values={weeks.map((w) => w.reduce((a, x) => a + x.n, 0))} label="Actividades hechas por semana" />
+        </Link>
+        <Link href="/emails" className="b-kpi k4">
+          <span className="b-kpi-label"><Icon name="mail" />Correos (30 días)</span>
+          <strong>{pct(mail.opened, mail.sent)} %<small> abiertos</small></strong>
+          <span className="meta">{mail.sent} enviados · {pct(mail.replied, mail.sent)} % respondidos</span>
+          <span className="b-bar2" aria-hidden="true"><i style={{ width: `${pct(mail.opened, mail.sent)}%` }} /><i className="r" style={{ width: `${pct(mail.replied, mail.sent)}%` }} /></span>
+        </Link>
+      </section>
+
+      <div className="b-grid">
+        {/* Agenda del día */}
+        <section className="b-card b-day" aria-label="Tu día">
+          <header><h2>Tu día</h2>
+            <span className="b-chips">
+              {d.overdue.length > 0 && <Link href="/activities?period=overdue" className="b-chip bad">{d.overdue.length} vencidas</Link>}
+              <span className="b-chip">{d.agenda.length} reuniones</span>
+              <span className="b-chip">{d.tasks.length} tareas</span>
+            </span>
+          </header>
+          <div className="b-timeline" aria-hidden="true">
+            {[8, 10, 12, 14, 16, 18, 20].map((h) => <span key={h} className="tick" style={{ left: `${((h - 8) / 12) * 100}%` }}>{h}h</span>)}
+            {hour >= 8 && hour < 20 && <span className="now" style={{ left: `${nowPos}%` }} />}
+            {d.agenda.map((a, i) => <span key={i} className="ev" style={{ left: `${tl(a.at)}%` }} title={`${time(a.at)} ${a.title}`} />)}
+          </div>
+          <ul className="b-agenda">
+            {d.agenda.slice(0, 5).map((a, i) => (
+              <li key={`a${i}`}><span className="t">{time(a.at)}</span><span className="pip meet" />
+                <div>{a.href ? <Link href={a.href}>{a.title}</Link> : a.title}{a.detail && <div className="meta">{a.detail}</div>}</div></li>
+            ))}
+            {d.tasks.slice(0, Math.max(0, 6 - Math.min(5, d.agenda.length))).map((a, i) => (
+              <li key={`t${i}`}><span className="t">tarea</span><span className="pip" />
+                <div>{a.href ? <Link href={a.href}>{a.title}</Link> : a.title}{a.detail && <div className="meta">{a.detail}</div>}</div></li>
+            ))}
+            {d.agenda.length + d.tasks.length === 0 && <li className="b-empty">Agenda despejada. Buen día para abrir conversaciones nuevas.</li>}
+          </ul>
+          {d.decisions.count > 0 && (
+            <Link href="/inbox" className="b-ai"><Icon name="spark" /><span><strong>Decisiones pendientes: {d.decisions.count}</strong> · propuesta{d.decisions.count === 1 ? "" : "s"} de la IA esperando tu visto bueno</span><span className="go">→</span></Link>
+          )}
+        </section>
+
+        {/* Deals calientes y que piden atención */}
+        <section className="b-card b-hot" aria-label="Dónde poner el foco">
+          <header><h2>Dónde poner el foco</h2><Link href="/activities" className="meta">Ver actividades</Link></header>
+          {d.hotOpens.length > 0 && (
+            <>
+              <h3><span className="flame" aria-hidden="true">●</span>Calientes ahora</h3>
+              <ul className="b-hotlist">
+                {d.hotOpens.slice(0, 3).map((h, i) => (
+                  <li key={i}><Link href={h.href ?? "/emails"}>{h.title}</Link><div className="meta">{h.detail} · {time(h.at)}</div></li>
+                ))}
+              </ul>
+            </>
+          )}
+          <section aria-label="Deals que piden atención">
+          <h3><span className="warn" aria-hidden="true">●</span>Deals que piden atención</h3>
+          <ul className="b-attn">
+            {d.attention.map((a) => (
+              <li key={a.deal.id} className={a.step.priority === 1 ? "p1" : "p2"}>
+                <Link href={`/deals/${a.deal.id}`}><strong className="attention-title">{a.deal.title}</strong><span className="v">{money(a.deal.value, a.deal.currency)}</span></Link>
+                <div className="meta" title={a.step.why}>{a.step.text}{a.deal.stage_name ? ` · ${a.deal.stage_name}` : ""}</div>
+              </li>
+            ))}
+            {d.attention.length === 0 && <li className="b-empty">Ningún deal pide atención.</li>}
+          </ul>
+          </section>
+        </section>
+
+        {/* Embudo por pipeline */}
+        <section className="b-card b-funnels" aria-label="Embudos">
+          <header><h2>Embudo abierto</h2><Link href="/pipelines" className="meta">Abrir tablero</Link></header>
+          {pipes.length === 0 && <p className="b-empty">Sin deals abiertos.</p>}
+          <div className="b-funnel-wrap">
+            {pipes.slice(0, PIPES).map((p, pi) => {
+              const maxN = Math.max(1, ...p.stages.map((s) => s.n));
+              return (
+                <div key={p.id} className="b-funnel">
+                  <Link href={`/pipelines/${p.id}`} className="b-funnel-name">{p.name}<span className="meta">{compact(p.stages.reduce((a, s) => a + s.v, 0))}</span></Link>
+                  {p.stages.map((s, si) => (
+                    <div key={si} className={s.n ? "b-stage" : "b-stage zero"} title={`${s.stage}: ${s.n} deals · ${money(s.v)}`}>
+                      <span className="nm">{s.stage}</span>
+                      <span className="bar"><i className={`s${(pi % 4) + 1}`} style={{ width: `${Math.max(s.n ? 6 : 0, (s.n / maxN) * 100)}%`, opacity: 0.55 + 0.45 * ((si + 1) / p.stages.length) }} /></span>
+                      <span className="n">{s.n}</span>
+                      <span className="v">{s.v ? compact(s.v) : ""}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          {pipes.length > PIPES && <Link href="/pipelines" className="b-more">Ver los {pipes.length} pipelines →</Link>}
+        </section>
+
+        {/* Ritmo: mapa de calor */}
+        <section className="b-card b-heat" aria-label="Ritmo de las últimas 12 semanas">
+          <header><h2>Ritmo</h2><span className="meta">actividades hechas, últimas 12 semanas</span></header>
+          <div className="b-heatmap" role="img" aria-label={`Actividades hechas por día. Esta semana: ${thisWeek}.`}>
+            <div className="days" aria-hidden="true">{["L", "", "X", "", "V", "", "D"].map((x, i) => <span key={i}>{x}</span>)}</div>
+            {weeks.map((w, wi) => (
+              <div key={wi} className="col">
+                {w.map((x) => {
+                  const lvl = x.n === 0 ? 0 : Math.min(4, Math.ceil((x.n / maxDay) * 4));
+                  return <span key={x.day} className={`c l${lvl}${x.day === todayKey ? " today" : ""}${x.day > todayKey ? " future" : ""}`} title={`${x.day}: ${x.n} actividades`} />;
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="b-legend" aria-hidden="true"><span>menos</span>{[0, 1, 2, 3, 4].map((l) => <span key={l} className={`c l${l}`} />)}<span>más</span></div>
+        </section>
+
+        {/* Ranking del mes */}
+        <section className="b-card b-board" aria-label="Ganado este mes por persona">
+          <header><h2>Ganado este mes</h2><span className="meta">{won.n} deal{won.n === 1 ? "" : "s"}</span></header>
+          <ol className="b-podium">
+            {board.map((b, i) => (
+              <li key={b.id} className={ownerId === b.id ? "me" : undefined}>
+                <span className={`pos p${i + 1}`}>{i + 1}</span>
+                <span className="b-av">{initials(b.name)}</span>
+                <span className="who">{b.name}<span className="bar"><i style={{ width: `${(b.v / maxBoard) * 100}%` }} /></span></span>
+                <span className="v">{b.v ? compact(b.v) : "—"}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Últimas victorias */}
+        <section className="b-card b-wins" aria-label="Últimas victorias">
+          <header><h2>Últimas victorias</h2></header>
+          {recentWins.length === 0 ? <p className="b-empty">Aún no hay victorias este mes. La primera está cerca.</p> : (
+            <ul>
+              {recentWins.map((w) => (
+                <li key={w.id}>
+                  <span className="trophy" aria-hidden="true"><Icon name="check" /></span>
+                  <div><Link href={`/deals/${w.id}`}>{w.title}</Link><div className="meta">{w.owner ?? "Sin responsable"} · {new Intl.DateTimeFormat("es-ES", { timeZone: TZ, day: "numeric", month: "short" }).format(new Date(w.won_at))}</div></div>
+                  <strong>{money(w.value, w.currency)}</strong>
                 </li>
               ))}
-            </ol>
-          </section>
-        )}
-        <div className="today-col">
-          {(d.movers.length > 0 || d.hotOpens.length > 0) && (
-            <section className="panel" aria-label="Señales">
-              <h2>Señales <span className="muted">desde ayer</span></h2>
-              {d.movers.length > 0 && (
-                <ul className="today-list movers">
-                  {d.movers.map((m) => (
-                    <li key={m.id}>
-                      <HealthBadge score={m.score} compact />
-                      <Link href={`/deals/${m.id}`}>{m.title}</Link>
-                      <span className={m.score < m.before ? "tone-bad" : "tone-good"}> {m.score < m.before ? "▼" : "▲"} {Math.abs(m.score - m.before)}</span>
-                      {m.why && <span className="meta"> · {m.why}</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {d.hotOpens.length > 0 && <><h3 className="meta" style={{ margin: "10px 0 4px" }}>Abiertos sin responder: buen momento para llamar</h3><List items={d.hotOpens} empty="" /></>}
-            </section>
+            </ul>
           )}
-          <section className="panel" aria-label="Lo que hizo la IA">
-            <h2>Lo que hizo la IA <span className="muted">últimas 24 h</span></h2>
-            {d.agents.length > 0 && <p className="meta" style={{ marginTop: 0 }}>{d.agents.map((a) => `${a.name}: ${a.done}${a.pending ? ` (+${a.pending} por decidir)` : ""}`).join(" · ")} · <Link href="/agents">Ver agentes</Link></p>}
-            <List items={d.aiDone.items} empty="Nada en las últimas 24 horas." />
-            {d.aiDone.count > d.aiDone.items.length && <Link href="/inbox?view=log" className="meta">Ver las {d.aiDone.count}</Link>}
-          </section>
-          <section className="panel" aria-label="Novedades">
-            <h2>Novedades <span className="muted">últimas 24 h</span></h2>
-            <List items={[...d.closed, ...d.leads.items]} empty="Sin leads nuevos ni cierres." />
-            {d.leads.count > d.leads.items.length && <Link href="/leads" className="meta">Ver los {d.leads.count} leads</Link>}
-          </section>
-        </div>
+        </section>
+
+        {/* Lo de las últimas 24 h */}
+        <section className="b-card b-third" aria-label="Señales">
+          <header><h2>Salud de los deals</h2><span className="meta">cambios desde ayer</span></header>
+          {d.movers.length === 0 ? <p className="b-empty">Sin cambios importantes desde ayer.</p> : (
+            <ul className="b-feed">
+              {d.movers.map((m) => (
+                <li key={m.id}>
+                  <HealthBadge score={m.score} compact />
+                  <div><Link href={`/deals/${m.id}`}>{m.title}</Link>{m.why && <div className="meta">{m.why}</div>}</div>
+                  <span className={m.score < m.before ? "tone-bad" : "tone-good"}>{m.score < m.before ? "▼" : "▲"} {Math.abs(m.score - m.before)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section className="b-card b-third" aria-label="Lo que hizo la IA">
+          <header><h2>Lo que hizo la IA</h2><span className="meta">últimas 24 h</span></header>
+          {d.agents.length > 0 && <p className="meta b-agents">{d.agents.map((a) => `${a.name}: ${a.done}${a.pending ? ` (+${a.pending} por decidir)` : ""}`).join(" · ")} · <Link href="/agents">Ver agentes</Link></p>}
+          {d.aiDone.items.length === 0 ? <p className="b-empty">Nada en las últimas 24 horas.</p> : (
+            <ul className="b-feed">
+              {d.aiDone.items.map((x, i) => (
+                <li key={i}><span className="b-dot ai" aria-hidden="true" /><div>{x.href ? <Link href={x.href}>{x.title}</Link> : x.title}<div className="meta">{x.detail}</div></div></li>
+              ))}
+            </ul>
+          )}
+          {d.aiDone.count > d.aiDone.items.length && <Link href="/inbox?view=log" className="b-more">Ver las {d.aiDone.count} →</Link>}
+        </section>
+        <section className="b-card b-third" aria-label="Novedades">
+          <header><h2>Novedades</h2><span className="meta">últimas 24 h</span></header>
+          {d.closed.length + d.leads.items.length === 0 ? <p className="b-empty">Sin leads nuevos ni cierres.</p> : (
+            <ul className="b-feed">
+              {[...d.closed, ...d.leads.items].map((x, i) => (
+                <li key={i}><span className={`b-dot ${x.tone ?? "lead"}`} aria-hidden="true" /><div>{x.href ? <Link href={x.href}>{x.title}</Link> : x.title}{x.detail && <div className="meta">{x.detail}</div>}</div></li>
+              ))}
+            </ul>
+          )}
+          {d.leads.count > d.leads.items.length && <Link href="/leads" className="b-more">Ver los {d.leads.count} leads →</Link>}
+        </section>
       </div>
     </main>
   );
