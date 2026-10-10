@@ -626,7 +626,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               {closePlan?.shared && <p className="meta" style={{ marginTop: 0 }}>El cliente lo ve (sin poder cambiarlo) en <code>{closePlanUrl(closePlan.token)}</code></p>}
               {(!closePlan || closePlan.steps.length === 0) && (
                 <div className="next-prompt">
-                  <p><strong>¿Qué falta para la firma?</strong> <span className="muted">Pasos con fecha y responsable, acordados con el cliente: así nada se para en compras o en legal.</span></p>
+                  <p className="meta" style={{ margin: 0 }} title="Pasos con fecha y responsable, acordados con el cliente: así nada se para en compras o en legal.">¿Qué falta para la firma? Pasos con fecha y responsable acordados con el cliente.</p>
                   {isOpen && <ActionForm action={generatePlanAction.bind(null, dealId, back)} submitLabel="Crear un plan de partida" pendingLabel="Creando…" secondary className="form inline" />}
                 </div>
               )}

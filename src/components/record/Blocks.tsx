@@ -31,7 +31,7 @@ export function FollowersBlock({ type, id, followers, me, users, back }: {
   return (
     <section className="side-section" aria-label="Seguidores">
       <div className="side-head">
-        <h3>Seguidores <span className="muted">{followers.length}</span></h3>
+        <h3 title="Quien sigue recibe avisos de lo importante: respuestas, cambios, notas, archivos…">Seguidores <span className="muted">{followers.length}</span></h3>
         <form action={followAction.bind(null, type, id, !following, back)}>
           <button type="submit" className={following ? "btn secondary small" : "btn small"}>{following ? "Dejar de seguir" : "Seguir"}</button>
         </form>
@@ -58,7 +58,6 @@ export function FollowersBlock({ type, id, followers, me, users, back }: {
           </ActionForm>
         </details>
       )}
-      <p className="meta" style={{ margin: "6px 0 0" }}>Quien sigue recibe avisos de lo importante: respuestas, cambios, notas, archivos…</p>
     </section>
   );
 }
