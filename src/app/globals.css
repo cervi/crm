@@ -1693,3 +1693,6 @@ tr.row-muted td { color: var(--muted); }
   .quick-done { position: relative; }
   .quick-done::after { content: ""; position: absolute; inset: -11px; }
 }
+.drawer-body { overflow-x: hidden; }
+.drawer-body .form, .drawer-body .field { min-width: 0; }
+.users-table .cell-main strong, .accounts-table .cell-main strong { white-space: nowrap; }
