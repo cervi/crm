@@ -18,6 +18,7 @@
   --border: #dfe3e9;
   --border-strong: #c9d0d9;
   --control-border: #d7dce3;
+  --btn-border: #edf0f3;
   --accent: #1f5fd6;
   --accent-hover: #1a52bb;
   --accent-text: #ffffff;
@@ -53,6 +54,7 @@
     --border: #252c38;
     --border-strong: #323a48;
     --control-border: #2c3441;
+    --btn-border: #20262f;
     --accent: #7ea6f6;
     --accent-hover: #97b7f8;
     --accent-text: #0f131a;
@@ -83,6 +85,7 @@
   --border: #252c38;
   --border-strong: #323a48;
   --control-border: #2c3441;
+  --btn-border: #20262f;
   --accent: #7ea6f6;
   --accent-hover: #97b7f8;
   --accent-text: #0f131a;
@@ -316,8 +319,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .btn:hover, a.btn:hover { background: var(--accent-hover); text-decoration: none; }
 .btn svg { width: 16px; height: 16px; stroke: currentColor; }
 .btn:disabled { opacity: .55; cursor: default; }
-.btn.secondary, a.btn.secondary { background: var(--panel); color: var(--text); border-color: var(--control-border); box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
-.btn.secondary:hover, a.btn.secondary:hover { background: var(--panel-2); border-color: var(--border-strong); }
+.btn.secondary, a.btn.secondary { background: var(--panel); color: var(--text); border-color: var(--btn-border); box-shadow: 0 1px 1px rgba(16, 24, 40, .03); }
+.btn.secondary:hover, a.btn.secondary:hover { background: var(--panel-2); border-color: var(--control-border); }
+/* Los desplegables se ven como botones: mismo borde casi invisible. */
+select:not([multiple]):not([size]) { border-color: var(--btn-border); box-shadow: 0 1px 1px rgba(16, 24, 40, .03); }
+select:not([multiple]):not([size]):hover { border-color: var(--control-border); }
+select:not([multiple]):not([size]):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .btn.danger { background: var(--bad); color: var(--accent-text); }
 .btn.danger:hover { filter: brightness(1.06); background: var(--bad); }
 .btn.good { background: var(--good); color: var(--accent-text); }
