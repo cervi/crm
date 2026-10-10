@@ -51,7 +51,7 @@ export type Provider = {
   refresh(refreshToken: string): Promise<Tokens>;
   profile(c: ApiClient): Promise<{ email: string; displayName: string | null; scheduling: Partial<Scheduling> }>;
   /** Envía un correo; con `html`, va también en HTML (con el texto como alternativa donde se pueda). */
-  send(c: ApiClient, v: { from: string; to: { email: string; name?: string | null }; subject: string; body: string; html?: string }): Promise<{ ref: string }>;
+  send(c: ApiClient, v: { from: string; to: { email: string; name?: string | null }; subject: string; body: string; html?: string; attachments?: MailAttachment[] }): Promise<{ ref: string }>;
   messages(c: ApiClient, since: Date, own: string): Promise<MailMessage[]>;
   events(c: ApiClient, from: Date, to: Date, own: string, timezone: string): Promise<CalendarEvent[]>;
   createEvent(c: ApiClient, v: {
@@ -59,3 +59,6 @@ export type Provider = {
   }): Promise<{ ref: string; joinUrl: string | null }>;
   searchFiles(c: ApiClient, query: string): Promise<DriveFile[]>;
 };
+
+/** Adjunto de un correo (p. ej. el contrato firmado). */
+export type MailAttachment = { name: string; mime: string; data: Uint8Array };

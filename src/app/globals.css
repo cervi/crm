@@ -2039,3 +2039,144 @@ kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; 
   .next-step-pop { bottom: 12px; }
   .next-step .btn.small { min-height: 44px; padding: 0 14px; }
 }
+
+/* ======================================================= Firma electrónica */
+.sf.c1, .who.c1, .signer-list li.c1, .review-signers li.c1, .signer-dot.c1, .fbtn.c1 { --sc: var(--series-1); }
+.sf.c2, .who.c2, .signer-list li.c2, .review-signers li.c2, .signer-dot.c2, .fbtn.c2 { --sc: var(--series-2); }
+.sf.c3, .who.c3, .signer-list li.c3, .review-signers li.c3, .signer-dot.c3, .fbtn.c3 { --sc: var(--series-3); }
+.sf.c4, .who.c4, .signer-list li.c4, .review-signers li.c4, .signer-dot.c4, .fbtn.c4 { --sc: var(--series-4); }
+.sf.c5, .who.c5, .signer-list li.c5, .review-signers li.c5, .signer-dot.c5, .fbtn.c5 { --sc: var(--series-5); }
+.sf.c6, .who.c6, .signer-list li.c6, .review-signers li.c6, .signer-dot.c6, .fbtn.c6 { --sc: var(--series-6); }
+.sf.c7, .who.c7, .signer-list li.c7, .review-signers li.c7, .signer-dot.c7, .fbtn.c7 { --sc: var(--series-7); }
+.sf.c8, .who.c8, .signer-list li.c8, .review-signers li.c8, .signer-dot.c8, .fbtn.c8 { --sc: var(--series-8); }
+
+/* Páginas del PDF */
+.pdf-pages { display: grid; gap: 18px; justify-items: center; }
+.pdf-page { position: relative; width: 100%; max-width: 900px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 6px 20px -8px rgba(0,0,0,.18); border-radius: 2px; }
+.pdf-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pdf-overlay { position: absolute; inset: 0; }
+.pdf-loading { text-align: center; }
+
+/* Campo sobre el documento */
+.sf { position: absolute; display: grid; place-items: center; border-radius: 3px; font: 600 11px/1.2 var(--font, inherit); color: #1b2333;
+  background: color-mix(in srgb, var(--sc, var(--series-1)) 16%, transparent); border: 1.5px dashed var(--sc, var(--series-1)); overflow: hidden; }
+.sf img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.sf-label { pointer-events: none; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sf-label em { font-style: normal; font-weight: 500; opacity: .75; }
+.sf-edit { cursor: move; touch-action: none; user-select: none; }
+.sf-edit.selected { border-style: solid; box-shadow: 0 0 0 2px color-mix(in srgb, var(--sc) 35%, transparent); z-index: 2; }
+.sf-handle { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--sc); cursor: nwse-resize; border-radius: 2px 0 2px 0; }
+.sign-doc.placing .pdf-page { cursor: crosshair; }
+.sf-sign.other { opacity: .85; }
+.sf-sign.other.filled { background: transparent; border-color: transparent; }
+.sf-sign.mine { cursor: pointer; border-style: solid; }
+.sf-sign.mine.todo { animation: sf-pulse 1.8s ease-in-out infinite; }
+.sf-sign.mine.filled { background: transparent; border-color: color-mix(in srgb, var(--sc) 40%, transparent); }
+.sf-sign input { width: 100%; height: 100%; border: 0; background: transparent; font: 500 13px/1 inherit; color: #141a2e; padding: 0 4px; min-height: 0; border-radius: 0; box-shadow: none; }
+.sf-sign input:focus { outline: 2px solid var(--sc); outline-offset: 1px; }
+.sf-ph { font-weight: 600; color: color-mix(in srgb, var(--sc) 70%, #1b2333); padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-text { font-weight: 500; font-size: 12.5px; color: #141a2e; padding: 0 4px; justify-self: start; white-space: nowrap; overflow: hidden; }
+.sf-check { font-size: 13px; font-weight: 800; color: #141a2e; }
+button.sf { padding: 0; min-height: 0; }
+@keyframes sf-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--sc) 25%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .sf-sign.mine.todo { animation: none; } }
+
+/* Editor: pasos */
+.sign-steps { list-style: none; padding: 0; margin: 0 0 18px; display: flex; gap: 6px; flex-wrap: wrap; }
+.sign-steps button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); font-weight: 600; color: var(--muted); cursor: pointer; }
+.sign-steps button[aria-current="step"] { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+.sign-steps button.done { color: var(--text); }
+.sign-steps .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--sunken); font-size: 12px; }
+.sign-steps button[aria-current="step"] .n { background: var(--accent); color: var(--accent-text); }
+.sign-steps .n svg { width: 13px; height: 13px; }
+.sign-setup { display: grid; gap: 16px; max-width: 900px; }
+.sign-setup .panel h2 { margin-top: 0; }
+.sign-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.sign-head h2 { margin: 0; }
+.signer-list { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
+.signer-list li { display: grid; grid-template-columns: 26px auto 1fr 1.2fr 150px auto; gap: 10px; align-items: end; padding: 10px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); border-left: 4px solid var(--sc); }
+.signer-n { font-weight: 800; color: var(--sc); align-self: center; text-align: center; }
+.signer-list .order-btns { display: grid; gap: 2px; align-self: center; }
+.signer-list li:not(:has(.order-btns)) { grid-template-columns: 26px 1fr 1.2fr 150px auto; }
+.signer-list .icon-btn { align-self: center; }
+.add-signer-menu { display: grid; gap: 2px; max-width: 520px; padding: 6px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); box-shadow: var(--shadow-pop); }
+.add-signer-menu button[role=menuitem] { display: flex; align-items: baseline; gap: 8px; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: var(--r-sm); cursor: pointer; color: var(--text); font: inherit; }
+.add-signer-menu button[role=menuitem]:hover { background: var(--sunken); }
+.add-signer-menu svg { width: 14px; height: 14px; align-self: center; }
+.sign-options { display: grid; gap: 12px; }
+.inline-field { display: flex !important; align-items: center; gap: 10px; }
+.inline-field select { width: auto; }
+.sign-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 6px; }
+.sign-foot.sticky { position: sticky; bottom: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px);
+  padding: 12px 0; border-top: 1px solid var(--border); grid-column: 1 / -1; }
+.sign-foot .meta { flex: 1; text-align: center; }
+
+/* Editor: campos */
+.sign-fields { display: grid; grid-template-columns: 260px 1fr; gap: 20px; align-items: start; }
+.sign-palette { position: sticky; top: 76px; display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); padding: 14px; max-height: calc(100vh - 160px); overflow: auto; }
+.sign-palette h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 8px 0 2px; }
+.sign-palette h3:first-child { margin-top: 0; }
+.who-list { display: grid; gap: 4px; }
+.who { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel); cursor: pointer; text-align: left; font: inherit; color: var(--text); }
+.who[aria-checked="true"] { border-color: var(--sc); background: color-mix(in srgb, var(--sc) 10%, var(--panel)); font-weight: 600; }
+.who .dot, .review-signers .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--sc); flex: none; display: inline-block; }
+.who .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.field-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fbtn { display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--sc); background: color-mix(in srgb, var(--sc) 8%, var(--panel)); cursor: pointer; font: 600 13px/1.2 inherit; color: var(--text); }
+.fbtn svg { width: 15px; height: 15px; stroke: var(--sc); }
+.fbtn.on { background: var(--sc); color: #fff; border-style: solid; }
+.fbtn.on svg { stroke: #fff; }
+.palette-hint { margin: 2px 0; }
+.field-props { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; display: grid; gap: 8px; }
+.save-state { margin: 4px 0 0; } .save-state.error { color: var(--bad); }
+.sign-doc { min-width: 0; padding-bottom: 20px; }
+@media (max-width: 900px) {
+  .sign-fields { grid-template-columns: 1fr; }
+  .sign-palette { position: static; max-height: none; }
+  .signer-list li, .signer-list li:not(:has(.order-btns)) { grid-template-columns: 1fr; }
+}
+
+/* Editor: revisar */
+.sign-review { display: grid; gap: 16px; max-width: 820px; }
+.review-signers { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.review-signers li { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-left: 4px solid var(--sc); border-radius: var(--r-sm); }
+.mail-preview { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 14px 16px; background: var(--panel-2); }
+
+/* Estado */
+.signer-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--sc); margin-right: 8px; vertical-align: 1px; }
+.sign-status-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 16px; }
+.sign-status-grid .pdf-page { max-width: 640px; }
+.audit-list { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; font-size: 13.5px; }
+.audit-list li { display: grid; grid-template-columns: 128px 1fr; gap: 10px; }
+.audit-list li.k-signed strong, .audit-list li.k-completed strong { color: var(--good); }
+.audit-list li.k-declined strong, .audit-list li.k-error strong, .audit-list li.k-expired strong { color: var(--bad); }
+code.hash { font-size: 11px; word-break: break-all; }
+@media (max-width: 1000px) { .sign-status-grid { grid-template-columns: 1fr; } }
+
+/* Página pública de firma */
+.bare:has(.sign-public) { place-items: start stretch; padding: 0; }
+.sign-public { width: 100%; }
+.sign-msg { max-width: 560px; margin: 12vh auto; padding: 0 20px; text-align: center; }
+.sign-msg h1 { margin: 6px 0 10px; }
+.signer-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border); box-shadow: var(--shadow); }
+.signer-title { display: grid; min-width: 0; }
+.signer-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.signer-actions { display: flex; gap: 8px; align-items: center; }
+.signer-actions .btn[aria-disabled="true"] { opacity: .55; }
+.signer-more { position: relative; }
+.signer-menu { left: auto; right: 0; top: calc(100% + 6px); bottom: auto; }
+.signer-doc { padding: 24px 16px 60px; background: var(--sunken); min-height: calc(100vh - 64px); }
+.sign-pad .pad-canvas { width: 100%; height: 180px; border: 1px dashed var(--border); border-radius: var(--r-sm); background: #fff; touch-action: none; cursor: crosshair; display: block; margin-top: 12px; }
+.pad-row { display: flex; justify-content: space-between; margin-top: 6px; }
+.type-options { display: grid; gap: 6px; margin-top: 10px; }
+.type-options button { padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--r-sm); background: #fff; color: #141a2e; font-size: 30px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.type-options button.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.consent { align-items: flex-start; line-height: 1.45; }
+.code-box { margin-top: 14px; }
+@media (max-width: 640px) {
+  .signer-bar { padding: 10px 12px; }
+  .signer-actions .btn { min-height: 44px; }
+  .signer-doc { padding: 12px 6px 60px; }
+}

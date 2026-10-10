@@ -8,6 +8,7 @@ import { UserError } from "./errors";
 import { isSessionType } from "./format";
 import { PROVIDERS, ProviderError, providerMessage, type Provider, type ProviderKey, type Tokens } from "./integrations";
 import { apiClient, type ApiClient } from "./integrations/http";
+import type { MailAttachment } from "./integrations/types";
 import { DEFAULT_SCHEDULING, formatSlots, freeSlots, NO_SLOTS_TEXT, normalizeScheduling, type Interval, type Scheduling } from "./slots";
 
 // ===========================================================================
@@ -238,8 +239,10 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
 }
 
 /** Envía un correo sin registrarlo en ningún deal (p. ej. el parte del día a uno mismo). */
-export async function sendPlainEmail(conn: Connection, to: string, subject: string, body: string, html?: string | null) {
-  await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: { email: to }, subject, body, html: html ? trackHtmlLinks(html, null, null) : undefined }));
+export async function sendPlainEmail(conn: Connection, to: string, subject: string, body: string, html?: string | null,
+                                     opts: { toName?: string | null; attachments?: MailAttachment[] } = {}) {
+  await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: { email: to, name: opts.toName ?? null }, subject, body,
+                                            html: html ? trackHtmlLinks(html, null, null) : undefined, attachments: opts.attachments }));
 }
 
 type ActivityRow = {

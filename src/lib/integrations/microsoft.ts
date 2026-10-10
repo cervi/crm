@@ -103,6 +103,9 @@ export const microsoft: Provider = {
         subject: v.subject,
         body: v.html ? { contentType: "HTML", content: v.html } : { contentType: "Text", content: v.body },
         toRecipients: [{ emailAddress: { address: v.to.email, name: v.to.name ?? undefined } }],
+        ...(v.attachments?.length ? { attachments: v.attachments.map((a) => ({
+          "@odata.type": "#microsoft.graph.fileAttachment", name: a.name, contentType: a.mime, contentBytes: Buffer.from(a.data).toString("base64"),
+        })) } : {}),
       },
     });
     await c.call(`${GRAPH()}/me/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });

@@ -17,6 +17,7 @@ import { refreshStaleBriefs } from "./briefs";
 import { zonedToUtc } from "./slots";
 import { getDigestSettings, sendDueDigests } from "./digest";
 import { sendNotificationMail } from "./notification-mail";
+import { runEsignJobs } from "./esign";
 import { applyExtraction, extractionFor } from "./deal-agent";
 import { bookingPageLink } from "./booking";
 
@@ -1396,6 +1397,8 @@ export async function runAutomations(): Promise<RunResult> {
       }
       // El parte del día sale aunque la IA esté en pausa: es información, no una acción.
       result.digests = await sendDueDigests().catch((err) => { console.error("[parte del día]", err); return 0; });
+      // Firmas: caducar, recordatorios automáticos y avisos de lo que lleva días esperando.
+      await runEsignJobs().catch((err) => console.error("[firmas]", err));
       // Avisos por correo (al momento o agrupados), resúmenes semanales y correos sin respuesta.
       result.notices = await getDigestSettings().then((s) => sendNotificationMail(new Date(), s.hour))
         .catch((err) => { console.error("[avisos por correo]", err); return 0; });

@@ -9,7 +9,7 @@ import { UserError } from "./errors";
 
 export const CATEGORIES = {
   replies: { label: "Clientes que responden o reservan", hint: "Te responden un correo, reservan una reunión, abren tu correo varias veces.", def: "now" },
-  proposals: { label: "Propuestas", hint: "El cliente abre, acepta o rechaza una propuesta.", def: "now" },
+  proposals: { label: "Propuestas y contratos", hint: "El cliente abre, acepta o rechaza una propuesta; alguien firma, rechaza o deja esperando un contrato.", def: "now" },
   assigned: { label: "Te asignan algo", hint: "Un deal o un lead nuevo pasa a ser tuyo.", def: "digest" },
   mentions: { label: "Menciones", hint: "Alguien te menciona con @ en una nota.", def: "now" },
   following: { label: "Deals que sigues", hint: "Cambios de fase, notas, archivos y salud de deals y cuentas que sigues.", def: "app" },
@@ -34,7 +34,7 @@ export type NotificationPrefs = {
 
 export function categoryOf(kind: string): Category {
   if (/^(email\.(received|opened|reopened)|deal\.booked)$/.test(kind)) return "replies";
-  if (kind.startsWith("proposal.")) return "proposals";
+  if (kind.startsWith("proposal.") || kind.startsWith("sign.")) return "proposals";
   if (kind === "assigned") return "assigned";
   if (kind === "mention") return "mentions";
   if (["discount", "campaign", "sequence", "meeting_prep", "no_reply"].includes(kind)) return kind === "no_reply" ? "replies" : "ai";

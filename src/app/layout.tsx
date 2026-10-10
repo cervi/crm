@@ -35,7 +35,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Entrada y puesta en marcha: sin menú ni barra superior.
   const path = (await headers()).get("x-pathname") ?? "";
   const user = await currentUser().catch(() => null);
-  if (!user || /^\/(login|setup|book|f|t|p)(\/|$|\?)/.test(path)) {
+  if (!user || /^\/(login|setup|book|f|t|p|firma)(\/|$|\?)/.test(path)) {
     return (
       <html lang="es" data-theme={dataTheme} suppressHydrationWarning>
         <body><div className="bare">{children}</div></body>

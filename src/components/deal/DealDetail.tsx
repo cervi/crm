@@ -35,6 +35,7 @@ import { ProposalCard } from "../ai/ProposalCard";
 import { Icon } from "../Icon";
 import { ComposerTabs, EmailComposerFields, PanelControls } from "./DealClient";
 import { NextStepPrompt } from "../activities/NextStepPrompt";
+import { DealSignSection } from "../esign/DealSignSection";
 import { HistoryFeed } from "@/components/record/HistoryFeed";
 import { CallForm, FilesPanel, FollowersBlock, TagsBlock } from "@/components/record/Blocks";
 import { buildHistory } from "@/lib/history";
@@ -302,6 +303,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               <Link href={`/deals/${dealId}/edit`} className="meta">Rellenar campos</Link>
             </details>
           )}
+
+          <DealSignSection dealId={dealId} />
 
           <details className="side-section" aria-label="Documentos" open={documents.length > 0}>
             <summary><h3>Documentos</h3><span className="meta">{documents.length}</span></summary>
