@@ -2250,3 +2250,11 @@ button.sf-sign.mine { overflow: visible; }
 .save-block { display: inline-flex; align-items: center; gap: 10px; }
 .lib-share { display: grid; gap: 6px; margin-bottom: 8px; }
 .lib-share select { width: 100%; }
+
+/* Reuniones grabadas */
+.card-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.card-list > li.panel { margin: 0; }
+.row-between { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.steps-list { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.card-list .row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

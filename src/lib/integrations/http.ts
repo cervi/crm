@@ -50,6 +50,8 @@ export async function tokenRequest(provider: string, url: string, body: Record<s
 
 export type ApiClient = {
   call<T>(url: string, init?: RequestInit & { json?: unknown }): Promise<T>;
+  /** Igual que `call`, pero devuelve el cuerpo como texto (p. ej. un documento exportado). */
+  text?(url: string): Promise<string>;
 };
 
 /**
@@ -85,9 +87,10 @@ export function apiClient(opts: {
       throw new ProviderError(e?.message ?? `respondió ${res.status}`, opts.provider, String(e?.status ?? e?.code ?? ""), res.status);
     }
     if (res.status === 202 || res.status === 204) return undefined as T;
+    if ((init as { raw?: boolean }).raw) return (await res.text()) as T;
     return (await res.json()) as T;
   }
-  return { call };
+  return { call, text: (url: string) => call<string>(url, { raw: true } as RequestInit) };
 }
 
 /** Emails dentro de una cabecera como «Ana <ana@x.com>, b@y.com». */

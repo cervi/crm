@@ -22,6 +22,8 @@ export type CalendarEvent = {
   online: boolean;
   joinUrl: string | null;
   emails: string[];       // asistentes y organizador, en minúsculas
+  /** Documentos adjuntos al evento (p. ej. las notas de Gemini o la transcripción de Meet). */
+  attachments?: { id: string; title: string; mimeType: string; url: string }[];
 };
 
 /** Archivo del almacenamiento (Drive / OneDrive). */
@@ -54,6 +56,8 @@ export type Provider = {
   /** Envía un correo; con `html`, va también en HTML (con el texto como alternativa donde se pueda). */
   send(c: ApiClient, v: { from: string; to: { email: string; name?: string | null }; subject: string; body: string; html?: string; attachments?: MailAttachment[] }): Promise<{ ref: string }>;
   messages(c: ApiClient, since: Date, own: string): Promise<MailMessage[]>;
+  /** Texto de un documento del almacenamiento (las notas de una reunión). */
+  docText?(c: ApiClient, fileId: string): Promise<string>;
   events(c: ApiClient, from: Date, to: Date, own: string, timezone: string): Promise<CalendarEvent[]>;
   createEvent(c: ApiClient, v: {
     subject: string; start: Date; end: Date; attendees: { email: string; name?: string | null }[]; online: boolean; body?: string | null;

@@ -7,7 +7,7 @@ type Option = { id: string; label: string; hint?: string | null };
 type Props = {
   name: string;
   /** Tipo de entidad que se busca en /api/lookup. */
-  type: "organizations" | "persons";
+  type: "organizations" | "persons" | "deals" | "leads";
   label: string;
   initial?: Option | null;
   required?: boolean;

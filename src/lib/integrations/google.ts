@@ -18,7 +18,8 @@ export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.settings.readonly",
-  "https://www.googleapis.com/auth/drive.metadata.readonly",
+  // Leer (solo leer) Drive: buscar documentos y, tras cada Meet, las notas de Gemini y la transcripción.
+  "https://www.googleapis.com/auth/drive.readonly",
 ];
 
 const AUTH_URL = () => process.env.GOOGLE_AUTH_URL ?? "https://accounts.google.com/o/oauth2/v2/auth";
@@ -73,6 +74,7 @@ type GEvent = {
   attendees?: { email?: string; self?: boolean; responseStatus?: string }[];
   organizer?: { email?: string };
   conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[] };
+  attachments?: { fileId?: string; title?: string; mimeType?: string; fileUrl?: string }[];
 };
 
 export const google: Provider = {
@@ -113,6 +115,11 @@ export const google: Provider = {
   async send(c, v) {
     const res = await c.call<{ id: string }>(`${GMAIL()}/messages/send`, { method: "POST", json: { raw: rawEmail(v) } });
     return { ref: `gmail:${res.id}` };
+  },
+
+  async docText(c, fileId) {
+    const t = await c.text!(`${DRIVE()}/files/${encodeURIComponent(fileId)}/export?mimeType=text%2Fplain`);
+    return String(t ?? "");
   },
 
   async messages(c, since) {
@@ -178,6 +185,7 @@ export const google: Provider = {
         online: Boolean(joinUrl),
         joinUrl,
         emails: [...(e.attendees ?? []).map((a) => a.email ?? ""), e.organizer?.email ?? ""].map((x) => x.toLowerCase()).filter(Boolean),
+        attachments: (e.attachments ?? []).filter((a) => a.fileId).map((a) => ({ id: a.fileId!, title: a.title ?? "", mimeType: a.mimeType ?? "", url: a.fileUrl ?? "" })),
       };
     });
   },

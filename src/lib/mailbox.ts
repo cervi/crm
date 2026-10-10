@@ -9,6 +9,7 @@ import { isSessionType } from "./format";
 import { PROVIDERS, ProviderError, providerMessage, type Provider, type ProviderKey, type Tokens } from "./integrations";
 import { apiClient, type ApiClient } from "./integrations/http";
 import type { MailAttachment } from "./integrations/types";
+import { ingestMeetingNote } from "./meeting-notes";
 import { DEFAULT_SCHEDULING, formatSlots, freeSlots, NO_SLOTS_TEXT, normalizeScheduling, type Interval, type Scheduling } from "./slots";
 
 // ===========================================================================
@@ -344,11 +345,11 @@ export async function searchDriveFiles(userId: string | null, query: string) {
 // ---------------------------------------------------------------------------
 // Sincronización: correos y reuniones con contactos del CRM
 
-type Match = { person_id: string; email: string; full_name: string; organization_id: string | null; deal_id: string | null;
+export type Match = { person_id: string; email: string; full_name: string; organization_id: string | null; deal_id: string | null;
                required_activity_type: string | null };
 
 /** Contactos del CRM con esos emails, con su empresa actual y su deal abierto más reciente. */
-async function matchContacts(emails: string[], ownerId: string | null = null): Promise<Match[]> {
+export async function matchContacts(emails: string[], ownerId: string | null = null): Promise<Match[]> {
   if (emails.length === 0) return [];
   return sql<Match[]>`
     SELECT DISTINCT ON (lower(pe.email)) p.id AS person_id, lower(pe.email) AS email, p.full_name,
@@ -372,7 +373,11 @@ async function matchContacts(emails: string[], ownerId: string | null = null): P
 }
 
 
-export type SyncResult = { emails: number; meetings: number; updated: number; error?: string };
+export type SyncResult = { emails: number; meetings: number; updated: number; notes?: number; error?: string };
+
+/** Documentos de Gemini adjuntos a un evento de Meet: notas y transcripción. */
+const NOTES_DOC = /notas|notes|gemini|transcri|resumen|summary/i;
+const GDOC = "application/vnd.google-apps.document";
 
 export async function syncMailbox(conn: Connection): Promise<SyncResult> {
   const result: SyncResult = { emails: 0, meetings: 0, updated: 0 };
@@ -456,6 +461,40 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
         if (id) result.meetings++;
       }
       await sql`UPDATE mailbox_connections SET calendar_synced_at = ${started} WHERE id = ${conn.id}`;
+
+      // Notas de Gemini / transcripción de Meet adjuntas a reuniones ya terminadas (hace más de 20 min).
+      if (p.docText) {
+        const done = events.filter((e) => !e.cancelled && e.end.getTime() < Date.now() - 20 * 60000
+          && (e.attachments ?? []).some((a) => (a.mimeType === GDOC || !a.mimeType) && NOTES_DOC.test(a.title)));
+        let notesError: string | null = null;
+        for (const e of done) {
+          const [already] = await sql`SELECT 1 FROM meeting_notes WHERE source = 'meet' AND external_id = ${e.ref}`;
+          if (already) continue;
+          try {
+            let summary = ""; let transcript = "";
+            for (const a of (e.attachments ?? []).filter((x) => (x.mimeType === GDOC || !x.mimeType) && NOTES_DOC.test(x.title))) {
+              const text = (await p.docText(c, a.id)).trim();
+              if (/transcri/i.test(a.title)) transcript += `${transcript ? "\n\n" : ""}${text}`;
+              else summary += `${summary ? "\n\n" : ""}${text}`;
+            }
+            if (!summary && !transcript) continue;
+            const doc = (e.attachments ?? []).find((x) => NOTES_DOC.test(x.title));
+            await ingestMeetingNote({
+              source: "meet", external_id: e.ref, title: e.subject, started_at: e.start, organizer_email: own,
+              attendees: e.emails.map((email) => ({ email })), summary: summary || null, transcript: transcript || null,
+              link: doc?.url || null, activity_ref: e.ref,
+            });
+            result.notes = (result.notes ?? 0) + 1;
+          } catch (err) {
+            if (err instanceof ProviderError && err.status === 403) {
+              notesError = "Falta permiso para leer las notas de Meet en Drive: vuelve a conectar tu cuenta de Google.";
+              break;
+            }
+            console.error("[notas de Meet]", err);
+          }
+        }
+        await sql`UPDATE mailbox_connections SET notes_error = ${notesError} WHERE id = ${conn.id}`;
+      }
     }
   });
   await sql`UPDATE mailbox_connections SET last_error = NULL, status = 'active' WHERE id = ${conn.id}`;

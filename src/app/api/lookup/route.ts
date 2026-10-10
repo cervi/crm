@@ -29,5 +29,22 @@ export async function GET(req: NextRequest) {
       ORDER BY (lower(p.full_name) LIKE ${`${q}%`}) DESC, lower(p.full_name) LIMIT 20`;
     return NextResponse.json(rows);
   }
-  return NextResponse.json({ error: "type debe ser organizations o persons" }, { status: 400 });
+  if (type === "deals") {
+    const rows = await sql<{ id: string; label: string; hint: string | null }[]>`
+      SELECT d.id, d.title AS label, concat_ws(' · ', o.name, u.name) AS hint
+      FROM deals d LEFT JOIN organizations o ON o.id = d.organization_id LEFT JOIN users u ON u.id = d.owner_id
+      WHERE d.deleted_at IS NULL AND d.status = 'open' AND (${q === ""} OR lower(d.title) LIKE ${like} OR lower(coalesce(o.name, '')) LIKE ${like})
+      ORDER BY (lower(d.title) LIKE ${`${q}%`}) DESC, d.updated_at DESC LIMIT 20`;
+    return NextResponse.json(rows);
+  }
+  if (type === "leads") {
+    const rows = await sql<{ id: string; label: string; hint: string | null }[]>`
+      SELECT l.id, l.title AS label, concat_ws(' · ', p.full_name, o.name) AS hint
+      FROM leads l LEFT JOIN persons p ON p.id = l.person_id LEFT JOIN organizations o ON o.id = l.organization_id
+      WHERE l.deleted_at IS NULL AND l.status = 'open' AND (${q === ""} OR lower(l.title) LIKE ${like}
+            OR lower(coalesce(p.full_name, '')) LIKE ${like} OR lower(coalesce(o.name, '')) LIKE ${like})
+      ORDER BY (lower(l.title) LIKE ${`${q}%`}) DESC, l.updated_at DESC LIMIT 20`;
+    return NextResponse.json(rows);
+  }
+  return NextResponse.json({ error: "type debe ser organizations, persons, deals o leads" }, { status: 400 });
 }

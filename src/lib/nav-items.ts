@@ -11,6 +11,7 @@ export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: Ic
   { href: "/emails", match: ["/emails"], label: "Correos enviados", icon: "mail" },
   { href: "/firmas", match: ["/firmas"], label: "Firmas de contratos", icon: "sign" },
   { href: "/biblioteca", match: ["/biblioteca"], label: "Biblioteca de documentos", icon: "folder" },
+  { href: "/reuniones", match: ["/reuniones"], label: "Reuniones grabadas", icon: "video" },
   { href: "/leads", match: ["/leads"], label: "Leads", icon: "leads" },
   { href: "/campaigns", match: ["/campaigns"], label: "Campañas de outbound", icon: "target" },
   { href: "/activities", match: ["/activities"], label: "Actividades", icon: "activities" },
