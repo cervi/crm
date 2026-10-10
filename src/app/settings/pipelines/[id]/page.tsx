@@ -54,7 +54,7 @@ export default async function PipelineSettingsPage({ params }: { params: Promise
         </div>
         <div className="head-actions">
           <Link href={`/pipelines/${id}`} className="btn secondary">Ver tablero</Link>
-          <Drawer label="Editar pipeline" title={`Editar «${pipeline.name}»`}>
+          <Drawer label="Editar pipeline" buttonClass="btn secondary" title={`Editar «${pipeline.name}»`}>
             <ActionForm action={updatePipelineAction.bind(null, id)} submitLabel="Guardar cambios">
               <label className="field"><span className="label">Nombre *</span><input name="name" required defaultValue={pipeline.name} /></label>
               <label className="field"><span className="label">Descripción</span><input name="description" defaultValue={pipeline.description ?? ""} /></label>
