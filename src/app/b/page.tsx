@@ -42,7 +42,7 @@ function Ring({ value, total, children }: { value: number; total: number; childr
     <div className="b-ring">
       <svg viewBox="0 0 120 120" aria-hidden="true">
         <circle cx="60" cy="60" r={r} className="track" />
-        <circle cx="60" cy="60" r={r} className="fill" strokeDasharray={`${c * p} ${c}`} transform="rotate(-90 60 60)" />
+        {p > 0 && <circle cx="60" cy="60" r={r} className="fill" strokeDasharray={`${c * p} ${c}`} transform="rotate(-90 60 60)" />}
       </svg>
       <div className="b-ring-label">{children}</div>
     </div>
@@ -113,7 +113,9 @@ export default async function TodayB({ searchParams }: { searchParams: Promise<{
   const pipes = Object.values(stages.reduce<Record<string, { id: string; name: string; stages: (typeof stages)[number][] }>>((acc, s) => {
     (acc[s.pipeline_id] ??= { id: s.pipeline_id, name: s.pipeline, stages: [] }).stages.push(s);
     return acc;
-  }, {})).filter((p) => p.stages.some((s) => s.n > 0));
+  }, {})).filter((p) => p.stages.some((s) => s.n > 0))
+    .sort((a, b) => b.stages.reduce((x, s) => x + s.v, 0) - a.stages.reduce((x, s) => x + s.v, 0) || b.stages.reduce((x, s) => x + s.n, 0) - a.stages.reduce((x, s) => x + s.n, 0));
+  const PIPES = 6;
 
   // Mapa de calor: 12 semanas × 7 días.
   const maxDay = Math.max(1, ...actDays.map((x) => x.n));
@@ -246,13 +248,13 @@ export default async function TodayB({ searchParams }: { searchParams: Promise<{
           <header><h2>Embudo abierto</h2><Link href="/pipelines" className="meta">Abrir tablero</Link></header>
           {pipes.length === 0 && <p className="b-empty">Sin deals abiertos.</p>}
           <div className="b-funnel-wrap">
-            {pipes.map((p, pi) => {
+            {pipes.slice(0, PIPES).map((p, pi) => {
               const maxN = Math.max(1, ...p.stages.map((s) => s.n));
               return (
                 <div key={p.id} className="b-funnel">
                   <Link href={`/pipelines/${p.id}`} className="b-funnel-name">{p.name}<span className="meta">{compact(p.stages.reduce((a, s) => a + s.v, 0))}</span></Link>
                   {p.stages.map((s, si) => (
-                    <div key={si} className="b-stage" title={`${s.stage}: ${s.n} deals · ${money(s.v)}`}>
+                    <div key={si} className={s.n ? "b-stage" : "b-stage zero"} title={`${s.stage}: ${s.n} deals · ${money(s.v)}`}>
                       <span className="nm">{s.stage}</span>
                       <span className="bar"><i className={`s${(pi % 4) + 1}`} style={{ width: `${Math.max(s.n ? 6 : 0, (s.n / maxN) * 100)}%`, opacity: 0.55 + 0.45 * ((si + 1) / p.stages.length) }} /></span>
                       <span className="n">{s.n}</span>
@@ -263,6 +265,7 @@ export default async function TodayB({ searchParams }: { searchParams: Promise<{
               );
             })}
           </div>
+          {pipes.length > PIPES && <Link href="/pipelines" className="b-more">Ver los {pipes.length} pipelines →</Link>}
         </section>
 
         {/* Ritmo: mapa de calor */}
