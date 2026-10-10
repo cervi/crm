@@ -37,7 +37,7 @@ export function categoryOf(kind: string): Category {
   if (kind.startsWith("proposal.") || kind.startsWith("sign.")) return "proposals";
   if (kind === "assigned") return "assigned";
   if (kind === "mention") return "mentions";
-  if (["discount", "campaign", "sequence", "meeting_prep", "no_reply"].includes(kind)) return kind === "no_reply" ? "replies" : "ai";
+  if (["discount", "campaign", "sequence", "meeting_prep", "meeting_note", "no_reply"].includes(kind)) return kind === "no_reply" ? "replies" : "ai";
   return "following";
 }
 

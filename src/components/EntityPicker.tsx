@@ -24,6 +24,7 @@ export function EntityPicker({ name, type, label, initial, required, placeholder
   const [options, setOptions] = useState<Option[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const listId = useId();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -31,11 +32,14 @@ export function EntityPicker({ name, type, label, initial, required, placeholder
     if (!open) return;
     if (timer.current) clearTimeout(timer.current);
     const controller = new AbortController();
+    setStatus("loading");
     timer.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/lookup?type=${type}&q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        if (res.ok) { setOptions(await res.json()); setActive(0); }
-      } catch { /* búsqueda cancelada */ }
+        if (res.ok) { setOptions(await res.json()); setActive(0); setStatus("idle"); } else setStatus("error");
+      } catch (e) {
+        if (!(e instanceof DOMException && e.name === "AbortError")) setStatus("error");
+      }
     }, 150);
     return () => controller.abort();
   }, [query, open, type]);
@@ -73,7 +77,8 @@ export function EntityPicker({ name, type, label, initial, required, placeholder
           />
           {open && (
             <ul id={listId} role="listbox" className="picker-list">
-              {options.length === 0 && <li className="muted">Sin resultados</li>}
+              {status === "error" ? <li className="muted">No se ha podido buscar. Vuelve a intentarlo.</li>
+                : options.length === 0 && <li className="muted">{status === "loading" ? "Buscando…" : "Sin resultados"}</li>}
               {options.map((o, i) => (
                 <li key={o.id} role="option" aria-selected={i === active}
                     onMouseDown={(e) => { e.preventDefault(); pick(o); }}>

@@ -119,12 +119,17 @@ type Ctx = {
   activityRef: string | null;
 };
 
-async function setPending(id: string, reason: string, ownerId: string | null, title: string | null) {
-  await sql`UPDATE meeting_notes SET status = 'pending', match_reason = ${reason} WHERE id = ${id}`;
-  if (ownerId) {
+async function setPending(id: string, reason: string, ownerId: string | null, candidates: { kind: "deal" | "lead"; id: string }[] = []) {
+  await sql`UPDATE meeting_notes SET status = 'pending', match_reason = ${reason}, candidates = ${sql.json(candidates)} WHERE id = ${id}`;
+  // Un solo aviso pendiente por persona («Tienes notas por asociar»), no uno por nota. Sin dueño: a los administradores.
+  const to = ownerId ? [ownerId]
+    : (await sql<{ id: string }[]>`SELECT id FROM users WHERE kind = 'human' AND is_active AND role = 'admin'`).map((u) => u.id);
+  for (const userId of to) {
+    const [open] = await sql`SELECT 1 FROM notifications WHERE user_id = ${userId} AND kind = 'meeting_note' AND read_at IS NULL`;
+    if (open) continue;
     await notify(sql, {
-      userId: ownerId, kind: "meeting_note.pending", title: `Nota de reunión sin asociar: ${title || "reunión"}`,
-      body: reason, link: "/reuniones",
+      userId, kind: "meeting_note", title: "Tienes notas de reunión por asociar",
+      body: "No hemos sabido a qué deal o lead van. Elígelo en un clic.", link: "/reuniones?ver=pending",
     }).catch((err) => console.error("[notas de reunión]", err));
   }
   return { status: "pending", reason };
@@ -132,19 +137,20 @@ async function setPending(id: string, reason: string, ownerId: string | null, ti
 
 /** Decide a qué reunión, deal o lead pertenece la nota. */
 async function autoMatch(id: string, ctx: Ctx): Promise<{ status: string; reason: string | null }> {
-  const [n] = await sql<{ title: string | null }[]>`SELECT title FROM meeting_notes WHERE id = ${id}`;
   const isTeam = (email: string) => ctx.team.users.some((u) => u.email === email) || ctx.team.domains.has(email.split("@")[1]);
   const external = ctx.attendees.filter((a) => !isTeam(a.email));
 
   // 1. La reunión del calendario, si la conocemos por su referencia.
   if (ctx.activityRef) {
     const [a] = await sql<{ id: string }[]>`SELECT id FROM activities WHERE external_ref = ${ctx.activityRef}`;
-    if (a) return applyToActivity(id, a.id, "Reunión del calendario");
+    if (a) return applyToActivity(id, a.id, "Su reunión del calendario.");
   }
 
   if (ctx.attendees.length > 0 && external.length === 0) {
-    await sql`UPDATE meeting_notes SET status = 'ignored', match_reason = 'Solo había gente de tu equipo' WHERE id = ${id}`;
-    return { status: "ignored", reason: "Solo había gente de tu equipo" };
+    // Reunión interna: no se guarda su contenido (puede ser un 1:1 o algo confidencial).
+    await sql`UPDATE meeting_notes SET status = 'ignored', match_reason = 'Reunión interna: solo había gente de tu equipo.',
+                summary = NULL, notes = NULL, transcript = NULL WHERE id = ${id}`;
+    return { status: "ignored", reason: "Reunión interna: solo había gente de tu equipo." };
   }
 
   const matches = await matchContacts(external.map((a) => a.email), ctx.owner?.id ?? null);
@@ -161,22 +167,24 @@ async function autoMatch(id: string, ctx: Ctx): Promise<{ status: string; reason
              OR a.deal_id IN (SELECT deal_id FROM deal_participants WHERE person_id = ANY(${personIds}::uuid[])))
         AND NOT EXISTS (SELECT 1 FROM meeting_notes m WHERE m.activity_id = a.id AND m.id <> ${id})
       ORDER BY abs(extract(epoch FROM a.due_at - ${ctx.startedAt}::timestamptz)) LIMIT 1`;
-    if (acts[0]) return applyToActivity(id, acts[0].id, "Reunión del CRM a la misma hora con esos contactos");
+    if (acts[0]) return applyToActivity(id, acts[0].id, "La reunión del CRM con esos contactos a esa hora.");
   }
 
   // 3. Contactos conocidos: su deal abierto (si es uno) o su lead abierto.
   if (personIds.length) {
     const deals = [...new Set(matches.map((m) => m.deal_id).filter(Boolean))] as string[];
-    if (deals.length > 1) return setPending(id, "Los asistentes están en varios deals abiertos: elige a cuál va.", ctx.owner?.id ?? null, n.title);
-    if (deals.length === 1) return applyTo(id, { deal_id: deals[0], person_ids: personIds }, "Deal abierto de los asistentes");
+    if (deals.length > 1) return setPending(id, "Los asistentes están en varios deals abiertos: elige a cuál va.", ctx.owner?.id ?? null,
+      deals.map((d) => ({ kind: "deal" as const, id: d })));
+    if (deals.length === 1) return applyTo(id, { deal_id: deals[0], person_ids: personIds }, "El deal abierto de los asistentes.");
     const leads = await sql<{ id: string }[]>`
       SELECT id FROM leads WHERE status = 'open' AND deleted_at IS NULL
         AND (person_id = ANY(${personIds}::uuid[])
              OR organization_id IN (SELECT organization_id FROM person_organizations WHERE person_id = ANY(${personIds}::uuid[]) AND status = 'current'))
-      ORDER BY updated_at DESC LIMIT 2`;
-    if (leads.length === 1) return applyTo(id, { lead_id: leads[0].id, person_ids: personIds }, "Lead abierto de los asistentes");
-    if (leads.length > 1) return setPending(id, "Los asistentes tienen varios leads abiertos: elige a cuál va.", ctx.owner?.id ?? null, n.title);
-    return applyTo(id, { person_ids: personIds }, "Contactos del CRM (sin deal ni lead abierto)");
+      ORDER BY updated_at DESC LIMIT 6`;
+    if (leads.length === 1) return applyTo(id, { lead_id: leads[0].id, person_ids: personIds }, "El lead abierto de los asistentes.");
+    if (leads.length > 1) return setPending(id, "Los asistentes tienen varios leads abiertos: elige a cuál va.", ctx.owner?.id ?? null,
+      leads.map((l) => ({ kind: "lead" as const, id: l.id })));
+    return applyTo(id, { person_ids: personIds }, "En la ficha del contacto: no tiene deal ni lead abierto.");
   }
 
   // 4. Nadie conocido, pero su empresa sí (por el dominio): se dan de alta los contactos en ella.
@@ -194,23 +202,24 @@ async function autoMatch(id: string, ctx: Ctx): Promise<{ status: string; reason
       }
     });
     const deals = await sql<{ id: string }[]>`
-      SELECT id FROM deals WHERE organization_id = ${org.id} AND status = 'open' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 2`;
+      SELECT id FROM deals WHERE organization_id = ${org.id} AND status = 'open' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 6`;
     if (deals.length === 1) {
       for (const pid of created) {
         await sql`INSERT INTO deal_participants (deal_id, person_id) VALUES (${deals[0].id}, ${pid}) ON CONFLICT DO NOTHING`;
       }
-      return applyTo(id, { deal_id: deals[0].id, person_ids: created }, "Contacto nuevo de una empresa con un deal abierto");
+      return applyTo(id, { deal_id: deals[0].id, person_ids: created }, "Contacto nuevo dado de alta en su empresa, que tiene este deal abierto.");
     }
     if (deals.length > 1) {
       await sql`UPDATE meeting_notes SET person_ids = ${created}::uuid[] WHERE id = ${id}`;
-      return setPending(id, "Contactos nuevos de una empresa con varios deals abiertos: elige a cuál va.", ctx.owner?.id ?? null, n.title);
+      return setPending(id, "Contacto nuevo de una empresa con varios deals abiertos: elige a cuál va.", ctx.owner?.id ?? null,
+        deals.map((d) => ({ kind: "deal" as const, id: d.id })));
     }
-    return applyTo(id, { person_ids: created }, "Contacto nuevo de una empresa del CRM");
+    return applyTo(id, { person_ids: created }, "Contacto nuevo dado de alta en su empresa.");
   }
 
   return setPending(id, external.length
     ? `Ningún asistente está en el CRM (${external.map((a) => a.email).slice(0, 3).join(", ")}).`
-    : "La nota no trae asistentes.", ctx.owner?.id ?? null, n.title);
+    : "La nota no trae asistentes.", ctx.owner?.id ?? null);
 }
 
 type NoteRow = {
@@ -264,49 +273,114 @@ async function applyTo(noteId: string, target: { deal_id?: string; lead_id?: str
 // ---------------------------------------------------------------------------
 // Bandeja «Reuniones grabadas»
 
-export async function listMeetingNotes({ status, limit = 100 }: { status?: "matched" | "pending" | "ignored"; limit?: number } = {}) {
-  return sql<MeetingNote[]>`
+/** Quién mira: cada comercial ve sus notas; los administradores, todas (y las que no tienen dueño). */
+export type NoteViewer = { id: string; admin: boolean };
+const visible = (v: NoteViewer) => sql`(${v.admin} OR m.owner_id = ${v.id})`;
+
+export type NoteCandidate = { kind: "deal" | "lead"; id: string; label: string; hint: string | null };
+
+export async function listMeetingNotes(viewer: NoteViewer, { status, limit = 100 }: { status?: "matched" | "pending" | "ignored"; limit?: number } = {}) {
+  return sql<(MeetingNote & { candidates: NoteCandidate[] })[]>`
     SELECT m.id, m.source, m.title, m.started_at, m.owner_id, u.name AS owner_name, m.organizer_email, m.attendees, m.summary, m.notes,
            length(coalesce(m.transcript, '')) AS transcript_len, m.link, m.status, m.match_reason, m.activity_id,
            m.deal_id, d.title AS deal_title, m.lead_id, l.title AS lead_title,
            coalesce((SELECT array_agg(p.full_name ORDER BY p.full_name) FROM persons p WHERE p.id = ANY(m.person_ids)), '{}') AS person_names,
+           coalesce((SELECT jsonb_agg(jsonb_build_object('kind', c->>'kind', 'id', c->>'id',
+                       'label', coalesce(cd.title, cl.title), 'hint', coalesce(co.name, clp.full_name)))
+                     FROM jsonb_array_elements(m.candidates) c
+                     LEFT JOIN deals cd ON c->>'kind' = 'deal' AND cd.id = (c->>'id')::uuid AND cd.status = 'open' AND cd.deleted_at IS NULL
+                     LEFT JOIN organizations co ON co.id = cd.organization_id
+                     LEFT JOIN leads cl ON c->>'kind' = 'lead' AND cl.id = (c->>'id')::uuid AND cl.status = 'open' AND cl.deleted_at IS NULL
+                     LEFT JOIN persons clp ON clp.id = cl.person_id
+                     WHERE cd.id IS NOT NULL OR cl.id IS NOT NULL), '[]'::jsonb) AS candidates,
            m.created_at
     FROM meeting_notes m
     LEFT JOIN users u ON u.id = m.owner_id
     LEFT JOIN deals d ON d.id = m.deal_id
     LEFT JOIN leads l ON l.id = m.lead_id
-    WHERE (${status ?? null}::text IS NULL OR m.status = ${status ?? null}::text)
+    WHERE (${status ?? null}::text IS NULL OR m.status = ${status ?? null}::text) AND ${visible(viewer)}
     ORDER BY coalesce(m.started_at, m.created_at) DESC
     LIMIT ${limit}`;
 }
 
-export async function meetingNoteCounts() {
-  const rows = await sql<{ status: string; n: number }[]>`SELECT status, count(*)::int AS n FROM meeting_notes GROUP BY status`;
+export async function meetingNoteCounts(viewer: NoteViewer) {
+  const rows = await sql<{ status: string; n: number }[]>`
+    SELECT status, count(*)::int AS n FROM meeting_notes m WHERE ${visible(viewer)} GROUP BY status`;
   return Object.fromEntries(rows.map((r) => [r.status, r.n])) as Partial<Record<"matched" | "pending" | "ignored", number>>;
 }
 
-/** Asignación a mano desde la bandeja: a un deal, a un lead o a un contacto. */
-export async function assignMeetingNote(actor: Actor, noteId: string, target: { deal_id?: string | null; lead_id?: string | null; person_id?: string | null }) {
-  const [n] = await sql<{ status: string; person_ids: string[] }[]>`SELECT status, person_ids FROM meeting_notes WHERE id = ${noteId}`;
-  if (!n) throw new UserError("Esa nota ya no existe.");
-  if (n.status === "matched") throw new UserError("Esa nota ya está asociada.");
-  if (!target.deal_id && !target.lead_id && !target.person_id) throw new UserError("Elige un deal, un lead o un contacto.");
-  let persons = n.person_ids ?? [];
-  if (target.person_id) persons = [target.person_id, ...persons.filter((p) => p !== target.person_id)];
-  if (!persons.length && target.deal_id) {
-    persons = (await sql<{ person_id: string }[]>`SELECT person_id FROM deal_participants WHERE deal_id = ${target.deal_id} LIMIT 5`).map((r) => r.person_id);
-  }
-  if (!persons.length && target.lead_id) {
-    persons = (await sql<{ person_id: string | null }[]>`SELECT person_id FROM leads WHERE id = ${target.lead_id}`).map((r) => r.person_id).filter(Boolean) as string[];
-  }
-  return applyTo(noteId, { deal_id: target.deal_id ?? undefined, lead_id: target.lead_id ?? undefined, person_ids: persons },
-    "Asignada a mano", actor);
+export async function getMeetingNote(viewer: NoteViewer, id: string) {
+  const [n] = await sql<{ id: string; status: string; title: string | null; deal_id: string | null; lead_id: string | null; deal_title: string | null;
+                          lead_title: string | null; activity_id: string | null }[]>`
+    SELECT m.id, m.status, m.title, m.deal_id, m.lead_id, d.title AS deal_title, l.title AS lead_title, m.activity_id
+    FROM meeting_notes m LEFT JOIN deals d ON d.id = m.deal_id LEFT JOIN leads l ON l.id = m.lead_id
+    WHERE m.id = ${id} AND ${visible(viewer)}`;
+  return n ?? null;
 }
 
-export async function setMeetingNoteIgnored(noteId: string, ignored: boolean) {
+export type AssignTarget = { kind: "deal" | "lead" | "person"; id: string; person_id?: string | null };
+
+/** Asistentes de fuera que no están en el CRM: se dan de alta (en la empresa del deal o lead, si la hay). */
+async function createUnknownAttendees(noteId: string, organizationId: string | null, ownerId: string | null) {
+  const [n] = await sql<{ attendees: { name: string | null; email: string }[] }[]>`SELECT attendees FROM meeting_notes WHERE id = ${noteId}`;
+  const team = await teamEmails();
+  const external = (n?.attendees ?? []).filter((a) => !team.users.some((u) => u.email === a.email) && !team.domains.has(a.email.split("@")[1]));
+  const known = new Set((await matchContacts(external.map((a) => a.email))).map((m) => m.email));
+  const ids: string[] = [];
+  for (const a of external.filter((x) => !known.has(x.email)).slice(0, 10)) {
+    const [first, ...rest] = (a.name || a.email.split("@")[0]).split(/\s+/);
+    ids.push(await createPerson(INTEGRATION_ACTOR, { first_name: first, last_name: rest.join(" ") || undefined, email: a.email,
+      organization_id: organizationId ?? undefined, owner_id: ownerId ?? undefined }));
+  }
+  return ids;
+}
+
+/** Asignación a mano desde la bandeja: a un deal, a un lead o solo a un contacto. */
+export async function assignMeetingNote(actor: Actor, viewer: NoteViewer, noteId: string, target: AssignTarget) {
+  const [n] = await sql<{ status: string; person_ids: string[]; owner_id: string | null; activity_id: string | null }[]>`
+    SELECT status, person_ids, owner_id, activity_id FROM meeting_notes m WHERE id = ${noteId} AND ${visible(viewer)}`;
+  if (!n) throw new UserError("Esa nota ya no existe.");
+  if (!target.id) throw new UserError(target.kind === "deal" ? "Elige el deal." : target.kind === "lead" ? "Elige el lead." : "Elige el contacto.");
+  if (n.status === "matched") return moveMeetingNote(noteId, n.activity_id, target);
+
+  const [org] = target.kind === "deal"
+    ? await sql<{ organization_id: string | null }[]>`SELECT organization_id FROM deals WHERE id = ${target.id}`
+    : target.kind === "lead" ? await sql<{ organization_id: string | null }[]>`SELECT organization_id FROM leads WHERE id = ${target.id}` : [];
+  let persons = n.person_ids ?? [];
+  const chosen = target.kind === "person" ? target.id : target.person_id;
+  if (chosen) persons = [chosen, ...persons.filter((p) => p !== chosen)];
+  // Asistentes que aún no están en el CRM: se crean, en vez de suponer que estuvieron otros contactos del deal.
+  persons = [...persons, ...(await createUnknownAttendees(noteId, org?.organization_id ?? null, n.owner_id))];
+  if (target.kind === "deal") {
+    for (const pid of persons) await sql`INSERT INTO deal_participants (deal_id, person_id) VALUES (${target.id}, ${pid}) ON CONFLICT DO NOTHING`;
+  }
+  return applyTo(noteId, { deal_id: target.kind === "deal" ? target.id : undefined, lead_id: target.kind === "lead" ? target.id : undefined,
+    person_ids: persons }, "Asociada a mano.", actor);
+}
+
+/** Corrige una nota ya asociada: su reunión pasa al deal, lead o contacto elegido. */
+async function moveMeetingNote(noteId: string, activityId: string | null, target: AssignTarget) {
+  if (!activityId) throw new UserError("Esa reunión ya no existe.");
+  const deal = target.kind === "deal" ? target.id : null;
+  const lead = target.kind === "lead" ? target.id : null;
+  const [org] = deal ? await sql<{ organization_id: string | null }[]>`SELECT organization_id FROM deals WHERE id = ${deal}`
+    : lead ? await sql<{ organization_id: string | null }[]>`SELECT organization_id FROM leads WHERE id = ${lead}` : [];
+  const person = target.kind === "person" ? target.id : target.person_id ?? null;
+  await transaction(async (tx) => {
+    await tx`UPDATE activities SET deal_id = ${deal}, lead_id = ${lead}, organization_id = coalesce(${org?.organization_id ?? null}::uuid, organization_id),
+                    person_id = coalesce(${person}::uuid, person_id) WHERE id = ${activityId}`;
+    await tx`UPDATE meeting_notes SET deal_id = ${deal}, lead_id = ${lead}, match_reason = 'Cambiada a mano.',
+                    person_ids = CASE WHEN ${person}::uuid IS NULL THEN person_ids ELSE array_prepend(${person}::uuid, array_remove(person_ids, ${person}::uuid)) END
+             WHERE id = ${noteId}`;
+    if (deal && person) await tx`INSERT INTO deal_participants (deal_id, person_id) VALUES (${deal}, ${person}) ON CONFLICT DO NOTHING`;
+  });
+  return { status: "matched", reason: "Cambiada a mano." };
+}
+
+export async function setMeetingNoteIgnored(viewer: NoteViewer, noteId: string, ignored: boolean) {
   const [r] = await sql<{ id: string }[]>`
-    UPDATE meeting_notes SET status = ${ignored ? "ignored" : "pending"}, match_reason = ${ignored ? "Descartada a mano" : "Recuperada: elige a qué va"}
-    WHERE id = ${noteId} AND status <> 'matched' RETURNING id`;
+    UPDATE meeting_notes m SET status = ${ignored ? "ignored" : "pending"}, match_reason = ${ignored ? "Descartada a mano." : "Recuperada: elige a qué va."}
+    WHERE id = ${noteId} AND status <> 'matched' AND ${visible(viewer)} RETURNING id`;
   if (!r) throw new UserError("Esa nota ya está asociada.");
 }
 

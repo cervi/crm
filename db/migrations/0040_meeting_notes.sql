@@ -24,6 +24,7 @@ CREATE TABLE meeting_notes (
   deal_id        uuid REFERENCES deals(id) ON DELETE SET NULL,
   lead_id        uuid REFERENCES leads(id) ON DELETE SET NULL,
   person_ids     uuid[] NOT NULL DEFAULT '{}',
+  candidates     jsonb NOT NULL DEFAULT '[]'::jsonb,  -- deals o leads posibles cuando hay dudas: [{ kind, id }]
   created_at     timestamptz NOT NULL DEFAULT now(),
   matched_at     timestamptz
 );

@@ -2258,3 +2258,14 @@ button.sf-sign.mine { overflow: visible; }
 .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .steps-list { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
 .card-list .row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.choice-list { display: grid; gap: 6px; }
+.choice-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer; }
+.choice-row:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice-row input { margin-top: 3px; }
+.note-meta { margin: 4px 0 0; }
+.note-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.note-actions .form.inline { margin: 0; }
+.tabs .count.neutral { background: var(--sunken); color: var(--muted); }
+@media (max-width: 640px) {
+  .card-list .btn, .note-actions .btn, .page-head .head-actions .btn { min-height: 44px; }
+}
