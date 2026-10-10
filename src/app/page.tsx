@@ -304,6 +304,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         {/* Ranking del mes */}
         <section className="b-card b-board" aria-label="Ganado este mes por persona">
           <header><h2>Ganado este mes</h2><span className="meta">{won.n} deal{won.n === 1 ? "" : "s"}</span></header>
+          {board.every((b) => !b.v && !b.n) ? <p className="b-empty">Nadie ha cerrado nada todavía este mes. El primero se pone en cabeza.</p> : (
           <ol className="b-podium">
             {board.map((b, i) => (
               <li key={b.id} className={ownerId === b.id ? "me" : undefined}>
@@ -314,6 +315,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               </li>
             ))}
           </ol>
+          )}
         </section>
 
         {/* Últimas victorias */}
