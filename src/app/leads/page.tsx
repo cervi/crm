@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { FitBadge } from "@/components/FitBadge";
 import { date, FUNNEL_STAGES, STATUS_LABELS } from "@/lib/format";
+import { DataTable } from "@/components/DataTable";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Leads" };
@@ -67,30 +68,38 @@ export default async function LeadsPage({ searchParams }: {
         </select>
         <button className="btn secondary">Filtrar</button>
       </form>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Contacto</th><th>Puntuación</th><th>Encaje</th><th>Empresa</th><th>Origen</th><th>Etapa</th><th>Etiquetas</th><th>Estado</th><th>Última actividad</th></tr></thead>
-          <tbody>
-            {rows.length === 0 && <tr><td colSpan={9} className="empty-row">No hay leads con estos filtros.</td></tr>}
-            {rows.map((l) => (
-              <tr key={l.id}>
-                <td><span className="cell-main"><Avatar name={l.person_name ?? l.title} size="sm" /><span><Link href={`/leads/${l.id}`}>{l.person_name ?? l.title}</Link><div className="meta">{l.email}</div></span></span></td>
-                <td><ScoreBadge score={l.score} reasons={l.score_reasons} /></td>
-                <td><FitBadge fit={l.fit} reason={l.fit_reason} /></td>
-                <td>{l.organization_id ? <Link href={`/organizations/${l.organization_id}`}>{l.organization_name}</Link> : "—"}</td>
-                <td>{l.source ?? "—"}{l.source_detail && <div className="meta">{l.source_detail}</div>}</td>
-                <td>{l.funnel_stage ? <span className={`badge ${l.funnel_stage}`}>{l.funnel_stage.toUpperCase()}</span> : "—"}</td>
-                <td>{l.tags.length ? l.tags.map((t) => <span key={t} className="badge" style={{ marginRight: 4 }}>{t}</span>) : "—"}</td>
-                <td>
-                  <span className={`badge ${l.status}`}>{STATUS_LABELS[l.status]}</span>
-                  {l.converted_deal_id && <div className="meta"><Link href={`/deals/${l.converted_deal_id}`}>Ver deal</Link></div>}
-                </td>
-                <td>{date(l.last_activity_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable id="leads" empty="No hay leads con estos filtros."
+        columns={[
+          { key: "contact", label: "Contacto", required: true, pinned: true },
+          { key: "score", label: "Puntuación" },
+          { key: "fit", label: "Encaje" },
+          { key: "org", label: "Empresa" },
+          { key: "source", label: "Origen" },
+          { key: "utm", label: "Campaña (UTM)", hidden: true },
+          { key: "funnel", label: "Etapa" },
+          { key: "tags", label: "Etiquetas" },
+          { key: "status", label: "Estado" },
+          { key: "owner", label: "Responsable", hidden: true },
+          { key: "created", label: "Creado", hidden: true, className: "nowrap" },
+          { key: "last", label: "Última actividad", className: "nowrap" },
+        ]}
+        rows={rows.map((l) => ({
+          id: l.id, label: l.person_name ?? l.title,
+          cells: {
+            contact: <span className="cell-main"><Avatar name={l.person_name ?? l.title} size="sm" /><span><Link href={`/leads/${l.id}`}>{l.person_name ?? l.title}</Link>{l.email && l.email !== (l.person_name ?? l.title) && <div className="meta">{l.email}</div>}</span></span>,
+            score: <ScoreBadge score={l.score} reasons={l.score_reasons} />,
+            fit: <FitBadge fit={l.fit} reason={l.fit_reason} />,
+            org: l.organization_id ? <Link href={`/organizations/${l.organization_id}`}>{l.organization_name}</Link> : null,
+            source: l.source ? <>{l.source}{l.source_detail && <div className="meta">{l.source_detail}</div>}</> : null,
+            utm: l.utm?.utm_campaign ?? l.utm?.utm_source ?? null,
+            funnel: l.funnel_stage ? <span className={`badge ${l.funnel_stage}`}>{l.funnel_stage.toUpperCase()}</span> : null,
+            tags: l.tags.length ? l.tags.map((t) => <span key={t} className="badge" style={{ marginRight: 4 }}>{t}</span>) : null,
+            status: <><span className={`badge ${l.status}`}>{STATUS_LABELS[l.status]}</span>{l.converted_deal_id && <div className="meta"><Link href={`/deals/${l.converted_deal_id}`}>Ver deal</Link></div>}</>,
+            owner: l.owner_name,
+            created: date(l.created_at),
+            last: date(l.last_activity_at),
+          },
+        }))} />
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DataTable } from "@/components/DataTable";
 import { requireUser } from "@/lib/auth";
 import { dateTime } from "@/lib/format";
 import { SENT_FILTERS, isSentFilter, listSent, sentStats } from "@/lib/emails";
@@ -52,28 +53,35 @@ export default async function SentPage({ searchParams }: { searchParams: Promise
         <button className="btn secondary">Filtrar</button>
       </form>
 
-      <div className="table-wrap">
-        <table className="sent-table">
-          <thead><tr><th>Correo</th><th>Para</th><th>Deal</th><th>Enviado</th><th>Abierto</th><th className="num">Veces</th><th>Última apertura</th><th className="num">Clics</th><th>Respondido</th></tr></thead>
-          <tbody>
-            {rows.length === 0 && <tr><td colSpan={9} className="empty-row">No hay correos con estos filtros.</td></tr>}
-            {rows.slice(0, 100).map((e) => (
-              <tr key={e.id}>
-                <td><Link href={`/emails/${e.id}`}><strong>{e.subject || "(sin asunto)"}</strong></Link>
-                  {(e.sequence_name || (who === "all" && e.user_name)) && <div className="meta">{[e.sequence_name && `Secuencia: ${e.sequence_name}`, who === "all" && e.user_name].filter(Boolean).join(" · ")}</div>}</td>
-                <td>{e.person_id ? <Link href={`/persons/${e.person_id}`}>{e.to_name ?? e.to_email}</Link> : e.to_name ?? e.to_email}</td>
-                <td>{e.deal_id ? <Link href={`/deals/${e.deal_id}`}>{e.deal_title}</Link> : "—"}</td>
-                <td>{dateTime(e.sent_at)}</td>
-                <td>{!e.track ? <span className="meta">Sin seguimiento</span> : e.open_count > 0 ? <span className="badge won">Sí</span> : <span className="badge">No</span>}</td>
-                <td className="num">{e.track ? e.open_count : "—"}</td>
-                <td>{e.last_opened_at ? dateTime(e.last_opened_at) : "—"}</td>
-                <td className="num">{e.track ? e.click_count : "—"}</td>
-                <td>{e.replied_at ? <span className="badge won" title={dateTime(e.replied_at)}>Sí</span> : <span className="meta">No</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable id="emails" empty="No hay correos con estos filtros."
+        columns={[
+          { key: "subject", label: "Correo", required: true, pinned: true },
+          { key: "to", label: "Para" },
+          { key: "deal", label: "Deal" },
+          { key: "sent", label: "Enviado", className: "nowrap" },
+          { key: "opened", label: "Abierto" },
+          { key: "opens", label: "Veces", className: "num" },
+          { key: "last_open", label: "Última apertura", className: "nowrap" },
+          { key: "clicks", label: "Clics", className: "num" },
+          { key: "replied", label: "Respondido" },
+          { key: "sequence", label: "Secuencia", hidden: true },
+          { key: "sender", label: "Enviado por", hidden: who !== "all" },
+        ]}
+        rows={rows.slice(0, 100).map((e) => ({
+          id: e.id, label: e.subject,
+          cells: {
+            subject: <Link href={`/emails/${e.id}`}><strong>{e.subject || "(sin asunto)"}</strong></Link>,
+            to: e.person_id ? <Link href={`/persons/${e.person_id}`}>{e.to_name ?? e.to_email}</Link> : e.to_name ?? e.to_email,
+            deal: e.deal_id ? <Link href={`/deals/${e.deal_id}`}>{e.deal_title}</Link> : null,
+            sent: dateTime(e.sent_at),
+            opened: !e.track ? <span className="meta">Sin seguimiento</span> : e.open_count > 0 ? <span className="badge won">Sí</span> : <span className="badge">No</span>,
+            opens: e.track ? e.open_count : null,
+            last_open: e.last_opened_at ? dateTime(e.last_opened_at) : null,
+            clicks: e.track ? e.click_count : null,
+            replied: e.replied_at ? <span className="badge won" title={dateTime(e.replied_at)}>Sí</span> : <span className="meta">No</span>,
+            sequence: e.sequence_name, sender: e.user_name,
+          },
+        }))} />
       <div className="pager">
         {page > 0 && <Link href={qs({ page: String(page - 1) })} className="btn secondary">← Más recientes</Link>}
         {more && <Link href={qs({ page: String(page + 1) })} className="btn secondary">Más antiguos →</Link>}

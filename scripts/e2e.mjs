@@ -1660,9 +1660,11 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
 
   // Panel de agentes y consumo de IA.
   const ag = await (await get("/agents")).text();
+  const agCuenta = await (await get("/agents?ver=cuenta")).text();
+  const agLimites = await (await get("/agents?ver=limites")).text();
   check(ag.includes("Jefe de agentes") && ag.includes("Captación") && ag.includes("Prospección (outbound)") && ag.includes("Ejecutivo de deal")
-        && ag.includes("Riesgo y forecast") && ag.includes("Onboarding (CS)") && ag.includes("Cuenta y expansión (CS)") && ag.includes("Detectar upselling y cross-selling")
-        && ag.includes("Límites"), "/agents: los seis agentes con sus reglas, trabajos y límites");
+        && ag.includes("Riesgo y forecast") && ag.includes("Onboarding (CS)") && ag.includes("Cuenta y expansión (CS)") && agCuenta.includes("Detectar upselling y cross-selling")
+        && agLimites.includes("Presupuesto mensual de IA"), "/agents: los seis agentes con sus reglas, trabajos y límites");
   const [use] = await sql`SELECT count(*)::int AS n, count(DISTINCT agent)::int AS agents, sum(cost)::float8 AS cost FROM ai_usage`;
   check(use.n > 0 && use.agents >= 2 && use.cost > 0, "consumo de IA: cada llamada queda registrada con su agente y su coste estimado", JSON.stringify(use));
   if (MOCK && process.env.TOKEN_ENCRYPTION_KEY) {

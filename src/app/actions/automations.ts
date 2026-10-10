@@ -2,6 +2,7 @@
 
 import { adminOnly, guard } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { sql } from "@/lib/db";
 import { attempt, type ActionState } from "@/lib/errors";
 import {
   createCustomRule, deleteCustomRule, updateCustomRule,
@@ -96,4 +97,16 @@ export async function deleteCustomRuleAction(ruleId: string, _: ActionState): Pr
   const res = await attempt(() => deleteCustomRule(ruleId));
   refresh();
   return res;
+}
+
+/** Pone todas las reglas de un agente en el mismo nivel (las que no lo admiten se quedan como están). */
+export async function setAgentAutonomyAction(agent: string, autonomy: Autonomy): Promise<void> {
+  await adminOnly();
+  const rules = await sql<{ id: string; allowed_autonomy: Autonomy[] }[]>`
+    SELECT id, allowed_autonomy FROM automation_rules WHERE agent = ${agent} AND instruction_id IS NULL`;
+  for (const r of rules) {
+    const level = r.allowed_autonomy.includes(autonomy) ? autonomy : autonomy === "auto" && r.allowed_autonomy.includes("ask") ? "ask" : null;
+    if (level) await setRuleAutonomy(r.id, level);
+  }
+  refresh();
 }

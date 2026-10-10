@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DataTable } from "@/components/DataTable";
 import { requireUser } from "@/lib/auth";
 import { listAccounts, recomputeAccountHealth } from "@/lib/accounts";
 import { listUsers } from "@/lib/users";
@@ -50,27 +51,33 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
         <Link href={qs({ owner: me.id })} aria-current={owner === me.id ? "page" : undefined}>Mis clientes</Link>
         {users.filter((u) => u.kind === "human" && u.id !== me.id).map((u) => <Link key={u.id} href={qs({ owner: u.id })} aria-current={owner === u.id ? "page" : undefined}>{u.name}</Link>)}
       </nav>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Cliente</th><th>Salud</th><th className="num">Importe anual</th><th>Renovación</th><th>Onboarding</th><th>Satisfacción</th><th>Expansión</th><th>Customer Success</th></tr></thead>
-          <tbody>
-            {rows.length === 0 && <tr><td colSpan={8} className="empty-row">Sin clientes{filter ? " con este filtro" : ""}. Un cliente aparece aquí al ganar su primer deal (o al darle un contrato).</td></tr>}
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td><Link href={`/organizations/${r.id}`}><strong>{r.name}</strong></Link>{r.seats ? <div className="meta">{r.seats} licencias</div> : null}</td>
-                <td><HealthBadge score={r.health} signals={r.health_signals} /></td>
-                <td className="num">{money(r.arr)}</td>
-                <td>{r.renewal_date ? <>{date(r.renewal_date)}<div className={r.days_to_renewal !== null && r.days_to_renewal <= 60 && !r.renewal_deal_id ? "meta tone-bad" : "meta"}>
-                  {r.days_to_renewal} días{r.renewal_deal_id ? <> · <Link href={`/deals/${r.renewal_deal_id}`}>en marcha</Link></> : ""}</div></> : "—"}</td>
-                <td>{r.onboarding_deal_id ? <Link href={`/deals/${r.onboarding_deal_id}`}>{r.onboarding_done ? "Terminado" : r.onboarding_stage}</Link> : "—"}</td>
-                <td>{r.nps !== null ? `${r.nps}/10` : "—"}</td>
-                <td>{r.open_expansion || "—"}</td>
-                <td>{r.cs_owner_name ?? <span className="meta">Sin asignar</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable id="accounts" empty={<>Sin clientes{filter ? " con este filtro" : ""}. Un cliente aparece aquí al ganar su primer deal (o al darle un contrato).</>}
+        columns={[
+          { key: "name", label: "Cliente", required: true, pinned: true },
+          { key: "health", label: "Salud" },
+          { key: "arr", label: "Importe anual", className: "num" },
+          { key: "renewal", label: "Renovación" },
+          { key: "onboarding", label: "Onboarding" },
+          { key: "nps", label: "Satisfacción" },
+          { key: "expansion", label: "Expansión" },
+          { key: "seats", label: "Licencias", hidden: true, className: "num" },
+          { key: "cs", label: "Customer Success" },
+        ]}
+        rows={rows.map((r) => ({
+          id: r.id, label: r.name,
+          cells: {
+            name: <Link href={`/organizations/${r.id}`}><strong>{r.name}</strong></Link>,
+            health: <HealthBadge score={r.health} signals={r.health_signals} />,
+            arr: money(r.arr),
+            renewal: r.renewal_date ? <>{date(r.renewal_date)}<div className={r.days_to_renewal !== null && r.days_to_renewal <= 60 && !r.renewal_deal_id ? "meta tone-bad" : "meta"}>
+              {r.days_to_renewal} días{r.renewal_deal_id ? <> · <Link href={`/deals/${r.renewal_deal_id}`}>en marcha</Link></> : ""}</div></> : null,
+            onboarding: r.onboarding_deal_id ? <Link href={`/deals/${r.onboarding_deal_id}`}>{r.onboarding_done ? "Terminado" : r.onboarding_stage}</Link> : null,
+            nps: r.nps !== null ? `${r.nps}/10` : null,
+            expansion: r.open_expansion || null,
+            seats: r.seats || null,
+            cs: r.cs_owner_name ?? <span className="meta">Sin asignar</span>,
+          },
+        }))} />
     </main>
   );
 }

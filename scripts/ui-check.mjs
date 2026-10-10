@@ -1118,7 +1118,7 @@ await step("renovación ganada: el contrato renueva un año más", async () => {
 });
 
 await step("agentes: el panel muestra los seis y se puede apagar un trabajo", async () => {
-  await page.goto("/agents");
+  await page.goto("/agents?ver=ejecutivo");
   await page.getByRole("heading", { name: "Jefe de agentes" }).waitFor();
   const card = page.getByRole("article", { name: "Agente Ejecutivo de deal" });
   await card.locator("button.job-toggle").first().click();
