@@ -24,6 +24,7 @@ import { isId } from "@/lib/validation";
 import { ActionForm } from "@/components/ActionForm";
 import { ExportLink } from "@/components/ExportLink";
 import { CustomFieldValues } from "@/components/CustomFieldValues";
+import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { EntityPicker } from "@/components/EntityPicker";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
@@ -118,10 +119,10 @@ export default async function OrganizationPage({ params, searchParams }: { param
               <div className="dl-row"><dt>Ubicación</dt><dd>{[org.address, org.city, org.country].filter(Boolean).join(", ") || "—"}</dd></div>
               <div className="dl-row"><dt>Responsable</dt><dd>
                 <ActionForm action={changeOwnerAction.bind(null, "organization", id, back)} submitLabel="Cambiar" secondary className="form inline owner-form">
-                  <select name="owner_id" defaultValue={org.owner_id ?? ""} aria-label="Responsable">
+                  <AutoSubmitSelect name="owner_id" defaultValue={org.owner_id ?? ""} aria-label="Responsable">
                     <option value="">Sin responsable</option>
                     {humans.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
+                  </AutoSubmitSelect>
                 </ActionForm>
               </dd></div>
               <div className="dl-row"><dt>Customer Success</dt><dd>{org.cs_manager_email

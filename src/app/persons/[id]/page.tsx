@@ -30,6 +30,7 @@ import { date, dateTime, money, STATUS_LABELS } from "@/lib/format";
 import { isId } from "@/lib/validation";
 import { ActionForm } from "@/components/ActionForm";
 import { CustomFieldValues } from "@/components/CustomFieldValues";
+import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { EntityPicker } from "@/components/EntityPicker";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
@@ -140,10 +141,10 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
                 : person.marketing_consent ? <span className="badge won">Acepta comunicaciones</span> : <span className="badge">Sin consentimiento</span>}</dd></div>
               <div className="dl-row"><dt>Responsable</dt><dd>
                 <ActionForm action={changeOwnerAction.bind(null, "person", id, back)} submitLabel="Cambiar" secondary className="form inline owner-form">
-                  <select name="owner_id" defaultValue={person.owner_id ?? ""} aria-label="Responsable">
+                  <AutoSubmitSelect name="owner_id" defaultValue={person.owner_id ?? ""} aria-label="Responsable">
                     <option value="">Sin responsable</option>
                     {humans.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
+                  </AutoSubmitSelect>
                 </ActionForm>
               </dd></div>
               <CustomFieldValues defs={defs} values={person.custom} users={users} />

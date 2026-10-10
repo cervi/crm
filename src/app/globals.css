@@ -1205,6 +1205,9 @@ details.side-section > summary { cursor: pointer; }
 .side-head h3 { margin: 0; }
 .record-main { display: grid; gap: 28px; min-width: 0; }
 .owner-form { gap: 6px; }
+.owner-form button[type="submit"] { display: none; }
+.owner-form select { border-color: transparent; box-shadow: none; padding-left: 0; background-color: transparent; }
+.owner-form select:hover { border-color: var(--control-border); padding-left: 8px; }
 .owner-form select { width: auto; height: 30px; padding-top: 0; padding-bottom: 0; }
 .tags-block { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
 .tags-edit[open] { flex-basis: 100%; }
@@ -1382,3 +1385,6 @@ details.side-section > summary { cursor: pointer; }
 li[aria-selected="true"] .ms-check { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .ms-check svg { width: 11px; height: 11px; stroke-width: 3; }
 .ms-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); margin-top: 4px; padding: 6px 4px 0; }
+
+.dl-row.dl-more dd { grid-column: 1 / -1; }
+.record-side .dl-row { grid-template-columns: 112px minmax(0, 1fr); }
