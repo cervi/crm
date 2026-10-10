@@ -5,6 +5,9 @@
 //   npm run demo                  conserva los datos entre arranques
 //   npm run demo -- --reset       empieza de cero con los datos de ejemplo
 //   npm run demo -- --ia-simulada además deja configurada una IA simulada
+//   npm run probar                con TUS datos de Pipedrive: base de datos vacía (aparte de la
+//                                 demo), importación real desde Pipedrive y correo y calendario
+//                                 simulados (no sale ningún correo de verdad). La IA empieza en pausa.
 //
 // Para usar una IA real, ponla en Ajustes → Modelo de IA (con tu clave).
 // Abre http://localhost:3000 y para con Ctrl+C.
@@ -17,7 +20,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
-const DATA = path.join(root, ".demo-data");
+const pipedrive = args.includes("--pipedrive") || process.env.npm_config_pipedrive === "true";
+const DATA = path.join(root, pipedrive ? ".pipedrive-data" : ".demo-data");
 const PIDFILE = path.join(root, ".demo.pid");
 const reset = args.includes("--reset") || process.env.npm_config_reset === "true"; // también «npm run demo --reset»
 const simulatedAi = args.includes("--ia-simulada") || process.env["npm_config_ia_simulada"] === "true";
@@ -60,7 +64,7 @@ const APP_PORT = await freePort(Number(process.env.PORT ?? 3000));
 // «--reset»: se empieza de cero de verdad (también arregla una carpeta de datos que quedó a medias al cortar la demo).
 if (reset && existsSync(DATA)) rmSync(DATA, { recursive: true, force: true });
 const fresh = !existsSync(DATA);
-const DEMO_LOGIN = { email: "ventas@example.com", password: "demo-crm-2026" };
+const DEMO_LOGIN = pipedrive ? { email: "admin@crm.local", password: "probar-crm-2026" } : { email: "ventas@example.com", password: "demo-crm-2026" };
 const MOCK = `http://127.0.0.1:${MOCK_PORT}`;
 
 const env = {
@@ -82,6 +86,8 @@ const env = {
   // La pantalla de entrada muestra este acceso (solo en la demo).
   DEMO_LOGIN_HINT: `${DEMO_LOGIN.email} / ${DEMO_LOGIN.password}`,
 };
+// Con tus datos: Pipedrive de verdad (api.pipedrive.com); lo demás sigue simulado.
+if (pipedrive) delete env.PIPEDRIVE_API_URL;
 
 const children = [];
 const logs = new Map();
@@ -122,7 +128,15 @@ writeFileSync(PIDFILE, String(process.pid));
 try {
   console.log("▸ Base de datos de la demo");
   await start("db", process.execPath, ["scripts/dev-db.mjs"], { DEV_DB_PORT: String(DB_PORT), DEV_DB_DIR: DATA }, /PostgreSQL de desarrollo/);
-  if (fresh) {
+  if (fresh && pipedrive) {
+    console.log("▸ Base de datos vacía para tus datos de Pipedrive");
+    await run(["scripts/db.mjs", "migrate"]);
+    // Por seguridad, los agentes empiezan en pausa: primero se mira que todo esté bien importado.
+    const { default: postgres } = await import("postgres");
+    const sql = postgres(env.DATABASE_URL, { max: 1 });
+    await sql`UPDATE automation_settings SET paused = true`;
+    await sql.end();
+  } else if (fresh) {
     console.log("▸ Datos de ejemplo (desde cero)");
     await run(["scripts/db.mjs", "reset"]);
   } else {
@@ -148,7 +162,24 @@ try {
   console.log("▸ Aplicación (la primera carga de cada página tarda unos segundos)");
   const next = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "next.cmd" : "next");
   await start("app", next, ["dev", "-p", String(APP_PORT)], {}, /Ready|Local:/);
-  console.log(`
+  if (pipedrive) {
+    console.log(`
+  ✓ CRM para probar con tus datos en http://localhost:${APP_PORT}
+
+  Entra con ${DEMO_LOGIN.email} / ${DEMO_LOGIN.password}
+
+  1. Ajustes → Importar desde Pipedrive: pega tu token de API de Pipedrive
+     (en Pipedrive: tu foto → Ajustes personales → API) → «Conectar» → «Importar todo».
+  2. Al terminar verás la comprobación: cuántos registros hay en Pipedrive y cuántos aquí.
+  3. Revisa tus pipelines, deals, contactos y empresas, actividades, notas y campos.
+  4. Agentes e IA: empiezan en PAUSA. Para probarlos sin riesgo, pon las instrucciones en
+     «Preguntarme» (solo proponen en la bandeja) y reanúdalos desde «Agentes».
+     El correo y el calendario están simulados: no sale ningún correo a tus clientes.
+
+  Tus datos se quedan en este ordenador, en .pipedrive-data (npm run probar -- --reset para empezar de cero).
+  Para parar: Ctrl+C.
+`);
+  } else console.log(`
   ✓ CRM de prueba en http://localhost:${APP_PORT}
 
   Entra con ${DEMO_LOGIN.email} / ${DEMO_LOGIN.password}

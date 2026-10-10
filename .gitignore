@@ -9,3 +9,4 @@ next-env.d.ts
 .pgdata/
 .demo-data/
 .demo.pid
+.pipedrive-data/
