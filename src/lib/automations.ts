@@ -1246,8 +1246,8 @@ const CUSTOM_SCAN: Scanner = async (rule, ctx) => {
       // Deals de la fase (o del pipeline) con novedades desde la última vez: la IA vuelve a mirar la condición.
       const f = t.filter ?? {};
       const rows = await sql<{ id: string; v: string }[]>`
-        SELECT d.id, greatest(coalesce((SELECT max(id) FROM events e WHERE e.entity_type = 'deal' AND e.entity_id = d.id), 0),
-                              coalesce((SELECT max(extract(epoch FROM m.created_at))::bigint FROM emails m WHERE m.deal_id = d.id), 0))::text AS v
+        SELECT d.id, coalesce((SELECT max(id) FROM events e WHERE e.entity_type = 'deal' AND e.entity_id = d.id), 0)::text || ':'
+                     || coalesce((SELECT max(extract(epoch FROM m.created_at))::bigint FROM emails m WHERE m.deal_id = d.id), 0)::text AS v
         FROM deals d
         WHERE d.status = 'open' AND d.deleted_at IS NULL
           AND (${f.stage_id ?? null}::uuid IS NULL OR d.stage_id = ${f.stage_id ?? null}::uuid)
