@@ -154,11 +154,11 @@ export default async function PipelineAgentsPage({ params, searchParams }: { par
             return (
               <Link key={sc.key} href={`/pipelines/${id}/agentes?fase=${sc.key}`} scroll={false}
                     aria-current={sc.key === current.key ? "page" : undefined}
-                    className={`rail-item ${sc.kind}${state !== "none" ? " has" : ""}`} title={STATE_LABEL[state]}>
+                    className={`rail-item kind-${sc.kind}${state !== "none" ? " has" : ""}`} title={STATE_LABEL[state]}>
                 <span className="rail-n">{sc.kind === "stage" ? (sc.index ?? 0) + 1 : <Icon name={sc.kind === "global" ? "deals" : "board"} />}</span>
                 <span className="rail-name">
                   <strong>{sc.name}</strong>
-                  <span className="meta">{sc.deals !== undefined ? `${sc.deals} deal${sc.deals === 1 ? "" : "s"} abiertos` : "Reglas generales"}</span>
+                  <span className="meta">{sc.deals !== undefined ? `${sc.deals} deal${sc.deals === 1 ? " abierto" : "s abiertos"}` : "Reglas generales"}</span>
                 </span>
                 {list.length > 0 && <span className={`rail-badge ${state}`}><Icon name="spark" />{list.length}</span>}
               </Link>
@@ -173,7 +173,7 @@ export default async function PipelineAgentsPage({ params, searchParams }: { par
               <h2>{current.name}</h2>
             </div>
             <div className="stage-facts">
-              {current.deals !== undefined && <span><strong>{current.deals}</strong> deals abiertos</span>}
+              {current.deals !== undefined && <span><strong>{current.deals}</strong> deal{current.deals === 1 ? " abierto" : "s abiertos"}</span>}
               {stage?.rotten_after_days && <span title="A partir de estos días sin moverse, el deal se marca como parado">Parado a los <strong>{stage.rotten_after_days} d</strong></span>}
               {next && <span>Siguiente: <strong>{next.name}</strong></span>}
             </div>

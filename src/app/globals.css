@@ -1489,8 +1489,8 @@ tr.act-done .act-subject span { text-decoration: line-through; color: var(--mute
 .rail-item:hover { background: var(--sunken); text-decoration: none; }
 .rail-item[aria-current="page"] { background: var(--accent-soft); }
 .rail-item[aria-current="page"] .rail-name strong { color: var(--accent-ink); }
-.rail-item.pipeline { border-bottom: 1px solid var(--border); border-radius: var(--r-sm) var(--r-sm) 0 0; margin-bottom: 4px; padding-bottom: 11px; }
-.rail-item.global { border-top: 1px solid var(--border); margin-top: 4px; }
+.rail-item.kind-pipeline { border-bottom: 1px solid var(--border); border-radius: var(--r-sm) var(--r-sm) 0 0; margin-bottom: 4px; padding-bottom: 11px; }
+.rail-item.kind-global { border-top: 1px solid var(--border); margin-top: 4px; }
 .rail-n {
   flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
   background: var(--sunken); color: var(--muted); font-size: 12px; font-weight: 700;
@@ -1498,7 +1498,7 @@ tr.act-done .act-subject span { text-decoration: line-through; color: var(--mute
 .rail-n svg { width: 14px; height: 14px; }
 .rail-item.has .rail-n { background: var(--accent); color: var(--accent-text); }
 /* Línea que une las fases, como un embudo */
-.rail-item.stage:not(:last-of-type)::after { content: ""; position: absolute; left: 22px; top: 37px; height: 12px; width: 2px; background: var(--border); }
+.rail-item.kind-stage + .rail-item.kind-stage::before { content: ""; position: absolute; left: 22px; top: -7px; height: 12px; width: 2px; background: var(--border); }
 .rail-name { flex: 1; min-width: 0; display: grid; }
 .rail-name strong { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-name .meta { font-size: 12px; }
