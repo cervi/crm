@@ -121,7 +121,8 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
               <a href={`/api/export/persons?q=${encodeURIComponent(email ?? person.full_name)}`}>Exportar (CSV)</a>
               <a href="#fusionar">Fusionar con otro contacto</a>
               <div className="dropdown-sep" />
-              <ActionForm action={trashAction.bind(null, "person", id)} submitLabel="Borrar contacto" pendingLabel="…" secondary className="form inline" />
+              <ActionForm action={trashAction.bind(null, "person", id)} submitLabel="Borrar contacto" pendingLabel="…" secondary className="form inline"
+                confirm="Irá a la papelera; sus deals y actividades se conservan y se puede recuperar durante un tiempo." />
             </div>
           </details>
         </nav>
@@ -271,7 +272,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
           <section className="panel" id="fusionar" aria-label="Fusionar">
             <h2>Fusionar con otro contacto</h2>
             <p className="meta">Si es la misma persona: se juntan deals, actividades, notas, correos, archivos, emails y teléfonos. El que no se queda va a la papelera.</p>
-            <ActionForm action={mergeWithAction.bind(null, "person", id)} submitLabel="Fusionar" secondary>
+            <ActionForm action={mergeWithAction.bind(null, "person", id)} submitLabel="Fusionar" secondary confirm="El contacto que no se queda irá a la papelera y todo lo suyo (correos, deals, notas) pasará al otro.">
               <EntityPicker name="other_id" type="persons" label="Otro contacto" required />
               <label className="radio-row"><input type="radio" name="keep" value="this" defaultChecked /> Quedarse con este ({person.full_name})</label>
               <label className="radio-row"><input type="radio" name="keep" value="other" /> Quedarse con el otro</label>

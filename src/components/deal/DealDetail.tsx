@@ -167,7 +167,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               <>
                 <ActionForm action={winDealAction.bind(null, dealId)} submitLabel="Ganado" pendingLabel="…" good className="form inline" />
                 <details className="lose">
-                  <summary className="btn danger">Perdido</summary>
+                  <summary className="btn secondary">Perdido</summary>
                   <div className="panel popover">
                     <ActionForm action={loseDealAction.bind(null, dealId)} submitLabel="Marcar como perdido" danger>
                       <label className="field"><span className="label">Motivo *</span>
@@ -187,7 +187,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               <ActionForm action={reopenDealAction.bind(null, dealId)} submitLabel="Reabrir" secondary className="form inline" />
             )}
             <Link href={`/deals/${dealId}/edit`} className="btn secondary">Editar</Link>
-            <ActionForm action={trashAction.bind(null, "deal", dealId)} submitLabel="Borrar" pendingLabel="…" secondary className="form inline deal-trash" />
+            <ActionForm action={trashAction.bind(null, "deal", dealId)} submitLabel="Borrar deal" pendingLabel="…" secondary className="form inline deal-trash"
+                        confirm="El deal irá a la papelera; desde allí se puede recuperar durante un tiempo." />
           </div>
         </div>
 

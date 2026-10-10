@@ -57,7 +57,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         {lead.status === "open" && (
           <ActionForm action={archiveLeadAction.bind(null, id)} submitLabel="Archivar" secondary className="form inline" />
         )}
-        <ActionForm action={trashAction.bind(null, "lead", id)} submitLabel="Borrar" pendingLabel="…" secondary className="form inline" />
+        <ActionForm action={trashAction.bind(null, "lead", id)} submitLabel="Borrar lead" pendingLabel="…" secondary className="form inline"
+          confirm="El lead irá a la papelera; desde allí se puede recuperar durante un tiempo." />
       </div>
 
       <div className="split">

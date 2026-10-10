@@ -101,7 +101,8 @@ export default async function OrganizationPage({ params, searchParams }: { param
               <ExportLink dataset="persons" params={{ organization: id }} label="Exportar contactos" />
               <a href="#fusionar">Fusionar con otra empresa</a>
               <div className="dropdown-sep" />
-              <ActionForm action={trashAction.bind(null, "organization", id)} submitLabel="Borrar empresa" pendingLabel="…" secondary className="form inline" />
+              <ActionForm action={trashAction.bind(null, "organization", id)} submitLabel="Borrar empresa" pendingLabel="…" secondary className="form inline"
+                confirm="Irá a la papelera; sus contactos y deals se conservan y se puede recuperar durante un tiempo." />
             </div>
           </details>
         </nav>
@@ -235,7 +236,7 @@ export default async function OrganizationPage({ params, searchParams }: { param
           <section className="panel" id="fusionar" aria-label="Fusionar">
             <h2>Fusionar con otra empresa</h2>
             <p className="meta">Si es la misma empresa: se juntan contactos, deals, actividades, notas, correos y archivos. La que no se queda va a la papelera.</p>
-            <ActionForm action={mergeWithAction.bind(null, "organization", id)} submitLabel="Fusionar" secondary>
+            <ActionForm action={mergeWithAction.bind(null, "organization", id)} submitLabel="Fusionar" secondary confirm="La empresa que no se queda irá a la papelera y sus contactos y deals pasarán a la otra.">
               <EntityPicker name="other_id" type="organizations" label="Otra empresa" required />
               <label className="radio-row"><input type="radio" name="keep" value="this" defaultChecked /> Quedarse con esta ({org.name})</label>
               <label className="radio-row"><input type="radio" name="keep" value="other" /> Quedarse con la otra</label>

@@ -56,12 +56,11 @@ export default async function ImportPage() {
             </p>
           </div>
           <div className="head-actions">
-            <form action={setPipedriveSyncAction.bind(null, !pd.sync)}>
-              <button type="submit" className={pd.sync ? "btn" : "btn secondary"} aria-pressed={pd.sync}>
-                {pd.sync ? "Sincronización horaria: activa" : "Sincronizar cada hora"}
-              </button>
+            <form action={setPipedriveSyncAction.bind(null, !pd.sync)} className="switch-row">
+              <button type="submit" className={pd.sync ? "switch on" : "switch"} aria-pressed={pd.sync} aria-label="Sincronizar con Pipedrive cada hora"><i /></button>
+              <span>Sincronizar cada hora {pd.sync ? <span className="meta">(activa)</span> : null}</span>
             </form>
-            <ActionForm action={disconnectPipedriveAction} submitLabel="Desconectar" secondary className="form inline" />
+            <ActionForm action={disconnectPipedriveAction} submitLabel="Desconectar Pipedrive" secondary className="form inline" confirm="Se olvida la clave de Pipedrive y se para la sincronización. Lo ya importado se queda." />
           </div>
         </section>
       )}
@@ -73,7 +72,7 @@ export default async function ImportPage() {
             <>
               <ImportProgress labels={STEP_LABELS} steps={[...STEPS]}
                               initial={{ status: running.status, step: running.step, counts: running.counts, error: running.error }} />
-              <ActionForm action={cancelImportAction.bind(null, running.id)} submitLabel="Cancelar" secondary className="form inline" />
+              <ActionForm action={cancelImportAction.bind(null, running.id)} submitLabel="Cancelar la importación" secondary className="form inline" confirm="Se para la importación. Lo que ya se ha traído se queda; puedes volver a lanzarla y seguirá donde iba." />
             </>
           ) : (
             <>

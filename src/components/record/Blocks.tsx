@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "../ConfirmButton";
 import { ActionForm } from "@/components/ActionForm";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
@@ -127,7 +128,7 @@ export function FilesList({ files, back, showDeal }: { files: StoredFile[]; back
           <a href={`/api/files/${f.id}`} className="file-name"><Icon name="download" />{f.name}</a>
           {/^(image\/|application\/pdf)/.test(f.mime) && <a className="meta" href={`/api/files/${f.id}?ver=1`} target="_blank" rel="noreferrer">ver</a>}
           <span className="meta">{fileSize(f.size)} · {date(f.created_at)}{f.uploader ? ` · ${f.uploader}` : ""}{showDeal && f.deal_title ? ` · ${f.deal_title}` : ""}</span>
-          <form action={deleteFileAction.bind(null, f.id, back)}><button type="submit" className="link-btn meta" aria-label={`Borrar ${f.name}`}>Borrar</button></form>
+          <form action={deleteFileAction.bind(null, f.id, back)}><ConfirmButton label="Borrar" className="link-btn meta" ariaLabel={`Borrar ${f.name}`} confirm="El archivo se borra del todo, no va a la papelera." /></form>
         </li>
       ))}
     </ul>

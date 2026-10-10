@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { notFound } from "next/navigation";
 import { getPipeline, listStages } from "@/lib/pipelines";
 import { listInstructions, type Instruction } from "@/lib/stage-agents";
@@ -70,7 +71,7 @@ function InstructionCard({ ins, deals, pipelineId }: { ins: Instruction; deals: 
         <ActionForm action={updateInstructionAction.bind(null, ins.id, pipelineId)} submitLabel="Volver a entender y guardar" secondary>
           <textarea name="text" rows={3} defaultValue={ins.text} aria-label="Texto de la instrucción" />
         </ActionForm>
-        <form action={deleteInstructionAction.bind(null, ins.id, pipelineId)}><button type="submit" className="link-btn meta tone-bad">Borrar esta instrucción</button></form>
+        <form action={deleteInstructionAction.bind(null, ins.id, pipelineId)}><ConfirmButton label="Borrar esta instrucción" className="link-btn meta tone-bad" confirm="La IA deja de hacerlo y se descartan sus propuestas pendientes." /></form>
       </details>
     </article>
   );

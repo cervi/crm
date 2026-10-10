@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { revokeAgentKeyAction } from "@/app/actions/agents";
 import { listAgentKeys } from "@/lib/agents";
 import { requireAdminPage } from "@/lib/auth";
@@ -53,7 +54,7 @@ export default async function AgentsPage() {
                   <td><code>{k.prefix}…</code></td>
                   <td>{k.can_write ? "Consulta y propone" : "Solo consulta"}</td>
                   <td>{k.revoked_at ? <span className="badge lost">Revocada</span> : k.last_used_at ? dateTime(k.last_used_at) : "nunca"}</td>
-                  <td>{!k.revoked_at && <form action={revokeAgentKeyAction.bind(null, k.id)}><button type="submit" className="btn secondary small">Revocar</button></form>}</td>
+                  <td>{!k.revoked_at && <form action={revokeAgentKeyAction.bind(null, k.id)}><ConfirmButton label="Revocar" confirm="El agente que usa esta clave dejará de poder conectarse. No se puede deshacer." /></form>}</td>
                 </tr>
               ))}
             </tbody>

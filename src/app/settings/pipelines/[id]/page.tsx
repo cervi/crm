@@ -80,7 +80,8 @@ export default async function PipelineSettingsPage({ params }: { params: Promise
                 </ActionForm>
                 <details style={{ marginTop: 6 }}>
                   <summary className="meta">Eliminar fase</summary>
-                  <ActionForm action={deleteStageAction.bind(null, s.id)} submitLabel="Eliminar definitivamente" danger className="form inline" />
+                  <ActionForm action={deleteStageAction.bind(null, s.id)} submitLabel="Eliminar la fase" secondary className="form inline"
+                              confirm={`Se eliminará la fase «${s.name}». No se puede deshacer.`} />
                 </details>
               </li>
             ))}

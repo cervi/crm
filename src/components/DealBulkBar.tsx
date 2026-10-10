@@ -38,6 +38,7 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
   const router = useRouter();
   const [count, setCount] = useState(0);
   const [op, setOp] = useState("");
+  const [armed, setArmed] = useState(false);
   const [result, setResult] = useState<{ error?: string; message?: string } | null>(null);
   const [pending, start] = useTransition();
 
@@ -50,8 +51,12 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
 
   if (count === 0 && !result) return null;
 
+  const LABELS: Record<string, string> = { owner: "Cambiar responsable", stage: "Mover de fase", activity: "Programar actividad", sequence: "Añadir a la secuencia", won: "Marcar como ganados", lost: "Marcar como perdidos" };
+  const risky = op === "won" || op === "lost";
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (risky && !armed) { setArmed(true); return; }
+    setArmed(false);
     const data = Object.fromEntries(Array.from(new FormData(e.currentTarget).entries()).map(([k, v]) => [k, String(v)]));
     const ids = selectedIds();
     start(async () => {
@@ -71,7 +76,7 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
       {count > 0 ? (
         <form onSubmit={submit} className="bulk-form">
           <strong>{count} seleccionado{count === 1 ? "" : "s"}</strong>
-          <select name="op" aria-label="Acción" value={op} onChange={(e) => { setOp(e.target.value); setResult(null); }} required>
+          <select name="op" aria-label="Acción" value={op} onChange={(e) => { setOp(e.target.value); setResult(null); setArmed(false); }} required>
             <option value="">Elegir acción…</option>
             <option value="owner">Cambiar responsable</option>
             <option value="stage">Mover a otra fase</option>
@@ -116,7 +121,10 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
               <input name="due_date" type="date" aria-label="Fecha" required defaultValue={new Date().toISOString().slice(0, 10)} />
             </>
           )}
-          <button type="submit" className="btn small" disabled={!op || pending}>{pending ? "Aplicando…" : "Aplicar"}</button>
+          {armed && <span className="confirm-inline">{op === "lost" ? `Se marcarán ${count} deals como perdidos.` : `Se marcarán ${count} deals como ganados (se crean sus clientes y onboardings).`}</span>}
+          <button type="submit" className={armed ? "btn small danger" : "btn small"} disabled={!op || pending}>
+            {pending ? "Aplicando…" : !op ? "Aplicar" : armed ? `Sí, ${LABELS[op].toLowerCase()} (${count})` : `${LABELS[op]} (${count})`}
+          </button>
           <button type="button" className="btn small secondary" onClick={() => {
             document.querySelectorAll<HTMLInputElement>(CHECKS).forEach((c) => { c.checked = false; });
             document.dispatchEvent(new Event("change"));

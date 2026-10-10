@@ -207,7 +207,8 @@ await step("ajustes: añadir, reordenar y eliminar una fase", async () => {
   await item.getByRole("button", { name: `Subir Fase ${stamp}` }).click();
   await page.waitForFunction((n) => [...document.querySelectorAll(".item strong")].map((e) => e.textContent).some((t) => t === `3. ${n}`), `Fase ${stamp}`);
   await item.getByText("Eliminar fase").click();
-  await item.getByRole("button", { name: "Eliminar definitivamente" }).click();
+  await item.getByRole("button", { name: "Eliminar la fase" }).click();
+  await item.getByRole("button", { name: "Sí, eliminar la fase" }).click();
   await item.waitFor({ state: "detached" });
 });
 
@@ -215,7 +216,8 @@ await step("ajustes: no deja eliminar una fase con deals", async () => {
   await page.goto("/settings/pipelines/10000000-0000-0000-0000-000000000003");
   const item = page.locator(".item", { hasText: "Necesidad detectada" });
   await item.getByText("Eliminar fase").click();
-  await item.getByRole("button", { name: "Eliminar definitivamente" }).click();
+  await item.getByRole("button", { name: "Eliminar la fase" }).click();
+  await item.getByRole("button", { name: "Sí, eliminar la fase" }).click();
   await item.getByRole("alert").filter({ hasText: "Muévelos a otra fase" }).waitFor();
 });
 
@@ -267,7 +269,8 @@ await step("crear un widget en un dashboard con vista previa", async () => {
   await widget.locator(".widget-table td").first().waitFor();
   await shot("dashboard");
   await widget.getByLabel(`Opciones de Leads por origen ${stamp}`).click();
-  await widget.getByRole("button", { name: "Eliminar" }).click();
+  await widget.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await widget.getByRole("button", { name: "Sí, eliminar" }).click();
   await widget.waitFor({ state: "detached" });
 });
 
@@ -850,7 +853,7 @@ await step("lista de deals: filtrar, guardar la vista y cambiar el responsable d
   await bar.getByText("2 seleccionados").waitFor();
   await bar.getByLabel("Acción").selectOption("owner");
   await bar.getByLabel("Nuevo responsable").selectOption({ label: "Customer Success" });
-  await bar.getByRole("button", { name: "Aplicar" }).click();
+  await bar.getByRole("button", { name: /^Cambiar responsable \(/ }).click();
   await bar.getByText("2 deals actualizados").waitFor();
   const owners = await sql`SELECT DISTINCT u.name FROM deals d JOIN users u ON u.id = d.owner_id
                            WHERE d.id IN ('90000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000003')`;
@@ -967,7 +970,8 @@ await step("mención en una nota avisa; borrar un lead y recuperarlo; fusionar d
   // Papelera.
   const [lead] = await sql`SELECT id, title FROM leads WHERE deleted_at IS NULL AND status = 'open' ORDER BY created_at DESC LIMIT 1`;
   await page.goto(`/leads/${lead.id}`);
-  await page.getByRole("button", { name: "Borrar", exact: true }).click();
+  await page.getByRole("button", { name: "Borrar lead", exact: true }).click();
+  await page.getByRole("button", { name: "Sí, borrar lead" }).click();
   await page.waitForURL(/\/leads$/);
   await page.goto("/trash");
   const row = page.getByRole("row", { name: new RegExp(lead.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
@@ -1297,7 +1301,7 @@ if (MOCK) {
     const bar = page.getByRole("region", { name: "Acciones en bloque" });
     await bar.getByLabel("Acción").selectOption("tag");
     await bar.getByLabel("Etiqueta").fill(`lote-${stamp}`);
-    await bar.getByRole("button", { name: "Aplicar" }).click();
+    await bar.getByRole("button", { name: /^Añadir etiqueta \(/ }).click();
     await bar.getByText(/2 contactos con el cambio/).waitFor();
     const [n] = await sql`SELECT count(*)::int AS n FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE t.name = ${`lote-${stamp}`}`;
     expect(n.n === 2, `etiquetados: ${n.n}`);

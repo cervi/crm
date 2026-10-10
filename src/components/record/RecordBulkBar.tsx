@@ -17,6 +17,7 @@ export function RecordBulkBar({ kind, users, types, sequences = [], tags = [] }:
   const router = useRouter();
   const [count, setCount] = useState(0);
   const [op, setOp] = useState("");
+  const [armed, setArmed] = useState(false);
   const [result, setResult] = useState<{ error?: string; message?: string } | null>(null);
   const [pending, start] = useTransition();
 
@@ -28,8 +29,11 @@ export function RecordBulkBar({ kind, users, types, sequences = [], tags = [] }:
   }, []);
   if (count === 0 && !result) return null;
 
+  const LABELS: Record<string, string> = { owner: "Cambiar responsable", tag: "Añadir etiqueta", untag: "Quitar etiqueta", activity: "Programar actividad", sequence: "Añadir a la secuencia", trash: "Mover a la papelera" };
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (op === "trash" && !armed) { setArmed(true); return; }
+    setArmed(false);
     const data = Object.fromEntries(Array.from(new FormData(e.currentTarget).entries()).map(([k, v]) => [k, String(v)]));
     const ids = selectedIds();
     start(async () => {
@@ -44,7 +48,7 @@ export function RecordBulkBar({ kind, users, types, sequences = [], tags = [] }:
       {count > 0 && (
         <form onSubmit={submit} className="bulk-form">
           <strong>{count} seleccionado{count === 1 ? "" : "s"}</strong>
-          <select name="op" aria-label="Acción" value={op} onChange={(e) => { setOp(e.target.value); setResult(null); }} required>
+          <select name="op" aria-label="Acción" value={op} onChange={(e) => { setOp(e.target.value); setResult(null); setArmed(false); }} required>
             <option value="">Elegir acción…</option>
             <option value="owner">Cambiar responsable</option>
             <option value="tag">Añadir etiqueta</option>
@@ -80,7 +84,10 @@ export function RecordBulkBar({ kind, users, types, sequences = [], tags = [] }:
               <input name="due_date" type="date" aria-label="Fecha" required defaultValue={new Date().toISOString().slice(0, 10)} />
             </>
           )}
-          <button type="submit" className={op === "trash" ? "btn small danger" : "btn small"} disabled={!op || pending}>{pending ? "Aplicando…" : "Aplicar"}</button>
+          {armed && <span className="confirm-inline">{`Se moverán ${count} a la papelera (se pueden recuperar durante un tiempo).`}</span>}
+          <button type="submit" className={armed ? "btn small danger" : "btn small"} disabled={!op || pending}>
+            {pending ? "Aplicando…" : !op ? "Aplicar" : armed ? `Sí, mover a la papelera (${count})` : `${LABELS[op]} (${count})`}
+          </button>
           <button type="button" className="btn small secondary" onClick={() => { clear(); setResult(null); }}>Quitar selección</button>
         </form>
       )}

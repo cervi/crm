@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { notFound } from "next/navigation";
 import { describeConfig, listDashboards, listWidgets, safeRun } from "@/lib/analytics";
 import { isId } from "@/lib/validation";
@@ -45,7 +46,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ id: 
             </ActionForm>
             <details>
               <summary className="meta">Eliminar este dashboard</summary>
-              <ActionForm action={deleteDashboardAction.bind(null, id)} submitLabel="Eliminar con sus widgets" danger />
+              <ActionForm action={deleteDashboardAction.bind(null, id)} submitLabel="Eliminar el dashboard" secondary confirm="Se eliminará el dashboard con todos sus widgets. No se puede deshacer." />
             </details>
           </div>
         </details>
@@ -75,7 +76,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ id: 
                   <a href={`/api/export/widget?id=${w.id}`} download>Exportar CSV</a>
                   {i > 0 && <form action={moveWidgetAction.bind(null, id, w.id, "up")}><button>Mover antes</button></form>}
                   {i < widgets.length - 1 && <form action={moveWidgetAction.bind(null, id, w.id, "down")}><button>Mover después</button></form>}
-                  <form action={deleteWidgetAction.bind(null, id, w.id)}><button className="danger-text">Eliminar</button></form>
+                  <form action={deleteWidgetAction.bind(null, id, w.id)}><ConfirmButton label="Eliminar" confirm="¿Eliminar este widget?" className="danger-text" /></form>
                 </div>
               </details>
             </div>

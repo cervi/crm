@@ -43,7 +43,7 @@ export default async function FormPage({ params }: { params: Promise<{ id: strin
       <section className="panel">
         <h2>Borrar el formulario</h2>
         <p className="meta">Los leads que ya llegaron se quedan.</p>
-        <ActionForm action={deleteFormAction.bind(null, id)} submitLabel="Borrar formulario" danger className="form inline" />
+        <ActionForm action={deleteFormAction.bind(null, id)} submitLabel="Borrar formulario" secondary className="form inline" confirm="El formulario dejará de recibir leads. No se puede deshacer." />
       </section>
     </main>
   );

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { CAMPAIGN_STATUS, CONTACT_STATUS, REPLY_LABEL, campaignStats, getCampaign, listContacts, type ContactStatus, type ReplyClass } from "@/lib/campaigns";
@@ -144,7 +145,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
                 <td>{r.reply_class ? <><strong>{REPLY_LABEL[r.reply_class as ReplyClass] ?? r.reply_class}</strong>{r.reply_summary && <div className="meta">{r.reply_summary}</div>}</> : "—"}
                   {r.deal_id && <div><Link href={`/deals/${r.deal_id}`}>Ver deal</Link></div>}</td>
                 <td className="meta">{r.mailbox_email ?? "—"}</td>
-                <td><form action={removeContactAction.bind(null, id, r.id)}><button type="submit" className="link-btn meta">Quitar</button></form></td>
+                <td><form action={removeContactAction.bind(null, id, r.id)}><ConfirmButton label="Quitar" className="link-btn meta" confirm="Deja de recibir los correos de esta campaña." /></form></td>
               </tr>
             ))}
           </tbody>

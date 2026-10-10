@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { deleteGoalAction, saveAnswerAction, saveGoalAction } from "@/app/actions/reports";
 import { ActionForm } from "@/components/ActionForm";
 import { WidgetView } from "@/components/charts/WidgetView";
@@ -257,7 +258,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                   <span className="meta">{g.period === "month" ? "este mes" : "este trimestre"}</span>
                   <span className="spacer" />
                   <span>{fmtGoal(g.metric, g.actual)} de {fmtGoal(g.metric, g.target)} · {Math.round(ratio * 100)} %</span>
-                  {me.role === "admin" && <form action={deleteGoalAction.bind(null, g.id)}><button type="submit" className="link-btn" aria-label="Quitar objetivo">Quitar</button></form>}
+                  {me.role === "admin" && <form action={deleteGoalAction.bind(null, g.id)}><ConfirmButton label="Quitar" className="link-btn" ariaLabel="Quitar objetivo" confirm="¿Quitar este objetivo?" /></form>}
                 </div>
                 <div className="goal-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, ratio) * 100)}>
                   <span className={onTrack ? "good" : "behind"} style={{ width: `${Math.min(100, ratio * 100)}%` }} />

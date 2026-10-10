@@ -239,7 +239,7 @@ export default async function AutomationsSettingsPage() {
                   <summary className="meta">Editar la regla</summary>
                   <CustomRuleForm action={updateCustomRuleAction.bind(null, r.id)} types={typeOptions} stages={stageOptions} pipelines={pipelineOptions} users={userOptions}
                                   initial={{ name: r.name, trigger: r.trigger ?? undefined, action: r.action ?? undefined }} submitLabel="Guardar" />
-                  <ActionForm action={deleteCustomRuleAction.bind(null, r.id)} submitLabel="Borrar la regla" pendingLabel="…" danger className="form inline" />
+                  <ActionForm action={deleteCustomRuleAction.bind(null, r.id)} submitLabel="Borrar la regla" pendingLabel="…" secondary className="form inline" confirm="La regla deja de actuar y se descartan sus propuestas pendientes." />
                 </details>
               </article>
             );

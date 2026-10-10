@@ -76,7 +76,7 @@ export default async function TemplatesPage() {
                 <ActionForm action={saveTemplateAction.bind(null, t.id)} submitLabel="Guardar" secondary>
                   <TemplateFields t={t} admin={admin} />
                 </ActionForm>
-                <ActionForm action={deleteTemplateAction.bind(null, t.id)} submitLabel="Borrar plantilla" danger className="form inline" />
+                <ActionForm action={deleteTemplateAction.bind(null, t.id)} submitLabel="Borrar plantilla" secondary className="form inline" confirm="Se borra la plantilla. Los correos ya enviados no cambian." />
               </details>
             ) : <p className="note-body" style={{ margin: 0 }}>{t.body}</p>}
           </article>

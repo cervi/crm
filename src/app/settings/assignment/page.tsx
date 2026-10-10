@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { deleteAssignmentRuleAction, saveAssignmentRuleAction, setAssignmentEnabledAction } from "@/app/actions/assignment";
 import { ActionForm } from "@/components/ActionForm";
 import { assignmentSettings, FIELD_LABELS, listAssignmentRules, type AssignmentRule } from "@/lib/assignment";
@@ -77,7 +78,7 @@ export default async function AssignmentPage() {
                 <h3 style={{ margin: 0 }}>{i + 1}. {ENTITY[r.entity]} · {FIELD_LABELS[r.field]}{r.value ? ` «${r.value}»` : ""}</h3>
                 <p className="meta" style={{ margin: 0 }}>Por turnos entre {r.user_names.join(", ") || "—"}</p>
               </div>
-              <form action={deleteAssignmentRuleAction.bind(null, r.id)}><button type="submit" className="btn secondary small">Quitar</button></form>
+              <form action={deleteAssignmentRuleAction.bind(null, r.id)}><ConfirmButton label="Quitar" confirm="Los leads nuevos dejarán de repartirse con esta regla." /></form>
             </div>
             <details>
               <summary className="meta">Editar</summary>

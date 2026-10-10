@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { notFound } from "next/navigation";
 import {
   deleteSequenceAction, deleteStepAction, moveStepAction, resumeEnrollmentAction, saveStepAction, saveVariantAction,
@@ -143,7 +144,7 @@ export default async function SequencePage({ params }: { params: Promise<{ id: s
                   {i > 0 && <form action={moveStepAction.bind(null, id, st.id, -1)}><button type="submit" className="btn secondary small" aria-label={`Subir el paso ${st.position}`}>↑</button></form>}
                   {i < seq.steps.length - 1 && <form action={moveStepAction.bind(null, id, st.id, 1)}><button type="submit" className="btn secondary small" aria-label={`Bajar el paso ${st.position}`}>↓</button></form>}
                   <form action={deleteStepAction.bind(null, id, st.id)}>
-                    <button type="submit" className="btn secondary small" aria-label={`Quitar el paso ${st.position}`}>Quitar</button>
+                    <ConfirmButton label="Quitar" ariaLabel={`Quitar el paso ${st.position}`} confirm="Se quita el paso; los contactos en curso pasan al siguiente." />
                   </form>
                 </div>
               </div>
@@ -164,7 +165,7 @@ export default async function SequencePage({ params }: { params: Promise<{ id: s
                   <div className="ee-row">
                     <form action={variantAction.bind(null, id, st.id, v.id, v.is_active ? "off" : "on")}><button type="submit" className="btn secondary small">{v.is_active ? "Pausar variante" : "Activar variante"}</button></form>
                     <form action={variantAction.bind(null, id, st.id, v.id, "promote")}><button type="submit" className="btn secondary small" aria-label={`Quedarse con la variante ${v.label}`}>Quedarse con esta (pasa a ser la A)</button></form>
-                    <form action={variantAction.bind(null, id, st.id, v.id, "delete")}><button type="submit" className="btn secondary small">Borrar variante</button></form>
+                    <form action={variantAction.bind(null, id, st.id, v.id, "delete")}><ConfirmButton label="Borrar variante" confirm="Se borra la variante y sus estadísticas." /></form>
                   </div>
                 </details>
               ))}
@@ -222,7 +223,8 @@ export default async function SequencePage({ params }: { params: Promise<{ id: s
 
       <section className="panel" style={{ marginTop: 22 }}>
         <h2>Borrar la secuencia</h2>
-        <ActionForm action={deleteSequenceAction.bind(null, id)} submitLabel="Borrar secuencia" danger className="form inline" />
+        <ActionForm action={deleteSequenceAction.bind(null, id)} submitLabel="Borrar secuencia" secondary className="form inline"
+                    confirm="Se para la secuencia para todos los contactos en curso y se borra. No se puede deshacer." />
       </section>
     </main>
   );
