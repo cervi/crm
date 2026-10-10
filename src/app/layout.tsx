@@ -32,7 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const user = await currentUser().catch(() => null);
   if (!user || /^\/(login|setup|book|f|t|p)(\/|$|\?)/.test(path)) {
     return (
-      <html lang="es" data-theme={dataTheme}>
+      <html lang="es" data-theme={dataTheme} suppressHydrationWarning>
         <body><div className="bare">{children}</div></body>
       </html>
     );
@@ -44,7 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Etiquetas de los tipos de actividad (configurables) disponibles en todo el servidor.
   await activityTypes().catch(() => null);
   return (
-    <html lang="es" data-theme={dataTheme}>
+    <html lang="es" data-theme={dataTheme} suppressHydrationWarning>
       <body>
         <div className="shell">
           <Nav inboxCount={inboxCount} />
