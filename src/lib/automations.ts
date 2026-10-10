@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkCondition, writeAgentEmail } from "./stage-agents";
 import { appendSignature, senderVars, signatureFor } from "./signatures";
 import type postgres from "postgres";
 import { sql, json } from "./db";
@@ -82,6 +83,10 @@ export type Rule = {
   created_at: Date;
   /** Agente al que pertenece (captación, prospección, ejecutivo, riesgo, onboarding, cuenta). */
   agent: string | null;
+  /** Instrucción en lenguaje natural de la que sale (agentes por fase). */
+  instruction_id: string | null;
+  /** Condición en lenguaje natural que la IA comprueba en cada deal antes de actuar. */
+  condition: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -90,11 +95,12 @@ export type Rule = {
 
 export type Outcome = "any" | "held" | "no_show" | "rescheduled" | "cancelled";
 /** Condiciones opcionales: solo deals de un pipeline, desde un importe o de un responsable. */
-export type RuleFilter = { pipeline_id?: string | null; min_value?: number | null; owner_id?: string | null };
+export type RuleFilter = { pipeline_id?: string | null; min_value?: number | null; owner_id?: string | null; stage_id?: string | null };
 export type CustomTrigger = (
   | { kind: "activity_done"; activity_type: string | null; outcome: Outcome }
   | { kind: "activity_overdue"; activity_type: string | null; days: number }
-  | { kind: "deal_stage"; stage_id: string; days: number }
+  | { kind: "deal_stage"; stage_id: string; days: number; include_existing?: boolean }
+  | { kind: "stage_review" }
   | { kind: "deal_created"; days: number }
   | { kind: "deal_idle"; days: number }
   | { kind: "deal_won" }
@@ -107,7 +113,7 @@ export type CustomTrigger = (
 ) & { filter?: RuleFilter };
 export type CustomAction =
   | { kind: "create_activity"; activity_type: string; subject: string; due_in_days: number; note: string | null }
-  | { kind: "draft_email"; subject: string; body: string }
+  | { kind: "draft_email"; subject: string; body: string; ai_prompt?: string | null; use_slots?: boolean }
   | { kind: "move_stage"; stage_id: string }
   | { kind: "notify"; message: string }
   | { kind: "add_note"; content: string }
@@ -215,7 +221,8 @@ export const RULE_PARAMS: Record<string, ParamSpec[]> = {
 
 export async function listRules(): Promise<Rule[]> {
   return sql<Rule[]>`
-    SELECT id, key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action, created_at, agent
+    SELECT id, key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action, created_at, agent,
+           instruction_id, condition
     FROM automation_rules ORDER BY is_custom, position, name`;
 }
 
@@ -1061,8 +1068,9 @@ async function anyDeal(dealId: string) {
 }
 
 /** ¿Cumple el deal las condiciones de la regla? */
-function matchesFilter(f: RuleFilter | undefined, d: { pipeline_id: string; value: string | null; owner_id: string | null }) {
+function matchesFilter(f: RuleFilter | undefined, d: { pipeline_id: string; value: string | null; owner_id: string | null; stage_id?: string }) {
   if (!f) return true;
+  if (f.stage_id && d.stage_id !== f.stage_id) return false;
   if (f.pipeline_id && d.pipeline_id !== f.pipeline_id) return false;
   if (f.owner_id && d.owner_id !== f.owner_id) return false;
   if (f.min_value != null && Number(d.value ?? 0) < f.min_value) return false;
@@ -1077,6 +1085,13 @@ async function customCandidate(rule: Rule, ctx: RunContext, src: Source, why: st
   if (!action) return null;
   const d = await anyDeal(src.dealId);
   if (!d || !matchesFilter(rule.trigger?.filter, d)) return null;
+  // Condición en lenguaje natural: la comprueba la IA (una vez por deal y situación).
+  if (rule.condition) {
+    const verdict = await checkCondition(rule, d.id, src.onceKey ?? src.activity?.id ?? "x");
+    if (!verdict?.ok) return null;
+    why = `${why} ${verdict.reason}`.trim();
+  }
+  if (rule.instruction_id) why = `${why}${why.endsWith(".") ? "" : "."} (Según tu instrucción para esta fase.)`;
   const open = d.status === "open";
   // Mover de fase solo tiene sentido con el deal abierto; el resto sirve también tras ganar o perder.
   if (!open && action.kind === "move_stage") return null;
@@ -1100,11 +1115,15 @@ async function customCandidate(rule: Rule, ctx: RunContext, src: Source, why: st
     }
     case "draft_email": {
       if (!to.email) return null;
+      // Correo que redacta la IA para este deal (con los huecos del calendario si se pidió).
+      const mail = action.ai_prompt
+        ? await writeAgentEmail({ dealId: d.id, prompt: action.ai_prompt, contact: to.name, slots: action.use_slots ? await ctx.slotsFor(d.owner_id) : null,
+                                  fallbackSubject: renderTemplate(action.subject, vars), personId: to.person_id, ownerId: d.owner_id })
+        : await renderTemplates(ctx, d.owner_id, vars, action.subject, action.body);
       return {
         dealId: d.id, reason: why,
-        title: `Escribir a ${to.name}: ${renderTemplate(action.subject, vars)}`.slice(0, 300),
-        payload: { ...base, to: to.email, to_name: to.name, person_id: to.person_id,
-                   ...(await renderTemplates(ctx, d.owner_id, vars, action.subject, action.body)) },
+        title: `Escribir a ${to.name}: ${mail.subject}`.slice(0, 300),
+        payload: { ...base, to: to.email, to_name: to.name, person_id: to.person_id, ...mail },
       };
     }
     case "move_stage": {
@@ -1215,11 +1234,27 @@ const CUSTOM_SCAN: Scanner = async (rule, ctx) => {
         SELECT d.id, d.stage_entered_at, s.name AS stage_name FROM deals d JOIN stages s ON s.id = d.stage_id
         WHERE d.stage_id = ${t.stage_id} AND d.status = 'open' AND d.deleted_at IS NULL
           AND d.stage_entered_at <= now() - make_interval(days => ${t.days})
-          AND d.stage_entered_at + make_interval(days => ${t.days}) >= ${rule.created_at}
+          AND (${Boolean(t.include_existing)} OR d.stage_entered_at + make_interval(days => ${t.days}) >= ${rule.created_at})
         LIMIT 300`;
       for (const r of rows) {
         push(await customCandidate(rule, ctx, { dealId: r.id, onceKey: `stage:${new Date(r.stage_entered_at).toISOString()}` },
           t.days === 0 ? `El deal ha entrado en «${r.stage_name}».` : `El deal lleva ${days(t.days)} en «${r.stage_name}».`));
+      }
+      break;
+    }
+    case "stage_review": {
+      // Deals de la fase (o del pipeline) con novedades desde la última vez: la IA vuelve a mirar la condición.
+      const f = t.filter ?? {};
+      const rows = await sql<{ id: string; v: string }[]>`
+        SELECT d.id, greatest(coalesce((SELECT max(id) FROM events e WHERE e.entity_type = 'deal' AND e.entity_id = d.id), 0),
+                              coalesce((SELECT max(extract(epoch FROM m.created_at))::bigint FROM emails m WHERE m.deal_id = d.id), 0))::text AS v
+        FROM deals d
+        WHERE d.status = 'open' AND d.deleted_at IS NULL
+          AND (${f.stage_id ?? null}::uuid IS NULL OR d.stage_id = ${f.stage_id ?? null}::uuid)
+          AND (${f.pipeline_id ?? null}::uuid IS NULL OR d.pipeline_id = ${f.pipeline_id ?? null}::uuid)
+        ORDER BY d.updated_at DESC LIMIT 200`;
+      for (const r of rows) {
+        push(await customCandidate(rule, ctx, { dealId: r.id, onceKey: `rev:${r.v}` }, "Hay novedades en el deal."));
       }
       break;
     }
@@ -1258,7 +1293,7 @@ const CUSTOM_SCAN: Scanner = async (rule, ctx) => {
 
 const dateText = (d: Date | null) => (d ? new Date(d).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "—");
 
-const SCANNED: CustomTrigger["kind"][] = ["activity_overdue", "deal_stage", "deal_created", "deal_idle"];
+const SCANNED: CustomTrigger["kind"][] = ["activity_overdue", "deal_stage", "deal_created", "deal_idle", "stage_review"];
 
 function scannerFor(rule: Rule): Scanner | undefined {
   if (rule.is_custom) return rule.trigger && SCANNED.includes(rule.trigger.kind) ? CUSTOM_SCAN : undefined;
@@ -1755,7 +1790,7 @@ const OUTCOME_LABELS: Record<Outcome, string> = {
 };
 
 /** Descripción legible de una regla personalizada («Cuando… → …»). */
-export async function describeCustomRule(trigger: CustomTrigger, action: CustomAction): Promise<string> {
+export async function describeCustomRule(trigger: CustomTrigger, action: CustomAction, condition?: string | null): Promise<string> {
   await activityTypes();
   const stageName = async (id: string) => {
     const [st] = await sql<{ name: string; pipeline: string }[]>`
@@ -1777,6 +1812,7 @@ export async function describeCustomRule(trigger: CustomTrigger, action: CustomA
         : `Cuando un deal lleva ${days(trigger.days)} en ${await stageName(trigger.stage_id)}`;
       break;
     case "deal_created": when = trigger.days === 0 ? "Cuando se crea un deal" : `${days(trigger.days)} después de crear un deal`; break;
+    case "stage_review": when = "Cada vez que hay novedades en un deal"; break;
     case "deal_idle": when = `Cuando un deal lleva ${days(trigger.days)} sin movimiento ni nada programado`; break;
     case "deal_won": when = "Cuando se gana un deal"; break;
     case "deal_lost": when = "Cuando se pierde un deal"; break;
@@ -1792,18 +1828,22 @@ export async function describeCustomRule(trigger: CustomTrigger, action: CustomA
     const [p] = await sql<{ name: string }[]>`SELECT name FROM pipelines WHERE id = ${f.pipeline_id}`;
     conds.push(`del pipeline «${p?.name ?? "?"}»`);
   }
+  if (f.stage_id) conds.push(`en ${await stageName(f.stage_id)}`);
   if (f.min_value != null) conds.push(`de ${f.min_value.toLocaleString("es-ES")} € o más`);
   if (f.owner_id) {
     const [u] = await sql<{ name: string }[]>`SELECT name FROM users WHERE id = ${f.owner_id}`;
     conds.push(`de ${u?.name ?? "?"}`);
   }
   if (conds.length) when += ` (solo deals ${conds.join(", ")})`;
+  if (condition) when += ` y la IA ve que ${condition.replace(/\.$/, "").replace(/^si\s+/i, "")}`;
   let then: string;
   switch (action.kind) {
     case "create_activity":
       then = `crea «${action.subject}» (${activityLabel(action.activity_type)}) ${action.due_in_days === 0 ? "para el mismo día" : `para dentro de ${days(action.due_in_days)}`}`;
       break;
-    case "draft_email": then = `prepara un correo al contacto: «${action.subject}»`; break;
+    case "draft_email": then = action.ai_prompt
+      ? `escribe al contacto (lo redacta la IA${action.use_slots ? ", con tus huecos libres" : ""}): «${action.ai_prompt.slice(0, 140)}»`
+      : `prepara un correo al contacto: «${action.subject}»`; break;
     case "move_stage": then = `mueve el deal a ${await stageName(action.stage_id)}`; break;
     case "notify": then = `te pide una decisión: «${action.message}»`; break;
     case "add_note": then = "deja una nota en el deal"; break;

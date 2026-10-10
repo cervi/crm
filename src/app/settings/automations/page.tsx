@@ -214,7 +214,7 @@ export default async function AutomationsSettingsPage() {
           <Link href="/settings/activity-types">Ajustes → Tipos de actividad</Link>.
         </p>
         <div className="rules">
-          {rules.filter((r) => r.is_custom).map((r) => {
+          {rules.filter((r) => r.is_custom && !r.instruction_id).map((r) => {
             const action = ruleAction(r)!;
             const eff = effectiveAutonomy(r, permissions, { mailbox });
             const st = stats.get(r.id);

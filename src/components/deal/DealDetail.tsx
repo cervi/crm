@@ -38,6 +38,7 @@ import { buildHistory } from "@/lib/history";
 import { listFiles } from "@/lib/files";
 import { listFollowers } from "@/lib/followers";
 import { listTags, tagsOf } from "@/lib/contact-workspace";
+import { listInstructions } from "@/lib/stage-agents";
 import { listEmails, listTemplates, opensFor, templateVars } from "@/lib/emails";
 import { getHealth, recomputeHealth } from "@/lib/health";
 import { DEAL_TYPE_LABEL } from "@/lib/deal-types";
@@ -98,7 +99,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
     listEnrollments({ dealId }), listSequences(),
   ]);
   const [lines, catalog, proposals_] = await Promise.all([dealLines(dealId), listProducts(), listProposals(dealId)]);
-  const [files, followers, tags, allTags] = await Promise.all([listFiles({ deal_id: dealId }), listFollowers("deal", dealId), tagsOf("deal", dealId), listTags()]);
+  const [files, followers, tags, allTags, stageInstructions] = await Promise.all([listFiles({ deal_id: dealId }), listFollowers("deal", dealId), tagsOf("deal", dealId), listTags(),
+    listInstructions({ stageId: deal.stage_id })]);
   const [insights, closePlan] = await Promise.all([getInsights(dealId), getClosePlan(dealId)]);
   const views = new Map(await Promise.all(proposals_.filter((p) => p.view_count > 0).map(async (p) => [p.id, await proposalViews(p.id)] as const)));
   const opens = await opensFor(emails.filter((e) => e.direction === "out" && e.open_count > 0).map((e) => e.id));
@@ -320,6 +322,18 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 <label className="field"><span className="label">Título</span><input name="title" placeholder="Propuesta, presentación…" /></label>
               </ActionForm>
             </details>
+          </section>
+
+          <section className="side-section" aria-label="La IA en esta fase">
+            <div className="side-head"><h3><Icon name="spark" /> La IA en «{deal.stage_name}»</h3>
+              <Link className="meta" href={`/pipelines/${deal.pipeline_id}/agentes?fase=${deal.stage_id}#fase-${deal.stage_id}`}>{stageInstructions.length ? "Cambiar" : "+ Instrucción"}</Link></div>
+            {stageInstructions.length === 0 ? <p className="meta" style={{ margin: 0 }}>Sin instrucciones: dile a la IA qué hacer con los deals de esta fase (escribir para agendar, moverlos si…).</p> : (
+              <ul className="instr-mini">
+                {stageInstructions.map((i) => (
+                  <li key={i.id}><span className={`badge ${i.autonomy === "auto" ? "ai" : i.autonomy === "off" ? "" : "warn"}`}>{i.autonomy === "auto" ? "Sola" : i.autonomy === "off" ? "En pausa" : "Pregunta"}</span> {i.text}</li>
+                ))}
+              </ul>
+            )}
           </section>
 
           <FollowersBlock type="deal" id={dealId} followers={followers} me={me.id} users={users.filter((u) => u.kind === "human")} back={back} />

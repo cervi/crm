@@ -1190,3 +1190,42 @@ a.btn.small svg { width: 14px; height: 14px; }
 .radio-row input { width: auto; margin: 0; }
 .record-head .title-with-avatar { align-items: flex-start; }
 .tags-edit[open] .form.inline { margin-top: 6px; }
+
+/* ---------------------------------------------------------------------------
+   La IA por fase del funnel */
+.stage-ai { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  color: var(--muted); border: 1px dashed var(--border-strong); text-decoration: none; }
+.stage-ai svg { width: 12px; height: 12px; }
+.stage-ai:hover { color: var(--accent-ink); border-color: var(--accent); text-decoration: none; }
+.stage-ai.on { color: var(--accent-ink); background: var(--accent-soft); border: 1px solid transparent; }
+.stage-head h2 { display: flex; align-items: center; gap: 6px; }
+.ai-link svg { width: 14px; height: 14px; }
+.instr-funnel { list-style: none; margin: 18px 0; padding: 0; display: grid; gap: 14px; }
+.instr-stage { background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 10px; box-shadow: var(--shadow); scroll-margin-top: 80px; }
+.instr-stage.pipeline-wide { border-left-color: var(--good); margin-top: 16px; }
+.instr-stage.focus { box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+.instr-stage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.instr-stage-head h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.step-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-size: 12px; }
+.instr-card { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px 12px; background: var(--panel-2); display: grid; gap: 8px; }
+.instr-card.paused { opacity: .65; }
+.instr-text { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--text); }
+.instr-text::before { content: "“"; color: var(--muted); }
+.instr-text::after { content: "”"; color: var(--muted); }
+.instr-rules { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
+.instr-foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 999px; overflow: hidden; }
+.seg form { display: contents; }
+.seg button { border: 0; background: var(--panel); color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 11px; cursor: pointer; }
+.seg button + button, .seg form + form button { border-left: 1px solid var(--border); }
+.seg button.on { background: var(--accent); color: var(--accent-text); }
+.instr-composer { display: grid; gap: 8px; margin-top: 8px; }
+.instr-examples { margin: 0; }
+.instr-examples button { text-align: left; font-weight: 500; white-space: normal; }
+.instr-plan { display: grid; gap: 8px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--accent-soft); }
+.instr-autonomy { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+.instr-results { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.instr-results .yes strong { color: var(--good); }
+.instr-results .no { color: var(--muted); }
+.instr-test { display: grid; gap: 6px; margin-top: 6px; }
+.instr-mini { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }

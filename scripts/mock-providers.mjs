@@ -199,7 +199,31 @@ createServer(async (req, res) => {
         report_question: JSON.stringify({ titulo: "(IA) Importe ganado por origen", source: "deals", metric: "sum_value", group_by: "source",
                                           date_field: "won_at", period: "all", chart: "bar", filters: { status: "won" } }),
       };
+      if (task === "compile_instruction") {
+        const d = JSON.parse(user).datos ?? {};
+        const t = String(d.instruccion ?? "");
+        const reglas = [];
+        if (/agendar/i.test(t)) reglas.push({ nombre: "Escribir para agendar", cuando: { tipo: "entra_en_fase", incluir_existentes: /ya est/i.test(t) }, si: null,
+          accion: { tipo: "correo", asunto: "¿Buscamos un hueco?", instrucciones_correo: "Propón una reunión y ofrece mis huecos.", usar_calendario: true } });
+        const mv = /mu[eé]ve(?:lo)? a «?([^»,]+?)»?\s+si\s+(.+)$/i.exec(t);
+        if (mv) reglas.push({ nombre: `Mover a ${mv[1]}`, cuando: { tipo: "novedades_en_fase" }, si: mv[2], accion: { tipo: "mover", fase_destino: mv[1] } });
+        const idle = /(\d+)\s*d[ií]as sin/i.exec(t);
+        if (idle) reglas.push({ nombre: "Llamada de seguimiento", cuando: { tipo: "sin_movimiento", dias: Number(idle[1]) }, si: null,
+          accion: { tipo: "tarea", tipo_actividad: "Llamada", texto: "Llamar para retomar", dias: 0 } });
+        replies.compile_instruction = JSON.stringify({ resumen: `(IA) Entendido: ${reglas.length} regla(s).`, dudas: reglas.length ? [] : ["No sé cuándo actuar."], reglas });
+      }
+      if (task === "check_condition") {
+        const all = JSON.stringify(JSON.parse(user).datos ?? {}).toLowerCase();
+        const yes = all.includes("presupuesto aprobado");
+        replies.check_condition = JSON.stringify({ cumple: yes, motivo: yes ? "(IA) En la nota dicen que el presupuesto está aprobado." : "(IA) No hay pruebas de presupuesto." });
+      }
       if (task === "write_email") {
+        const d = JSON.parse(user).datos ?? {};
+        if (d.huecos_libres_de_mi_calendario !== undefined) {
+          replies.write_email = JSON.stringify({ asunto: "(IA) ¿Buscamos un hueco?", texto: `(IA) Hola, ¿te va bien alguno de estos huecos?\n${d.huecos_libres_de_mi_calendario ?? ""}\n${d.enlace_para_reservar ?? ""}` });
+        }
+      }
+      if (task === "write_email" && !replies.write_email) {
         const d = JSON.parse(user).datos ?? {};
         const html = d.formato === "html";
         const t = d.accion === "acortar" ? "(IA) Hola {{nombre}}, ¿hablamos 15 minutos esta semana?"

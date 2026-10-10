@@ -24,6 +24,7 @@ import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
 import { date, dateTime, money, STATUS_LABELS } from "@/lib/format";
 import { Board } from "@/components/Board";
+import { instructionCounts } from "@/lib/stage-agents";
 import { PipelineToolbar } from "@/components/PipelineToolbar";
 import { DealDetail } from "@/components/deal/DealDetail";
 
@@ -56,6 +57,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
     SELECT count(*)::int AS n FROM open_deals_status o WHERE o.pipeline_id = ${id} AND NOT EXISTS (SELECT 1 FROM deal_health h WHERE h.deal_id = o.id)`;
   if (missing.n > 0) await recomputeHealth().catch((err) => console.error("[salud]", err));
   const stages = view === "board" ? await getBoard(id, ownerId, sort) : [];
+  const agentCounts = await instructionCounts(id);
   const filters = {
     q: sp.q?.trim() || null, stageId: isId(sp.stage) ? sp.stage : null, flag: isDealFlag(sp.flag) ? sp.flag : null,
     min: num(sp.min), max: num(sp.max),
@@ -104,9 +106,9 @@ export default async function PipelinePage({ params, searchParams }: { params: P
           pipelines={pipelines.map((p) => ({ value: p.id, label: p.name }))}
           users={users.filter((u) => u.kind === "human").map((u) => ({ value: u.id, label: u.name }))}
           sorts={Object.entries(BOARD_SORTS).map(([value, label]) => ({ value, label }))}
-          actions={<ExportLink dataset="deals" label="Exportar" params={view === "board"
+          actions={<><Link href={`/pipelines/${id}/agentes`} className="btn secondary small ai-link"><Icon name="spark" />IA del pipeline{agentCounts.pipeline + Object.values(agentCounts.byStage).reduce((a, b) => a + b, 0) ? ` · ${agentCounts.pipeline + Object.values(agentCounts.byStage).reduce((a, b) => a + b, 0)}` : ""}</Link><ExportLink dataset="deals" label="Exportar" params={view === "board"
             ? { pipeline: id, owner: ownerId, status: "open" }
-            : { pipeline: id, owner: ownerId, status, q: filters.q, stage: filters.stageId, flag: filters.flag, min: sp.min, max: sp.max }} />}
+            : { pipeline: id, owner: ownerId, status, q: filters.q, stage: filters.stageId, flag: filters.flag, min: sp.min, max: sp.max }} /></>}
           summary={
             <>
               <strong>{money(total)}</strong> · {count} deal{count === 1 ? "" : "s"}
@@ -115,7 +117,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
           }
         />
         {view === "board" ? (
-          <Board key={`${id}:${ownerId ?? ""}:${sort}`} stages={stages} />
+          <Board key={`${id}:${ownerId ?? ""}:${sort}`} stages={stages} pipelineId={id} agentCounts={agentCounts.byStage} />
         ) : (
           <>
             <nav className="chips views" aria-label="Vistas guardadas">

@@ -21,7 +21,7 @@ export const AI_PROVIDERS: { value: AiProvider; label: string; baseUrl: string; 
 ];
 
 export type AiTask = "deal_brief" | "meeting_recap" | "daily_digest" | "handoff" | "lead_chat" | "report_question" | "proposal"
-  | "meeting_prep" | "call_extraction" | "enrich_company" | "qualify_lead" | "icebreaker" | "classify_reply" | "write_email";
+  | "meeting_prep" | "call_extraction" | "enrich_company" | "qualify_lead" | "icebreaker" | "classify_reply" | "write_email" | "compile_instruction" | "check_condition";
 
 export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "deal_brief", label: "Resumen del deal", help: "Arriba de cada ficha: cómo va, riesgos y siguiente paso." },
@@ -34,6 +34,8 @@ export const AI_TASKS: { value: AiTask; label: string; help: string }[] = [
   { value: "qualify_lead", label: "Cualificar leads", help: "Si un lead encaja con vuestro perfil de cliente ideal, y qué falta saber." },
   { value: "icebreaker", label: "Primera línea de las campañas", help: "La frase personalizada que abre cada correo de outbound." },
   { value: "write_email", label: "Redactar correos de las secuencias", help: "Escribe, mejora, acorta o cambia el tono de un correo en el editor de las secuencias, respetando las variables." },
+  { value: "compile_instruction", label: "Entender instrucciones por fase", help: "Convierte lo que escribes en una fase del funnel («cuando entre aquí, escríbele para agendar…») en reglas: cuándo, si y qué hace." },
+  { value: "check_condition", label: "Comprobar condiciones", help: "Decide si un deal cumple la condición de una instrucción («si ya han confirmado presupuesto…») con su historial, correos y notas." },
   { value: "classify_reply", label: "Clasificar respuestas", help: "Interesado, más adelante, no interesado, baja o fuera de la oficina." },
   { value: "proposal", label: "Propuestas", help: "El texto de las propuestas que se envían al cliente con los productos del deal." },
   { value: "report_question", label: "Preguntas sobre los datos", help: "Convierte una pregunta («¿cuánto ganamos por origen este trimestre?») en un informe." },
@@ -66,6 +68,14 @@ Responde SOLO con un JSON: {"linea": "la frase"}`,
 Usa variables con doble llave para personalizar, SOLO de la lista "variables" que se te da (p. ej. {{nombre}}, {{empresa}}); a los datos que pueden faltar ponles valor por defecto: {{cargo|tu equipo}}. Respeta las variables y condiciones ({{#if}}…{{#endif}}) que ya tenga el correo. No inventes datos, cifras ni clientes.
 Según "accion": "escribir" (a partir de las instrucciones), "mejorar", "acortar" (a la mitad como mucho), "tono" (al tono que se pide), "asuntos" (propón un asunto mejor). Si "formato" es "html", el texto va en HTML sencillo (<p>, <br>, <strong>, <ul><li>, <a href>); si es "text", en texto plano con saltos de línea.
 Responde SOLO con un JSON: {"asunto": "asunto de 2 a 6 palabras", "texto": "el correo"}`,
+  compile_instruction: `Conviertes instrucciones en lenguaje natural sobre cómo trabajar los deals de un funnel en reglas para el CRM. ${COMMON}
+Cada regla tiene: CUÁNDO actúa, SI (condición opcional, en lenguaje natural, que se comprobará con los datos de cada deal) y QUÉ hace (una sola acción). Si la instrucción pide varias cosas, devuelve varias reglas.
+CUÁNDO ("cuando.tipo"): "entra_en_fase" (al entrar en la fase; "fase" opcional si el ámbito ya es una fase; "incluir_existentes": true si también vale para los deals que ya están en ella), "lleva_dias_en_fase" (con "dias"), "novedades_en_fase" (cada vez que hay novedades en el deal: úsalo para «muévelo cuando/si…» y exige "si"), "sin_movimiento" (con "dias"), "responde" (el contacto responde un correo), "abre_correo", "reserva" (reserva una reunión con el enlace), "actividad_hecha" (con "tipo_actividad" y "resultado": held | no_show | any), "actividad_vencida" (con "dias"), "propuesta_vista", "propuesta_aceptada", "deal_creado", "ganado", "perdido".
+QUÉ ("accion.tipo"): "correo" (escribir al contacto; "instrucciones_correo": qué debe decir, "asunto": corto, "usar_calendario": true si hay que ofrecer huecos del calendario o agendar), "mover" ("fase_destino": nombre exacto de una fase de la lista), "tarea" ("tipo_actividad" de la lista, "texto", "dias" hasta su fecha), "nota" ("texto"), "avisar" (preguntar o avisar al responsable: "texto"), "asignar" ("responsable": nombre del equipo).
+Usa solo fases, tipos de actividad y personas de las listas. Si algo no se puede hacer o es ambiguo, dilo en "dudas".
+Responde SOLO con un JSON: {"resumen": "cómo lo has entendido, en una o dos frases", "dudas": [""], "reglas": [{"nombre": "corto", "cuando": {"tipo": "", "fase": "", "dias": 0, "tipo_actividad": "", "resultado": "any", "incluir_existentes": false}, "si": "condición o null", "accion": {"tipo": "", "fase_destino": "", "asunto": "", "instrucciones_correo": "", "usar_calendario": false, "texto": "", "tipo_actividad": "", "dias": 0, "responsable": ""}}]}`,
+  check_condition: `Decides si un deal de un CRM cumple una condición, solo con los datos que se te dan (historial, correos, notas, lo que sabemos). ${COMMON} Si no hay datos suficientes para afirmarlo, la respuesta es que NO se cumple.
+Responde SOLO con un JSON: {"cumple": true o false, "motivo": "una frase con la prueba concreta (qué dato lo demuestra o qué falta)"}`,
   classify_reply: `Clasificas la respuesta de un contacto a un correo de prospección. ${COMMON}
 Responde SOLO con un JSON: {"clase": "interesado | mas_adelante | no_interesado | baja | fuera_oficina | otro", "retomar_en_dias": número o null (para más adelante o fuera de la oficina), "resumen": "una frase con lo que dice"}`,
   proposal: `Eres el asistente comercial del CRM. ${COMMON}
@@ -129,13 +139,13 @@ export const promptFor = (s: AiSettings, task: AiTask) => s.prompts[task] ?? DEF
 /** Qué agente usa cada tarea (para el presupuesto por agente). */
 export const TASK_AGENT: Record<AiTask, string> = {
   enrich_company: "captacion", qualify_lead: "captacion", lead_chat: "captacion",
-  icebreaker: "prospeccion", classify_reply: "prospeccion", write_email: "prospeccion",
+  icebreaker: "prospeccion", classify_reply: "prospeccion", write_email: "prospeccion", compile_instruction: "ejecutivo", check_condition: "ejecutivo",
   deal_brief: "ejecutivo", meeting_recap: "ejecutivo", meeting_prep: "ejecutivo", call_extraction: "ejecutivo", proposal: "ejecutivo",
   daily_digest: "riesgo", report_question: "riesgo",
   handoff: "onboarding",
 };
 /** Lo que una persona está esperando en ese momento: no se corta por presupuesto. */
-const URGENT = new Set<AiTask | "test">(["test", "lead_chat", "report_question", "proposal", "write_email"]);
+const URGENT = new Set<AiTask | "test">(["test", "lead_chat", "report_question", "proposal", "write_email", "compile_instruction"]);
 
 export type AiSpend = { month: number; byAgent: Record<string, number>; budget: number | null; agentBudgets: Record<string, number>; calls: number };
 

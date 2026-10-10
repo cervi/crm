@@ -4,6 +4,7 @@ import { sql } from "@/lib/db";
 import { AGENT_INFO, AGENT_KEYS, listJobs } from "@/lib/agent-jobs";
 import { actionLabel, effectiveAutonomy, getSettings, listPermissions, listRules, ruleAction, ruleStats } from "@/lib/automations";
 import { hasActiveMailbox } from "@/lib/mailbox";
+import { listInstructions } from "@/lib/stage-agents";
 import { aiReady, aiSpend, getAiSettings } from "@/lib/ai";
 import { dateTime } from "@/lib/format";
 import { AutonomyPicker } from "@/components/ai/AutonomyPicker";
@@ -31,6 +32,8 @@ export default async function AgentsPage() {
       WHERE r.agent IS NOT NULL AND x.created_at > now() - interval '30 days'
       ORDER BY coalesce(x.executed_at, x.decided_at, x.created_at) DESC LIMIT 300`,
   ]);
+  const instructions = await listInstructions({ all: true });
+  const pipelines = await sql<{ id: string; name: string }[]>`SELECT id, name FROM pipelines ORDER BY position, name`;
   const used = spend.budget ? Math.min(100, Math.round((spend.month / spend.budget) * 100)) : null;
 
   return (
@@ -74,7 +77,7 @@ export default async function AgentsPage() {
       <div className="agent-grid">
         {AGENT_KEYS.map((key) => {
           const info = AGENT_INFO[key];
-          const own = rules.filter((r) => r.agent === key);
+          const own = rules.filter((r) => r.agent === key && !r.instruction_id);
           const ownJobs = jobs.filter((j) => j.agent === key);
           const acts = recent.filter((r) => r.agent === key);
           const s = own.map((r) => stats.get(r.id)).filter(Boolean);
@@ -144,7 +147,23 @@ export default async function AgentsPage() {
       </div>
 
       {admin && (
-        <section className="panel" aria-label="Límites de los agentes" style={{ marginTop: 18 }}>
+        <section className="panel" aria-label="Instrucciones por fase">
+        <h2><Icon name="spark" />Instrucciones por fase del funnel</h2>
+        <p className="meta" style={{ marginTop: 0 }}>Lo que has pedido en lenguaje natural en cada fase («cuando entre aquí, escríbele para agendar…»). Se escriben y se cambian desde cada pipeline.</p>
+        <ul className="agent-rules">
+          {pipelines.map((p) => {
+            const own = instructions.filter((i) => i.pipeline_id === p.id);
+            return (
+              <li key={p.id}>
+                <div><strong>{p.name}</strong><div className="meta">{own.length ? `${own.length} instrucci${own.length === 1 ? "ón" : "ones"} · ${own.filter((i) => i.autonomy === "auto").length} actúan solas` : "Sin instrucciones"}</div></div>
+                <Link className="btn small secondary" href={`/pipelines/${p.id}/agentes`}>{own.length ? "Ver y cambiar" : "Escribir instrucciones"}</Link>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <section className="panel" aria-label="Límites de los agentes" style={{ marginTop: 18 }}>
           <h2>Límites</h2>
           <p className="muted">
             Presupuesto de IA al mes (el coste es estimado con los precios por millón de tokens de vuestro proveedor): al 80 % te avisa y al 100 % deja

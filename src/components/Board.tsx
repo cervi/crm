@@ -31,7 +31,7 @@ function applyMove(stages: BoardStage[], { dealId, to }: Move): BoardStage[] {
 }
 
 /** Tablero tipo Pipedrive: se arrastran los deals de una fase a otra. */
-export function Board({ stages }: { stages: BoardStage[] }) {
+export function Board({ stages, pipelineId, agentCounts = {} }: { stages: BoardStage[]; pipelineId?: string; agentCounts?: Record<string, number> }) {
   const [optimistic, addMove] = useOptimistic(stages, applyMove);
   const path = usePathname();
   const params = useSearchParams();
@@ -73,7 +73,15 @@ export function Board({ stages }: { stages: BoardStage[] }) {
             onDrop={(e) => { e.preventDefault(); drop(stage.id); }}
           >
             <div className="stage-head">
-              <h2><span>{stage.name}</span><span className="count">{stage.deals.length}</span></h2>
+              <h2><span>{stage.name}</span><span className="count">{stage.deals.length}</span>
+                {pipelineId && (
+                  <Link href={`/pipelines/${pipelineId}/agentes?fase=${stage.id}#fase-${stage.id}`} className={agentCounts[stage.id] ? "stage-ai on" : "stage-ai"}
+                        title={agentCounts[stage.id] ? `La IA tiene ${agentCounts[stage.id]} instrucción(es) en esta fase` : "Decirle a la IA qué hacer con los deals de esta fase"}
+                        aria-label={`IA en la fase ${stage.name}`}>
+                    <Icon name="spark" />{agentCounts[stage.id] ? agentCounts[stage.id] : "IA"}
+                  </Link>
+                )}
+              </h2>
               <span>{money(stage.total_value)}{stage.win_probability !== null && ` · ${stage.win_probability} % de probabilidad`}</span>
               <div className="stage-meter" aria-hidden="true"><i style={{ width: `${stage.win_probability ?? 0}%` }} /></div>
             </div>
