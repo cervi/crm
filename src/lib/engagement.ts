@@ -63,11 +63,11 @@ export async function contactEngagement(personIds: string[]): Promise<Map<string
       e.temperature = "sin_datos";
       e.headline = `Tu último correo («${last.subject}», ${ago(last.sent_at)}) se envió sin seguimiento: no sabemos si lo abrió.`;
       e.advice = unanswered >= 2 ? `Lleva ${unanswered} correos sin responder: prueba una llamada.` : "Sin respuesta todavía.";
-    } else if (last && (last.opens >= 2 || last.clicks > 0)) {
+    } else if (last && (last.open_count >= 2 || last.click_count > 0)) {
       e.temperature = "caliente";
-      e.headline = `Abrió tu último correo («${last.subject}») ${last.opens} ${last.opens === 1 ? "vez" : "veces"}${last.last_opened_at ? `, la última ${ago(last.last_opened_at)}` : ""}${last.clicks ? ` e hizo clic ${last.clicks} ${last.clicks === 1 ? "vez" : "veces"}` : ""}, pero no ha respondido.`;
+      e.headline = `Abrió tu último correo («${last.subject}») ${last.open_count} ${last.open_count === 1 ? "vez" : "veces"}${last.last_opened_at ? `, la última ${ago(last.last_opened_at)}` : ""}${last.click_count ? ` e hizo clic ${last.click_count} ${last.click_count === 1 ? "vez" : "veces"}` : ""}, pero no ha respondido.`;
       e.advice = "Hay interés: buen momento para llamar o para un correo corto que retome lo que abrió.";
-    } else if (last && last.opens === 1) {
+    } else if (last && last.open_count === 1) {
       e.temperature = "templado";
       e.headline = `Abrió tu último correo («${last.subject}») una vez${last.last_opened_at ? `, ${ago(last.last_opened_at)}` : ""}, sin responder.`;
       e.advice = "Lo ha visto: un seguimiento breve con una pregunta fácil de contestar.";
