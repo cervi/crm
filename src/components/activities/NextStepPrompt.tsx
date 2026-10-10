@@ -26,7 +26,11 @@ export function NextStepPrompt({ dealId, dealTitle, onDone }: { dealId: string; 
   // La confirmación (con «Deshacer») se queda unos segundos; luego se refresca la página y, si es flotante, se cierra.
   useEffect(() => {
     if (!(state.done || state.undone)) return;
-    const t = setTimeout(() => { router.refresh(); onDone?.(); }, state.undone ? 1500 : 6000);
+    const t = setTimeout(() => {
+      router.refresh();
+      if (onDone) onDone();
+      else if (state.undone) setState({});   // en la ficha, vuelve a preguntar
+    }, state.undone ? 1500 : 6000);
     return () => clearTimeout(t);
   }, [state.done, state.undone, onDone, router]);
 
