@@ -63,7 +63,7 @@ export function Board({ stages, pipelineId, agentCounts = {} }: { stages: BoardS
   return (
     <>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <section className="board">
+      <section className={optimistic.length > 7 ? "board many" : "board"}>
         {optimistic.map((stage) => (
           <div
             key={stage.id}
@@ -78,11 +78,11 @@ export function Board({ stages, pipelineId, agentCounts = {} }: { stages: BoardS
                   <Link href={`/pipelines/${pipelineId}/agentes?fase=${stage.id}#fase-${stage.id}`} className={agentCounts[stage.id] ? "stage-ai on" : "stage-ai"}
                         title={agentCounts[stage.id] ? `La IA tiene ${agentCounts[stage.id]} instrucción(es) en esta fase` : "Decirle a la IA qué hacer con los deals de esta fase"}
                         aria-label={`IA en la fase ${stage.name}`}>
-                    <Icon name="spark" />{agentCounts[stage.id] ? agentCounts[stage.id] : "IA"}
+                    <Icon name="spark" />{agentCounts[stage.id] ? agentCounts[stage.id] : <span className="ai-label">IA</span>}
                   </Link>
                 )}
               </h2>
-              <span>{money(stage.total_value)}{stage.win_probability !== null && ` · ${stage.win_probability} % de probabilidad`}</span>
+              <span>{money(stage.total_value)}{stage.win_probability !== null && <> · {stage.win_probability} %<span className="prob-label"> de probabilidad</span></>}</span>
               <div className="stage-meter" aria-hidden="true"><i style={{ width: `${stage.win_probability ?? 0}%` }} /></div>
             </div>
             <ul>
