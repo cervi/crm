@@ -1,4 +1,5 @@
 import { notifyFollowers } from "./followers";
+import { categoryOf, withDefaults, type NotificationPrefs } from "./notification-prefs";
 import { sql, type Db } from "./db";
 import type { Actor, EntityType } from "./events";
 
@@ -27,8 +28,18 @@ export async function markRead(userId: string, id?: string) {
 }
 
 export async function notify(db: Db, n: { userId: string; kind: string; title: string; body?: string | null; link?: string | null; actorId?: string | null }) {
-  await db`INSERT INTO notifications (user_id, kind, title, body, link, actor_id)
-           VALUES (${n.userId}, ${n.kind}, ${n.title.slice(0, 300)}, ${n.body?.slice(0, 1000) ?? null}, ${n.link ?? null}, ${n.actorId ?? null})`;
+  // Según sus preferencias: no avisar, solo en la app, o también por correo (al momento o agrupado).
+  // Se lee con la misma conexión (puede estar dentro de una transacción).
+  const [u] = await db<{ notification_prefs: Partial<NotificationPrefs>; role: string }[]>`SELECT notification_prefs, role FROM users WHERE id = ${n.userId}`;
+  const category = categoryOf(n.kind);
+  const prefs = withDefaults(u?.notification_prefs, u?.role);
+  const channel = prefs.channels[category];
+  // La ficha de la reunión tiene su propio interruptor: si está activo, llega al momento por correo.
+  const prep = n.kind === "meeting_prep" && prefs.meetingPrep;
+  if (channel === "off" && !prep) return;
+  const emailMode = prep ? "now" : channel === "now" || channel === "digest" ? channel : null;
+  await db`INSERT INTO notifications (user_id, kind, title, body, link, actor_id, category, email_mode)
+           VALUES (${n.userId}, ${n.kind}, ${n.title.slice(0, 300)}, ${n.body?.slice(0, 1000) ?? null}, ${n.link ?? null}, ${n.actorId ?? null}, ${category}, ${emailMode})`;
 }
 
 /** Eventos de un deal que interesan a su responsable. */

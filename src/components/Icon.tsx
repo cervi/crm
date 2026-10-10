@@ -19,6 +19,8 @@ const PATHS = {
   pencil: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
   check: "M5 12l5 5L20 7",
+  dots: "M5 12h.01M12 12h.01M19 12h.01",
+  grip: "M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01",
   chevron: "M6 9l6 6 6-6",
   up: "M6 15l6-6 6 6",
   expand: "M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7",

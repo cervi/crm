@@ -15,7 +15,8 @@ import { hasActiveMailbox, sendEmail, senderFor, slotsText, syncAllMailboxes } f
 import { generate, parseJsonReply } from "./ai";
 import { refreshStaleBriefs } from "./briefs";
 import { zonedToUtc } from "./slots";
-import { sendDueDigests } from "./digest";
+import { getDigestSettings, sendDueDigests } from "./digest";
+import { sendNotificationMail } from "./notification-mail";
 import { applyExtraction, extractionFor } from "./deal-agent";
 import { bookingPageLink } from "./booking";
 
@@ -1372,6 +1373,7 @@ export type RunResult = {
   sync?: { emails: number; meetings: number; updated: number; error?: string };
   briefs?: number;
   digests?: number;
+  notices?: number;
 };
 
 const LOCK_KEY = 4_201_337; // pg_advisory_lock: una sola ejecución a la vez
@@ -1394,6 +1396,9 @@ export async function runAutomations(): Promise<RunResult> {
       }
       // El parte del día sale aunque la IA esté en pausa: es información, no una acción.
       result.digests = await sendDueDigests().catch((err) => { console.error("[parte del día]", err); return 0; });
+      // Avisos por correo (al momento o agrupados), resúmenes semanales y correos sin respuesta.
+      result.notices = await getDigestSettings().then((s) => sendNotificationMail(new Date(), s.hour))
+        .catch((err) => { console.error("[avisos por correo]", err); return 0; });
       if (paused) return { ...result, status: "paused" };
       await sql`UPDATE automation_settings SET last_run_at = now()`;
     } finally {

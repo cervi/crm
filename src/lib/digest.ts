@@ -277,6 +277,8 @@ export async function sendDueDigests(now = new Date()): Promise<number> {
   for (const c of conns) {
     const [done] = await sql`SELECT 1 FROM digest_log WHERE user_id = ${c.user_id} AND day = ${local.day}`;
     if (done) continue;
+    const [u] = await sql<{ notification_prefs: { daily?: boolean } }[]>`SELECT notification_prefs FROM users WHERE id = ${c.user_id} AND is_active`;
+    if (!u || u.notification_prefs?.daily === false) continue;
     try {
       await sendDigestNow(c.user_id);
       sent++;

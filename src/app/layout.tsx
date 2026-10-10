@@ -7,6 +7,7 @@ import { countPending } from "@/lib/automations";
 import { activityTypes } from "@/lib/activity-types";
 import { currentUser } from "@/lib/auth";
 import { unreadCount } from "@/lib/notifications";
+import { getNavPrefs } from "@/lib/nav-prefs";
 import { runningJob, STEP_LABELS } from "@/lib/pipedrive-import";
 import { ImportBanner } from "@/components/ImportBanner";
 import "@fontsource-variable/instrument-sans";
@@ -42,7 +43,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Con contraseña temporal, lo primero es cambiarla.
   if (user.must_change_password && !path.startsWith("/account")) redirect("/account?change=1");
   // Propuestas de la IA esperando decisión (el aviso del menú lateral).
-  const [inboxCount, unread, importing] = await Promise.all([countPending().catch(() => 0), unreadCount(user.id).catch(() => 0),
+  const [inboxCount, unread, navPrefs, importing] = await Promise.all([countPending().catch(() => 0), unreadCount(user.id).catch(() => 0),
+    getNavPrefs(user.id).catch(() => ({})),
     runningJob().then((j) => (j && !j.options?.since ? j : null)).catch(() => null)]);
   // Etiquetas de los tipos de actividad (configurables) disponibles en todo el servidor.
   await activityTypes().catch(() => null);
@@ -50,7 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="es" data-theme={dataTheme} suppressHydrationWarning>
       <body>
         <div className="shell">
-          <Nav inboxCount={inboxCount} />
+          <Nav inboxCount={inboxCount} prefs={navPrefs} />
           <div className="main">
             <Topbar theme={theme} user={{ name: user.name, email: user.email, role: user.role }} unread={unread} />
             {importing && (

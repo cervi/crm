@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { GlobalSearch } from "./GlobalSearch";
 import { Icon } from "./Icon";
-import { NAV_ITEMS } from "./Nav";
+import { NAV_ITEMS } from "@/lib/nav-items";
 import { logoutAction } from "@/app/actions/auth";
 import { NotificationBell } from "./NotificationBell";
 

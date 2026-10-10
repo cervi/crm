@@ -1,4 +1,5 @@
 import { sql, type Db } from "./db";
+import { notify } from "./notifications";
 import { UserError } from "./errors";
 
 // ===========================================================================
@@ -67,7 +68,6 @@ export async function notifyFollowers(db: Db, type: string, id: string, eventTyp
                            WHEN 'organization' THEN (SELECT name FROM organizations WHERE id = ${id})
                            ELSE (SELECT title FROM leads WHERE id = ${id}) END AS n`;
   for (const u of to) {
-    await db`INSERT INTO notifications (user_id, kind, title, body, link, actor_id)
-             VALUES (${u}, 'follow', ${`${name?.n ?? ""}: ${text(payload)}`.slice(0, 300)}, NULL, ${`/${PATH[t]}/${id}`}, ${actorId})`;
+    await notify(db, { userId: u, kind: "follow", title: `${name?.n ?? ""}: ${text(payload)}`, link: `/${PATH[t]}/${id}`, actorId });
   }
 }
