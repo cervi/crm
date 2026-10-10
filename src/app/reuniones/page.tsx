@@ -41,13 +41,15 @@ export default async function MeetingNotesPage({ searchParams }: { searchParams:
   const viewer = { id: me.id, admin };
   const counts = await meetingNoteCounts(viewer);
   const view: Tab = TABS.find((t) => t.key === sp.ver)?.key ?? ((counts.pending ?? 0) > 0 || !(counts.matched ?? 0) ? "pending" : "matched");
-  const [notes, google, done] = await Promise.all([
+  const [notes, google, done, team] = await Promise.all([
     listMeetingNotes(viewer, { status: view }),
     sql<{ email: string; notes_error: string | null; user_id: string }[]>`
       SELECT email, notes_error, user_id FROM mailbox_connections
       WHERE provider = 'google' AND status = 'active' AND (${admin} OR user_id = ${me.id})`,
     sp.hecho && /^[0-9a-f-]{36}$/i.test(sp.hecho) ? getMeetingNote(viewer, sp.hecho) : Promise.resolve(null),
+    sql<{ email: string }[]>`SELECT lower(email) AS email FROM users WHERE kind = 'human' AND email IS NOT NULL`,
   ]);
+  const teamEmails = new Set(team.map((u) => u.email));
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host") ?? "localhost:3000"}`;
   const apiReady = (process.env.INBOUND_API_KEYS ?? "").split(",").some((k) => k.trim().length >= 16);
@@ -161,7 +163,7 @@ export default async function MeetingNotesPage({ searchParams }: { searchParams:
       ) : (
         <ul className="card-list">
           {notes.map((n) => {
-            const others = n.attendees.filter((a) => a.email !== n.organizer_email);
+            const others = n.attendees.filter((a) => a.email !== n.organizer_email && !teamEmails.has(a.email));
             const text = excerpt(n);
             return (
               <li key={n.id} className="panel">
@@ -185,7 +187,7 @@ export default async function MeetingNotesPage({ searchParams }: { searchParams:
                     </Drawer>
                   )}
                   {writer && n.status === "matched" && (
-                    <Drawer label="Cambiar" title="Mover la nota a otro sitio" subtitle={n.title ?? undefined}>
+                    <Drawer label="Cambiar" buttonClass="btn secondary" title="Mover la nota a otro sitio" subtitle={n.title ?? undefined}>
                       <ActionForm action={assignMeetingNoteAction.bind(null, n.id, view)} submitLabel="Mover">
                         <AssignNoteFields candidates={[]} move />
                       </ActionForm>

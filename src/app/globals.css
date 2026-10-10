@@ -2269,3 +2269,7 @@ button.sf-sign.mine { overflow: visible; }
 @media (max-width: 640px) {
   .card-list .btn, .note-actions .btn, .page-head .head-actions .btn { min-height: 44px; }
 }
+@media (max-width: 640px) {
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs a { white-space: nowrap; }
+}
