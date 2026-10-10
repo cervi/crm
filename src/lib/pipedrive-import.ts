@@ -20,6 +20,7 @@ import { zonedToUtc } from "./slots";
 const API = () => (process.env.PIPEDRIVE_API_URL ?? "https://api.pipedrive.com").replace(/\/$/, "");
 const TZ = () => process.env.TZ || "Europe/Madrid";
 const PAGE = 500;
+const EMAIL_OK = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]{2,}$/;
 
 export const STEPS = [
   "users", "activity_types", "pipelines", "stages", "fields", "organizations", "persons", "leads", "deals",
@@ -259,6 +260,15 @@ function warn(job: ImportJob, message: string) {
   if (job.warnings.length < 50 && !job.warnings.includes(message)) job.warnings.push(message);
 }
 
+/** Un registro que no se puede importar no para la importación: se apunta y se sigue. */
+function recordFail(job: ImportJob, entity: string, item: Json, err: unknown) {
+  bump(job, entity, "skipped");
+  const name = str(item.name) ?? str(item.title) ?? str(item.subject) ?? str(item.file_name) ?? str(item.content)?.slice(0, 40) ?? "";
+  const why = err instanceof Error ? err.message : String(err);
+  console.error(`[importación pipedrive] ${entity} #${String(item.id ?? "?")}`, why);
+  warn(job, `${STEP_LABELS[entity] ?? entity}: «${name}» (Pipedrive #${String(item.id ?? "?")}) no se ha podido importar: ${why.slice(0, 160)}`);
+}
+
 /** pipedrive_id → id del CRM para una tabla. */
 async function idMap(table: "users" | "pipelines" | "stages" | "organizations" | "persons" | "deals" | "leads", ids: (number | string | null)[]) {
   const keys = [...new Set(ids.filter((x): x is number | string => x !== null && x !== undefined).map(String))];
@@ -478,6 +488,7 @@ const organizations: Runner = async (t, job) => {
   const { items, next } = await pageV2(t, "organizations", job.cursor, since(job));
   const [owners, fmap] = await Promise.all([idMap("users", items.map((o) => idOf(o.owner_id))), fieldMap("organization")]);
   for (const o of items) {
+    try {
     if (o.is_deleted) { await sql`UPDATE organizations SET deleted_at = coalesce(deleted_at, now()) WHERE pipedrive_id = ${idOf(o.id)}`; continue; }
     const address = o.address && typeof o.address === "object" ? (o.address as Json) : { value: o.address };
     const [prev] = await sql<{ custom: Record<string, unknown> }[]>`SELECT custom FROM organizations WHERE pipedrive_id = ${idOf(o.id)}`;
@@ -491,6 +502,7 @@ const organizations: Runner = async (t, job) => {
       custom: json(await customValues(o, fmap, prev?.custom)), created_at: ts(o.add_time) ?? new Date(), deleted_at: null,
     });
     bump(job, "organizations", r.created ? "created" : "updated");
+      } catch (err) { recordFail(job, "organizations", o, err); }
   }
   return { next };
 };
@@ -509,6 +521,7 @@ const persons: Runner = async (t, job) => {
     idMap("users", items.map((p) => idOf(p.owner_id))), idMap("organizations", items.map((p) => idOf(p.org_id))), fieldMap("person"),
   ]);
   for (const p of items) {
+    try {
     if (p.is_deleted) { await sql`UPDATE persons SET deleted_at = coalesce(deleted_at, now()) WHERE pipedrive_id = ${idOf(p.id)}`; continue; }
     await sql.begin(async (tx) => {
       const db = tx as unknown as Db;
@@ -519,7 +532,14 @@ const persons: Runner = async (t, job) => {
       });
       bump(job, "persons", r.created ? "created" : "updated");
       // Emails y teléfonos: los de Pipedrive (sin duplicar emails de otros contactos).
-      const emails = ((p.emails ?? p.email) as Json[] | undefined ?? []).filter((e) => str(e.value));
+      // Emails: se limpian (espacios, «mailto:», varios en el mismo campo) y los que no son un email se apuntan y se omiten.
+      const emails: Json[] = [];
+      for (const e of ((p.emails ?? p.email) as Json[] | undefined ?? []).filter((x) => str(x.value))) {
+        const parts = String(e.value).replace(/mailto:/gi, "").split(/[\s,;/|]+/).map((x) => x.replace(/^[<("']+|[>)"'.]+$/g, "").trim()).filter(Boolean);
+        const valid = parts.filter((x) => EMAIL_OK.test(x));
+        if (!valid.length) warn(job, `Contacto «${str(p.name) ?? ""}» (Pipedrive #${String(p.id)}): «${String(e.value).slice(0, 80)}» no es un email válido y no se ha importado.`);
+        valid.forEach((v, i) => emails.push({ ...e, value: v, primary: Boolean(e.primary) && i === 0 }));
+      }
       const phones = ((p.phones ?? p.phone) as Json[] | undefined ?? []).filter((e) => str(e.value));
       await db`DELETE FROM person_emails WHERE person_id = ${r.id}`;
       await db`DELETE FROM person_phones WHERE person_id = ${r.id}`;
@@ -550,6 +570,7 @@ const persons: Runner = async (t, job) => {
         }
       }
     });
+      } catch (err) { recordFail(job, "persons", p, err); }
   }
   return { next };
 };
@@ -561,6 +582,7 @@ const leads: Runner = async (t, job) => {
     idMap("organizations", items.map((l) => idOf(l.organization_id))),
   ]);
   for (const l of items) {
+    try {
     const personId = look(people, idOf(l.person_id)), orgId = look(orgs, idOf(l.organization_id));
     if (!personId && !orgId) { bump(job, "leads", "skipped"); continue; }
     const [prev] = await sql<{ status: string }[]>`SELECT status FROM leads WHERE pipedrive_id = ${String(l.id)}`;
@@ -570,6 +592,7 @@ const leads: Runner = async (t, job) => {
       source: str(l.source_name) ?? "pipedrive", status: l.is_archived ? "archived" : "open", created_at: ts(l.add_time) ?? new Date(),
     });
     bump(job, "leads", r.created ? "created" : "updated");
+      } catch (err) { recordFail(job, "leads", l, err); }
   }
   return { next };
 };
@@ -590,6 +613,7 @@ const deals: Runner = async (t, job) => {
     idMap("stages", items.map((d) => idOf(d.stage_id))), fieldMap("deal"),
   ]);
   for (const d of items) {
+    try {
     if (d.is_deleted || d.status === "deleted") { await sql`UPDATE deals SET deleted_at = coalesce(deleted_at, now()) WHERE pipedrive_id = ${idOf(d.id)}`; continue; }
     const pipelineId = look(pls, idOf(d.pipeline_id)), stageId = look(sts, idOf(d.stage_id));
     if (!pipelineId || !stageId) { bump(job, "deals", "skipped"); warn(job, `Deal «${d.title}»: su pipeline o fase no existe.`); continue; }
@@ -616,6 +640,7 @@ const deals: Runner = async (t, job) => {
                  ON CONFLICT (deal_id, person_id) DO UPDATE SET is_primary = true`;
       }
     });
+      } catch (err) { recordFail(job, "deals", d, err); }
   }
   return { next };
 };
@@ -632,6 +657,7 @@ const activities: Runner = async (t, job) => {
   const types = new Set((await activityTypes()).map((x) => x.key));
   const tmap = await typeMap(t);
   for (const a of items) {
+    try {
     if (a.is_deleted) { await sql`DELETE FROM activities WHERE pipedrive_id = ${idOf(a.id)}`; continue; }
     const dealId = look(dls, idOf(a.deal_id)), leadId = look(lds, str(a.lead_id));
     const personId = look(people, idOf(a.person_id)), orgId = look(orgs, idOf(a.org_id));
@@ -655,6 +681,7 @@ const activities: Runner = async (t, job) => {
       created_at: ts(a.add_time) ?? new Date(),
     });
     bump(job, "activities", r.created ? "created" : "updated");
+      } catch (err) { recordFail(job, "activities", a, err); }
   }
   return { next };
 };
@@ -667,6 +694,7 @@ const notes: Runner = async (t, job) => {
     idMap("leads", items.map((n) => str(n.lead_id))),
   ]);
   for (const n of items) {
+    try {
     const content = htmlToText(str(n.content));
     const dealId = look(dls, idOf(n.deal_id)), leadId = look(lds, str(n.lead_id));
     const personId = look(people, idOf(n.person_id)), orgId = look(orgs, idOf(n.org_id));
@@ -677,6 +705,7 @@ const notes: Runner = async (t, job) => {
       created_at: ts(n.add_time) ?? new Date(),
     });
     bump(job, "notes", r.created ? "created" : "updated");
+      } catch (err) { recordFail(job, "notes", n, err); }
   }
   return { next };
 };
@@ -686,6 +715,7 @@ const files: Runner = async (t, job) => {
   const { items, next } = await pageV1(t, "/v1/files", job.cursor);
   const dls = await idMap("deals", items.map((f) => idOf(f.deal_id)));
   for (const f of items) {
+    try {
     const dealId = look(dls, idOf(f.deal_id));
     const url = str(f.remote_location) && /^https?:/.test(String(f.remote_location)) ? String(f.remote_location) : str(f.url);
     if (!dealId || !url || f.active_flag === false) { bump(job, "files", "skipped"); continue; }
@@ -695,6 +725,7 @@ const files: Runner = async (t, job) => {
       ON CONFLICT (external_id) WHERE external_id LIKE 'pd:%' DO UPDATE SET title = EXCLUDED.title
       RETURNING (xmax = 0) AS created`;
     bump(job, "files", res[0]?.created ? "created" : "updated");
+      } catch (err) { recordFail(job, "files", f, err); }
   }
   return { next };
 };

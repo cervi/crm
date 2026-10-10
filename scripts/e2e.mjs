@@ -1028,6 +1028,9 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
         "Pipedrive: contactos con email, teléfono y empresa", JSON.stringify(pedro));
   const [ana2] = await sql`SELECT (SELECT count(*)::int FROM person_emails WHERE person_id = p.id) AS emails FROM persons p WHERE p.pipedrive_id = 303`;
   check(ana2?.emails === 0 && done.warnings.some((w) => w.includes("ana@paco.example")), "Pipedrive: un email que ya existe no se duplica (con aviso)");
+  const luisEmails = (await sql`SELECT e.email FROM person_emails e JOIN persons p ON p.id = e.person_id WHERE p.pipedrive_id = 304 ORDER BY e.email`).map((r) => r.email);
+  check(luisEmails.join() === "luis2@solo-pd.example,luis@solo-pd.example" && done.warnings.some((w) => w.includes("«no tiene» no es un email válido")),
+        "Pipedrive: emails mal escritos no paran la importación (se avisa) y varios en un campo se separan", JSON.stringify({ luisEmails, w: done.warnings }));
 
   const deals = await sql`SELECT d.pipedrive_id::int AS pd, d.title, d.status, d.value::float AS value, s.name AS stage, d.won_at, lr.label AS reason, d.custom,
                                  (SELECT p.full_name FROM deal_participants dp JOIN persons p ON p.id = dp.person_id WHERE dp.deal_id = d.id AND dp.is_primary) AS contact

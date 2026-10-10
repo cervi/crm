@@ -40,7 +40,7 @@ export function pipedriveData() {
       { id: 301, name: "Pedro Pérez", first_name: "Pedro", last_name: "Pérez", org_id: 201, owner_id: 1, emails: [{ value: "pedro@acme-pd.example", primary: true, label: "work" }], phones: [{ value: "+34 600 000 001", primary: true, label: "mobile" }], add_time: "2025-01-11T09:00:00Z", update_time: OLD, custom_fields: { [fieldLinkedin]: "https://linkedin.example/pedro" } },
       { id: 302, name: "Marta Gil", org_id: 202, owner_id: 2, emails: [{ value: "marta@beta-pd.example", primary: true, label: "work" }], phones: [], add_time: "2025-02-11T09:00:00Z", update_time: OLD, custom_fields: {} },
       { id: 303, name: "Ana Repetida", org_id: 203, owner_id: 1, emails: [{ value: "ana@paco.example", primary: true, label: "work" }], phones: [], add_time: "2025-03-11T09:00:00Z", update_time: OLD, custom_fields: {} },
-      { id: 304, name: "Luis Solo", org_id: null, owner_id: 1, emails: [], phones: [], add_time: "2025-03-12T09:00:00Z", update_time: OLD, custom_fields: {} },
+      { id: 304, name: "Luis Solo", org_id: null, owner_id: 1, emails: [{ value: "no tiene", primary: true, label: "work" }, { value: " Luis@Solo-PD.example; luis2@solo-pd.example ", label: "other" }], phones: [], add_time: "2025-03-12T09:00:00Z", update_time: OLD, custom_fields: {} },
     ],
     leads: [
       { id: "aaaaaaaa-0000-4000-8000-000000000001", title: "Lead de Luis", person_id: 304, organization_id: null, owner_id: 1, source_name: "Web", is_archived: false, add_time: "2025-04-01 10:00:00" },
