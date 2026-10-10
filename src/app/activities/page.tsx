@@ -111,12 +111,17 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
   const calendar = sp.view === "week";
   const period = (ACTIVITY_PERIODS.some((p) => p.key === sp.period) ? sp.period : sp.view === "done" ? "done" : "todo") as ActivityPeriod;
   // Por defecto, las mías (como en Pipedrive); «all» para ver las de todo el equipo.
-  const owner = sp.owner === "all" ? null : isId(sp.owner) ? sp.owner : me.id;
+  let owner = sp.owner === "all" ? null : isId(sp.owner) ? sp.owner : me.id;
   const type = sp.type && /^[a-z0-9_]{1,40}$/.test(sp.type) ? sp.type : null;
-  const [board, users, types] = await Promise.all([
+  let [board, users, types] = await Promise.all([
     calendar ? null : listActivityBoard({ period, ownerId: owner, type }),
     listUsers(), activityTypes(),
   ]);
+  // Si no tengo nada pendiente (p. ej. el administrador), enseño las del equipo.
+  if (!sp.owner && board && board.counts.todo === 0 && board.items.length === 0) {
+    owner = null;
+    board = await listActivityBoard({ period, ownerId: null, type });
+  }
   const link = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams();
     const cur: Record<string, string | null> = { view: calendar ? "week" : null, period: period === "todo" ? null : period, type, owner: sp.owner ?? null, week: sp.week ?? null };
@@ -140,7 +145,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
           {calendar && <input type="hidden" name="view" value="week" />}
           {period !== "todo" && <input type="hidden" name="period" value={period} />}
           {type && <input type="hidden" name="type" value={type} />}
-          <AutoSubmitSelect name="owner" defaultValue={sp.owner === "all" ? "all" : owner ?? ""} aria-label="Responsable">
+          <AutoSubmitSelect name="owner" defaultValue={owner ?? "all"} aria-label="Responsable">
             <option value={me.id}>Mis actividades</option>
             <option value="all">Todo el equipo</option>
             {users.filter((u) => u.id !== me.id && u.kind === "human").map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -183,11 +188,11 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
               { key: "deal", label: "Deal" },
               { key: "person", label: "Contacto" },
               { key: "org", label: "Empresa" },
-              { key: "due", label: period === "done" ? "Hecha el" : "Vence" },
+              { key: "due", label: period === "done" ? "Hecha el" : "Vence", className: "nowrap" },
               { key: "duration", label: "Duración", hidden: true },
               { key: "outcome", label: "Resultado", hidden: period !== "done" },
               { key: "type", label: "Tipo", hidden: true },
-              { key: "owner", label: "Responsable", hidden: !!owner },
+              { key: "owner", label: "Responsable", hidden: !!owner, className: "nowrap" },
             ]}
             rows={board!.items.map((a) => {
               const w = when(a);

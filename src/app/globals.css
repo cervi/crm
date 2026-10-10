@@ -1474,3 +1474,4 @@ tr.act-done .act-subject span { text-decoration: line-through; color: var(--mute
 .act-card dd { margin: 0; }
 .act-card-foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
 .data-table td { vertical-align: middle; }
+.data-table .nowrap { white-space: nowrap; }
