@@ -159,7 +159,7 @@ h3 { font-size: 13px; font-weight: 620; color: var(--text-2); margin: 0 0 8px; }
 .rail nav .rail-more > button.current { background: var(--accent-soft); }
 .rail nav .rail-more > button.current svg { stroke: var(--accent-ink); }
 .rail-pop {
-  position: absolute; left: calc(100% + 10px); top: -6px; min-width: 240px; z-index: 50;
+  position: absolute; left: calc(100% + 10px); bottom: -6px; min-width: 240px; max-height: calc(100vh - 24px); overflow-y: auto; z-index: 50;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-pop);
   padding: 6px; display: grid; gap: 2px;
 }
@@ -187,7 +187,7 @@ h3 { font-size: 13px; font-weight: 620; color: var(--text-2); margin: 0 0 8px; }
 .nav-edit-list .order-btns { display: flex; gap: 2px; }
 .nav-editor .form-actions .reset { margin-left: auto; }
 @media (max-width: 900px) {
-  .rail-pop { position: fixed; left: 12px; right: 12px; top: 62px; }
+  .rail-pop { position: fixed; left: 12px; right: 12px; top: 62px; bottom: auto; max-height: calc(100vh - 80px); }
 }
 
 /* Nombre de la sección al pasar el ratón o con el teclado */
