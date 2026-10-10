@@ -158,9 +158,8 @@ export async function scheduleNextAction(dealId: string, preset: NextPreset): Pr
   } catch (err) {
     return { error: toUserMessage(err) };
   }
-  revalidatePath("/activities");
-  revalidatePath(`/deals/${dealId}`);
-  revalidatePath("/deals");
+  // Sin revalidatePath: refrescaría la página al momento y se perdería la confirmación con «Deshacer».
+  // El componente refresca él mismo unos segundos después (todas estas páginas son dinámicas).
   return { message: "Siguiente paso programado.", activityId };
 }
 
@@ -173,7 +172,7 @@ export async function deleteActivityAction(activityId: string, back: string, _: 
   return res;
 }
 
-export async function undoScheduledAction(dealId: string, activityId: string): Promise<{ error?: string }> {
+export async function undoScheduledAction(_dealId: string, activityId: string): Promise<{ error?: string }> {
   const g = await guard("write");
   if ("error" in g) return g;
   try {
@@ -181,9 +180,6 @@ export async function undoScheduledAction(dealId: string, activityId: string): P
   } catch (err) {
     return { error: toUserMessage(err) };
   }
-  revalidatePath("/activities");
-  revalidatePath(`/deals/${dealId}`);
-  revalidatePath("/deals");
   return {};
 }
 
