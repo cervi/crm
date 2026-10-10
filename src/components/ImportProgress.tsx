@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Progress = { status: string; step: string; counts: Record<string, { created?: number; updated?: number; skipped?: number }>; error: string | null } | null;
+type Progress = { status: string; step: string; counts: Record<string, { created?: number; updated?: number; skipped?: number }>; error: string | null; quietFor?: number } | null;
 
 /**
  * Mientras la pantalla está abierta, va avanzando la importación (unos
@@ -60,8 +60,9 @@ export function ImportProgress({ advance, labels, steps, initial }: {
             <div className="meta">
               {curN > 0 && <><b className="tick" key={curN}>{curN.toLocaleString("es-ES")}</b> {curN === 1 ? "registro" : "registros"} en este paso · </>}
               {total.toLocaleString("es-ES")} en total · {fmt(elapsed)}
-              {quiet > 20 ? ` · esperando a Pipedrive (${fmt(quiet)})…` : ""}
+              {quiet > 20 && quiet <= 120 ? ` · esperando a Pipedrive (${fmt(quiet)})…` : ""}
             </div>
+            <div className="meta">Último avance guardado: {p.quietFor === undefined ? "—" : p.quietFor < 5 ? "ahora mismo" : `hace ${fmt(p.quietFor)}`}</div>
           </div>
         </div>
       )}
@@ -73,6 +74,12 @@ export function ImportProgress({ advance, labels, steps, initial }: {
         })}
       </ol>
       {!isRunning && <p className="meta">{p.status === "done" ? "Importación terminada." : p.error ?? p.status}</p>}
+      {isRunning && quiet > 120 && (p.quietFor ?? 0) > 120 && (
+        <p className="ee-warn" role="alert" style={{ margin: 0 }}>
+          Lleva {fmt(quiet)} sin avanzar: puede que se haya parado. Recarga la página para reanudarla (sigue donde iba, sin duplicar).
+          Si vuelve a pararse, mira la ventana de la Terminal donde está «npm run probar» y pásame el último error.
+        </p>
+      )}
       {isRunning && <p className="meta" style={{ margin: 0 }}>Todo va bien mientras el contador avance. Si cierras esta pantalla, la importación sigue sola en segundo plano (más despacio).</p>}
       <ul className="import-counts">
         {Object.entries(p.counts).map(([k, c]) => (

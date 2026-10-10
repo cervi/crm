@@ -160,6 +160,15 @@ export async function cancelImport(jobId: string) {
  * periódica (para que siga aunque se cierre la pantalla).
  */
 export async function continueImport(budgetMs = 15_000): Promise<ImportJob | null> {
+  // Una sola a la vez en este proceso (la pantalla, el aviso y la revisión periódica pueden pedirlo a la vez;
+  // con la base de datos de pruebas, el bloqueo de PostgreSQL no basta porque comparten sesión).
+  const g = globalThis as unknown as { __pdImport?: Promise<ImportJob | null> | null };
+  if (g.__pdImport) return runningJob();
+  g.__pdImport = continueImportLocked(budgetMs);
+  try { return await g.__pdImport; } finally { g.__pdImport = null; }
+}
+
+async function continueImportLocked(budgetMs: number): Promise<ImportJob | null> {
   const started = Date.now();
   const conn = await sql.reserve();
   try {

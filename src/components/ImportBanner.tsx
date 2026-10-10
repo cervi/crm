@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { importBannerAction } from "@/app/actions/import";
 
-type State = { status: string; step: string; total: number } | null;
+type State = { status: string; step: string; total: number; quietFor?: number } | null;
 
 /**
  * Aviso fijo en todas las pantallas mientras se importa desde Pipedrive:
@@ -51,7 +51,9 @@ export function ImportBanner({ initial, labels, canDrive }: { initial: State; la
       <span className="spinner" aria-hidden="true" />
       <span>
         <strong>Importando desde Pipedrive: {(labels[s.step] ?? s.step).toLowerCase()}…</strong>{" "}
-        <span className="tick" key={s.total}>{s.total.toLocaleString("es-ES")}</span> registros. Puedes mirar, pero no hagas cambios hasta que termine.
+        <span className="tick" key={s.total}>{s.total.toLocaleString("es-ES")}</span> registros
+        {s.quietFor !== undefined && s.quietFor > 120 ? <> · <b className="tone-bad">sin avances desde hace {Math.round(s.quietFor / 60)} min: recarga la página</b></> : s.quietFor !== undefined && s.quietFor > 20 ? " · esperando a Pipedrive…" : ""}
+        . Puedes mirar, pero no hagas cambios hasta que termine.
       </span>
       {!onImportPage && <Link href="/settings/import" className="btn small secondary">Ver progreso</Link>}
     </div>
