@@ -70,8 +70,14 @@ export async function runAutopilot(): Promise<number> {
         AND greatest(d.created_at, coalesce((SELECT max(coalesce(a.done_at, a.updated_at)) FROM activities a WHERE a.deal_id = d.id), d.created_at))
             < now() - make_interval(days => ${a.nextStep.days})
         AND NOT EXISTS (SELECT 1 FROM autopilot_log l WHERE l.kind = 'next_step' AND l.ref = d.id::text AND l.at > now() - interval '14 days')
-      ORDER BY d.value DESC NULLS LAST LIMIT 40`;
+      ORDER BY d.value DESC NULLS LAST LIMIT 200`;
+    // Como mucho 5 al día por persona: si hay muchos deals olvidados, se reparten en varios días (primero los de más importe).
+    const today = new Map((await sql<{ owner_id: string; n: number }[]>`
+      SELECT d.owner_id, count(*)::int AS n FROM autopilot_log l JOIN deals d ON d.id = l.deal_id
+      WHERE l.kind = 'next_step' AND l.at > date_trunc('day', now()) GROUP BY d.owner_id`).map((r) => [r.owner_id, r.n]));
     for (const d of deals) {
+      if ((today.get(d.owner_id!) ?? 0) >= 5) continue;
+      today.set(d.owner_id!, (today.get(d.owner_id!) ?? 0) + 1);
       try {
         await createActivity(AI_ACTOR, { type: "task", subject: "Decidir el siguiente paso", deal_id: d.id, owner_id: d.owner_id,
           due_at: workdayAt(0, 10).getTime() < Date.now() ? workdayAt(1, 10).toISOString() : workdayAt(0, 10).toISOString(),
