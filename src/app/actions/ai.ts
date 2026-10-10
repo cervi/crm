@@ -11,7 +11,7 @@ import { isId } from "@/lib/validation";
 const refresh = () => revalidatePath("/", "layout");
 
 export async function saveAiSettingsAction(_: ActionState, form: FormData): Promise<ActionState> {
-  const g = await guard("admin");
+  const g = await guard("admin", { duringImport: true });
   if ("error" in g) return g;
   const res = await attempt(() => saveAiSettings(Object.fromEntries(form)));
   refresh();
@@ -19,7 +19,7 @@ export async function saveAiSettingsAction(_: ActionState, form: FormData): Prom
 }
 
 export async function testAiAction(_: ActionState): Promise<ActionState> {
-  const g = await guard("admin");
+  const g = await guard("admin", { duringImport: true });
   if ("error" in g) return g;
   const res = await attempt(() => testAi());
   refresh();
@@ -37,7 +37,7 @@ export async function regenerateBriefAction(dealId: string, back: string, _: Act
 }
 
 export async function saveDigestSettingsAction(_: ActionState, form: FormData): Promise<ActionState> {
-  const g = await guard("admin");
+  const g = await guard("admin", { duringImport: true });
   if ("error" in g) return g;
   const res = await attempt(() => saveDigestSettings(Object.fromEntries(form)));
   refresh();

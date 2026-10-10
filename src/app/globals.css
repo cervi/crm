@@ -1251,3 +1251,12 @@ a.btn.small svg { width: 14px; height: 14px; }
 @media (prefers-reduced-motion: reduce) {
   .spinner, .import-progress.running .bar span, .tick, .import-steps li.now { animation: none; }
 }
+
+/* Aviso de importación en todas las pantallas */
+.import-banner { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 18px; background: var(--accent-soft); color: var(--text); border-bottom: 1px solid var(--accent); font-size: 13.5px; }
+.import-banner strong { color: var(--accent-ink); }
+.import-banner .spinner { width: 18px; height: 18px; border-width: 2.5px; }
+.import-banner .btn { margin-left: auto; }
+.import-banner.done { background: var(--good-soft); border-bottom-color: var(--good); }
+.import-banner.done button { margin-left: auto; }

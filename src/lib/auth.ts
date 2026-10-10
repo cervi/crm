@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { UserError } from "./errors";
+import { sql } from "./db";
 import type { Actor } from "./events";
 import { SESSION_COOKIE, createSession, deleteSession, sessionUser, type Role, type SessionUser } from "./session";
 
@@ -36,18 +37,31 @@ export async function requireAdminPage(): Promise<SessionUser> {
 }
 
 /** Para acciones que cambian datos: el actor que queda en la historia. */
-export async function writer(): Promise<Actor> {
+/**
+ * Mientras se importa todo desde Pipedrive, nadie cambia datos: lo que se
+ * tocara podría pisarse o quedar a medias. (Las sincronizaciones horarias,
+ * que solo traen lo cambiado, no bloquean.)
+ */
+export async function assertNoImport() {
+  const [j] = await sql<{ step: string }[]>`
+    SELECT step FROM import_jobs WHERE status = 'running' AND (options->>'since') IS NULL LIMIT 1`.catch(() => []);
+  if (j) throw new UserError("Hay una importación de Pipedrive en marcha: espera a que termine para hacer cambios (puedes seguir mirando).");
+}
+
+export async function writer(opts: { duringImport?: boolean } = {}): Promise<Actor> {
   const user = await currentUser();
   if (!user) throw new UserError("Tu sesión ha caducado: vuelve a entrar.");
   if (user.role === "viewer") throw new UserError("Tu usuario es de solo lectura: pide a un administrador que te cambie el rol.");
+  if (!opts.duringImport) await assertNoImport();
   return { type: "user", id: user.id };
 }
 
 /** Para acciones de ajustes: solo administradores. */
-export async function adminOnly(): Promise<Actor> {
+export async function adminOnly(opts: { duringImport?: boolean } = {}): Promise<Actor> {
   const user = await currentUser();
   if (!user) throw new UserError("Tu sesión ha caducado: vuelve a entrar.");
   if (user.role !== "admin") throw new UserError("Solo un administrador puede cambiar esto.");
+  if (!opts.duringImport) await assertNoImport();
   return { type: "user", id: user.id };
 }
 
@@ -83,9 +97,9 @@ export function safeNext(next: unknown): string {
  * Comprobación de permisos para acciones que devuelven estado de formulario:
  * en vez de lanzar, devuelve { error } para mostrarlo junto al formulario.
  */
-export async function guard(kind: "write" | "admin" | { self: string }): Promise<{ actor: Actor } | { error: string }> {
+export async function guard(kind: "write" | "admin" | { self: string }, opts: { duringImport?: boolean } = {}): Promise<{ actor: Actor } | { error: string }> {
   try {
-    return { actor: kind === "write" ? await writer() : kind === "admin" ? await adminOnly() : await selfOrAdmin(kind.self) };
+    return { actor: kind === "write" ? await writer(opts) : kind === "admin" ? await adminOnly(opts) : await selfOrAdmin(kind.self) };
   } catch (e) {
     return { error: e instanceof UserError ? e.message : "No tienes permiso para hacer esto." };
   }
