@@ -532,11 +532,13 @@ const persons: Runner = async (t, job) => {
   for (const p of items) {
     try {
     if (p.is_deleted) { await sql`UPDATE persons SET deleted_at = coalesce(deleted_at, now()) WHERE pipedrive_id = ${idOf(p.id)}`; continue; }
+    // Consultas fuera de la transacción (ver «deals»).
+    const [prev] = await sql<{ custom: Record<string, unknown> }[]>`SELECT custom FROM persons WHERE pipedrive_id = ${idOf(p.id)}`;
+    const custom = await customValues(p, fmap, prev?.custom);
     await sql.begin(async (tx) => {
       const db = tx as unknown as Db;
-      const [prev] = await db<{ custom: Record<string, unknown> }[]>`SELECT custom FROM persons WHERE pipedrive_id = ${idOf(p.id)}`;
       const r = await upsert(db, "persons", idOf(p.id)!, {
-        ...splitName(p), owner_id: look(owners, idOf(p.owner_id)), custom: json(await customValues(p, fmap, prev?.custom)),
+        ...splitName(p), owner_id: look(owners, idOf(p.owner_id)), custom: json(custom),
         created_at: ts(p.add_time) ?? new Date(), deleted_at: null,
       });
       bump(job, "persons", r.created ? "created" : "updated");
@@ -628,9 +630,13 @@ const deals: Runner = async (t, job) => {
     if (!pipelineId || !stageId) { bump(job, "deals", "skipped"); warn(job, `Deal «${d.title}»: su pipeline o fase no existe.`); continue; }
     const status = ["won", "lost"].includes(String(d.status)) ? String(d.status) : "open";
     const personId = look(people, idOf(d.person_id));
+    // Todo lo que consulta la base de datos va ANTES de la transacción: con la base de datos de pruebas (PGlite),
+    // una consulta por otra conexión dentro de una transacción la deja esperando para siempre.
+    const [prev] = await sql<{ custom: Record<string, unknown> }[]>`SELECT custom FROM deals WHERE pipedrive_id = ${idOf(d.id)}`;
+    const custom = await customValues(d, fmap, prev?.custom);
+    const lostReason = status === "lost" ? await lostReasonId(str(d.lost_reason)) : null;
     await sql.begin(async (tx) => {
       const db = tx as unknown as Db;
-      const [prev] = await db<{ custom: Record<string, unknown> }[]>`SELECT custom FROM deals WHERE pipedrive_id = ${idOf(d.id)}`;
       const r = await upsert(db, "deals", idOf(d.id)!, {
         title: str(d.title) ?? `Deal ${d.id}`, organization_id: look(orgs, idOf(d.org_id)), pipeline_id: pipelineId, stage_id: stageId,
         status, value: d.value === null || d.value === undefined ? null : Math.max(0, Number(d.value)),
@@ -639,8 +645,8 @@ const deals: Runner = async (t, job) => {
         stage_entered_at: ts(d.stage_change_time) ?? ts(d.add_time) ?? new Date(),
         won_at: status === "won" ? ts(d.won_time) ?? ts(d.close_time) ?? new Date() : null,
         lost_at: status === "lost" ? ts(d.lost_time) ?? ts(d.close_time) ?? new Date() : null,
-        lost_reason_id: status === "lost" ? await lostReasonId(str(d.lost_reason)) : null,
-        custom: json(await customValues(d, fmap, prev?.custom)), created_at: ts(d.add_time) ?? new Date(), deleted_at: null,
+        lost_reason_id: lostReason,
+        custom: json(custom), created_at: ts(d.add_time) ?? new Date(), deleted_at: null,
       });
       bump(job, "deals", r.created ? "created" : "updated");
       if (personId) {
