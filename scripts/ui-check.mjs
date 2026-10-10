@@ -1318,7 +1318,7 @@ if (MOCK) {
     const card = stage.locator(".instr-card", { hasText: "escríbele para agendar" });
     await card.getByText("Probar con un deal").click();
     await card.getByRole("button", { name: "Probar con este deal" }).click();
-    await card.getByLabel("Resultado de la prueba").getByText(/Haría:/).waitFor();
+    await card.getByLabel("Resultado de la prueba").getByText(/Le aplica\./).waitFor();
     // Cambiar a «Sola» y volver a «Preguntarme»
     await card.getByRole("button", { name: "Sola", exact: true }).click();
     await card.locator('button[aria-pressed="true"]', { hasText: "Sola" }).waitFor();
