@@ -83,7 +83,7 @@ export default async function TodayB({ searchParams }: { searchParams: Promise<{
       GROUP BY g ORDER BY g`,
     sql<{ sent: number; opened: number; replied: number }[]>`
       SELECT count(*)::int AS sent, count(*) FILTER (WHERE e.open_count > 0)::int AS opened,
-             count(*) FILTER (WHERE EXISTS (SELECT 1 FROM emails r WHERE r.direction = 'in' AND r.person_id = e.person_id AND r.sent_at > e.sent_at)))::int AS replied
+             count(*) FILTER (WHERE EXISTS (SELECT 1 FROM emails r WHERE r.direction = 'in' AND r.person_id = e.person_id AND r.sent_at > e.sent_at))::int AS replied
       FROM emails e WHERE e.direction = 'out' AND e.status = 'sent' AND e.track AND e.sent_at > now() - interval '30 days' AND ${mine("e.user_id")}`,
     sql<{ done: number; total: number }[]>`
       SELECT count(*) FILTER (WHERE done)::int AS done, count(*)::int AS total FROM activities
