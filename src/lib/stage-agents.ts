@@ -411,7 +411,7 @@ export async function testInstruction(instructionId: string, dealId: string): Pr
       out.push({ rule: r.name, applies: true, detail: `Se cumple la condición (${j.motivo ?? ""}). Haría: ${r.description.replace(/^.*?,\s*/, "")}` });
       continue;
     }
-    out.push({ rule: r.name, applies: true, detail: `Haría: ${r.description.replace(/^.*?,\s*/, "")} (cuando se dé el momento: ${r.description.split(",")[0].toLowerCase()}).` });
+    out.push({ rule: r.name, applies: true, detail: `Le aplica. ${r.description}` });
   }
   return out;
 }
