@@ -17,6 +17,7 @@ import { toUserMessage } from "@/lib/errors";
 import { chartInsights, grainsFor, RANGE_PRESETS, resolveRange, salesAnalytics, SEGMENTS, type Grain, type Segment } from "@/lib/sales-analytics";
 import { PeriodPicker } from "@/components/charts/PeriodPicker";
 import { ChartCard } from "@/components/charts/ChartCard";
+import { engagementReport } from "@/lib/engagement-report";
 import { Suspense } from "react";
 import { GroupedBars, HBars, Lines, StackedBars } from "@/components/charts/SalesCharts";
 
@@ -44,9 +45,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const grains = grainsFor(period);
   const grain: Grain = grains.allowed.includes(sp.g as Grain) ? (sp.g as Grain) : grains.auto;
   const segment: Segment = (Object.keys(SEGMENTS) as Segment[]).includes(sp.seg as Segment) ? (sp.seg as Segment) : "none";
-  const [fc, vel, goals, fun, attr, mix, sa] = await Promise.all([
+  const [fc, vel, goals, fun, attr, mix, sa, eng] = await Promise.all([
     forecast({ pipelineId, ownerId }), velocity(pipelineId), goalsProgress(), funnelPipeline ? funnel(funnelPipeline) : null, attribution(365), revenueMix(365),
-    salesAnalytics({ grain, segment, range: period, pipelineId, ownerId }),
+    salesAnalytics({ grain, segment, range: period, pipelineId, ownerId }), engagementReport(ownerId),
   ]);
   const link = (patch: Record<string, string | null>) => {
     const q = new URLSearchParams();
@@ -219,6 +220,40 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             </div>
           </section>
         )}
+      </div>
+
+      <h2 className="sales-head" style={{ margin: "36px 0 0" }}>Correos, documentos y firmas <span className="muted">últimos 90 días</span></h2>
+      <div className="charts-grid">
+        <ChartCard wide label="Respuesta a los correos" title="Cómo responden a vuestros correos"
+                   info="Por semana: correos enviados a contactos, cuántos se abrieron (de los que llevaban seguimiento) y cuántos tuvieron respuesta en 14 días."
+                   insights={eng.weekly.some((w) => w.sent) ? [`De ${eng.weekly.reduce((a, w) => a + w.sent, 0)} correos en 12 semanas, respondieron al ${pct(eng.weekly.reduce((a, w) => a + w.replied, 0) / Math.max(1, eng.weekly.reduce((a, w) => a + w.sent, 0)))}.`] : []}>
+          <Lines periods={eng.weekly.map((w) => ({ key: w.week, label: `Semana ${w.week}`, short: w.week.slice(-3) }))} f="percent" maxValue={1}
+                 series={[{ key: "open", label: "Abiertos", values: eng.weekly.map((w) => (w.sent ? w.opened / w.sent : null)) },
+                          { key: "reply", label: "Respondidos", values: eng.weekly.map((w) => (w.sent ? w.replied / w.sent : null)) }]}
+                 notes={eng.weekly.map((w) => (w.sent ? `${w.sent} enviados` : null))} />
+        </ChartCard>
+        <ChartCard label="Respuesta por persona" title="Respuesta por persona"
+                   info="Porcentaje de correos a contactos que tuvieron respuesta en 14 días, por quien los envió (con al menos 3 correos).">
+          <HBars f="percent" rows={eng.byOwner.map((o) => ({ label: o.name, value: o.sent ? o.replied / o.sent : 0, note: `${o.sent} enviados · ${pct(o.sent ? o.opened / o.sent : null)} abiertos` }))} />
+        </ChartCard>
+        <ChartCard label="A qué hora responden" title="Mejor hora para escribir"
+                   info="Correos que tuvieron respuesta en 3 días, según la hora a la que se enviaron (últimos 6 meses). Te dice cuándo conviene escribir.">
+          <HBars f="number" rows={eng.replyHours.map((h) => ({ label: `${String(h.hour).padStart(2, "0")}:00`, value: h.replies }))} />
+        </ChartCard>
+        <ChartCard label="Documentos más vistos" title="Documentos más vistos"
+                   info="Documentos compartidos con enlace (biblioteca o del deal): cuántas veces los han abierto y cuántos de los enlaces se llegaron a abrir.">
+          <HBars f="number" rows={eng.docs.map((d) => ({ label: d.name, value: d.views, note: `${d.opened}/${d.shared} enlaces abiertos` }))} />
+        </ChartCard>
+        <ChartCard label="Firmas" title="Firmas de contratos"
+                   info="Documentos enviados a firmar en los últimos 90 días y cuánto se tarda de media en tener todas las firmas.">
+          <div className="mini-kpis">
+            <div><strong>{eng.sign.sent}</strong><span className="meta">enviados</span></div>
+            <div><strong>{eng.sign.completed}</strong><span className="meta">firmados</span></div>
+            <div><strong>{eng.sign.pending}</strong><span className="meta">esperando</span></div>
+            <div><strong>{eng.sign.avg_days === null ? "—" : `${eng.sign.avg_days < 1 ? "<1" : Math.round(eng.sign.avg_days)} d`}</strong><span className="meta">en firmarse</span></div>
+          </div>
+          {eng.sign.declined > 0 && <p className="meta">{eng.sign.declined} rechazado{eng.sign.declined === 1 ? "" : "s"} o caducado{eng.sign.declined === 1 ? "" : "s"}. <a href="/firmas">Ver firmas</a></p>}
+        </ChartCard>
       </div>
 
       <h2 className="sales-head" style={{ margin: "36px 0 0" }}>Previsión y objetivos</h2>
