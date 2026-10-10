@@ -101,7 +101,7 @@ export function resolveRange(preset: string | undefined, fromStr?: string, toStr
   const dow = (new Date(Date.UTC(t.y, t.m - 1, t.d)).getUTCDay() + 6) % 7;
   const q0 = Math.floor((t.m - 1) / 3) * 3 + 1;
   const tomorrow = mk(t.y, t.m, t.d + 1);
-  const all = RANGE_PRESETS.flatMap((g) => g.items) as readonly { key: string; label: string }[];
+  const all: { key: string; label: string }[] = RANGE_PRESETS.flatMap((g): { key: string; label: string }[] => [...g.items]);
   const r = (key: RangePreset, from: Ymd, to: Ymd): ResolvedRange => {
     const fmt = (p: Ymd) => new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(p.y, p.m - 1, p.d)));
     const last = mk(to.y, to.m, to.d - 1);
