@@ -154,6 +154,11 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               {health && <a href="#senales" className="health-link"><HealthBadge score={health.score} signals={health.signals} /></a>}
               {deal.organization_id && <Link href={`/organizations/${deal.organization_id}`}>{deal.organization_name}</Link>}
               {deal.owner_name && <span className="owner"><Avatar name={deal.owner_name} size="sm" />{deal.owner_name}</span>}
+              {rotten && (
+                <span className="badge warn" title={`Lleva ${deal.days_in_stage} días en «${deal.stage_name}» (el límite es ${deal.rotten_after_days}).${stageInfo && !stageInfo.has_upcoming_session ? ` No tiene ${stageInfo.required_activity_type ? activityLabel(stageInfo.required_activity_type).toLowerCase() : "ninguna sesión"} agendada.` : ""}`}>
+                  Parado {deal.days_in_stage} d{stageInfo && !stageInfo.has_upcoming_session ? " · sin sesión" : ""}
+                </span>
+              )}
             </div>
             <TagsBlock entity="deal" id={dealId} tags={tags} all={allTags} back={back} />
           </div>
@@ -215,13 +220,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
         {deal.status === "lost" && (
           <p className="callout bad">Perdido el {date(deal.lost_at)}: {deal.lost_reason ?? "sin motivo"}{deal.lost_note && `. ${deal.lost_note}`}</p>
         )}
-        {rotten && (
-          <p className="callout">
-            Lleva {deal.days_in_stage} días en «{deal.stage_name}» (el límite es {deal.rotten_after_days}).
-            {stageInfo && !stageInfo.has_upcoming_session &&
-              ` No tiene ${stageInfo.required_activity_type ? activityLabel(stageInfo.required_activity_type).toLowerCase() : "ninguna sesión"} agendada.`}
-          </p>
-        )}
+
       </header>
 
       <div className="deal-layout">
@@ -239,13 +238,6 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             </dl>
           </section>
 
-          {defs.length > 0 && (
-            <details className="side-section">
-              <summary><h3>Campos</h3><span className="meta">{defs.filter((d) => deal.custom[d.key] !== undefined).length}/{defs.length}</span></summary>
-              <dl className="dl compact"><CustomFieldValues defs={defs} values={deal.custom} users={users} /></dl>
-              <Link href={`/deals/${dealId}/edit`} className="meta">Rellenar campos</Link>
-            </details>
-          )}
 
           <section className="side-section">
             <h3>Contactos <span className="muted">{participants.length}</span></h3>
@@ -272,8 +264,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             </details>
           </section>
 
-          <section className="side-section insights" aria-label="Lo que sabemos">
-            <h3>Lo que sabemos</h3>
+          <details className="side-section insights" aria-label="Lo que sabemos" open={!!insights}>
+            <summary><h3>Lo que sabemos</h3>{!insights && <span className="meta">vacío</span>}</summary>
             {!insights ? <p className="meta">Se rellena solo con cada reunión (con notas o transcripción) o a mano.</p> : (
               <dl className="dl compact">
                 {insights.needs.length > 0 && <div className="dl-row"><dt>Necesita</dt><dd>{insights.needs.join(" · ")}</dd></div>}
@@ -295,10 +287,18 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 <label className="field"><span className="label">Competidores (uno por línea)</span><textarea name="competitors" rows={2} defaultValue={insights?.competitors.join("\n") ?? ""} /></label>
               </ActionForm>
             </details>
-          </section>
+          </details>
 
-          <section className="side-section" aria-label="Documentos">
-            <h3>Documentos <span className="muted">{documents.length}</span></h3>
+          {defs.length > 0 && (
+            <details className="side-section">
+              <summary><h3>Campos</h3><span className="meta">{defs.filter((d) => deal.custom[d.key] !== undefined).length}/{defs.length}</span></summary>
+              <dl className="dl compact"><CustomFieldValues defs={defs} values={deal.custom} users={users} /></dl>
+              <Link href={`/deals/${dealId}/edit`} className="meta">Rellenar campos</Link>
+            </details>
+          )}
+
+          <details className="side-section" aria-label="Documentos" open={documents.length > 0}>
+            <summary><h3>Documentos</h3><span className="meta">{documents.length}</span></summary>
             {documents.length > 0 && (
               <ul className="doc-list">
                 {documents.map((d) => (
@@ -322,11 +322,11 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 <label className="field"><span className="label">Título</span><input name="title" placeholder="Propuesta, presentación…" /></label>
               </ActionForm>
             </details>
-          </section>
+          </details>
 
-          <section className="side-section" aria-label="La IA en esta fase">
-            <div className="side-head"><h3><Icon name="spark" /> La IA en «{deal.stage_name}»</h3>
-              <Link className="meta" href={`/pipelines/${deal.pipeline_id}/agentes?fase=${deal.stage_id}#fase-${deal.stage_id}`}>{stageInstructions.length ? "Cambiar" : "+ Instrucción"}</Link></div>
+          <details className="side-section" aria-label="La IA en esta fase" open={stageInstructions.length > 0}>
+            <summary><h3>La IA en esta fase</h3><span className="meta">{stageInstructions.length || "sin instrucciones"}</span></summary>
+            <p className="meta" style={{ margin: "0 0 6px" }}><Link href={`/pipelines/${deal.pipeline_id}/agentes?fase=${deal.stage_id}#fase-${deal.stage_id}`}>{stageInstructions.length ? "Cambiar instrucciones" : "+ Decirle a la IA qué hacer aquí"}</Link></p>
             {stageInstructions.length === 0 ? <p className="meta" style={{ margin: 0 }}>Sin instrucciones: dile a la IA qué hacer con los deals de esta fase (escribir para agendar, moverlos si…).</p> : (
               <ul className="instr-mini">
                 {stageInstructions.map((i) => (
@@ -334,12 +334,12 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 ))}
               </ul>
             )}
-          </section>
+          </details>
 
           <FollowersBlock type="deal" id={dealId} followers={followers} me={me.id} users={users.filter((u) => u.kind === "human")} back={back} />
 
-          <section className="side-section deal-sequences" aria-label="Secuencias">
-            <h3>Secuencias <span className="muted">{enrollments.filter((e) => e.status === "active").length}</span></h3>
+          <details className="side-section deal-sequences" aria-label="Secuencias" open={enrollments.length > 0}>
+            <summary><h3>Secuencias</h3><span className="meta">{enrollments.filter((e) => e.status === "active").length} activas</span></summary>
             {enrollments.length > 0 && (
               <ul>
                 {enrollments.slice(0, 5).map((e) => (
@@ -375,7 +375,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 </ActionForm>
               </details>
             )}
-          </section>
+          </details>
         </aside>
 
         <div className="deal-main">
@@ -414,14 +414,25 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                   </>
                 )}
               </div>
-              {brief.riesgos.length > 0 && <ul className="brief-risks">{brief.riesgos.map((r) => <li key={r}>{r}</li>)}</ul>}
+              {brief.riesgos.length > 0 && (
+                <details className="brief-why">
+                  <summary>Por qué ({brief.riesgos.length})</summary>
+                  <ul className="brief-risks">{brief.riesgos.map((r) => <li key={r}>{r}</li>)}</ul>
+                </details>
+              )}
             </section>
           )}
 
           {health && health.signals.length > 0 && (
-            <section className="signals" id="senales" aria-label="Señales del deal">
-              <h2 className="section-title">Señales <HealthBadge score={health.score} signals={health.signals} />
-                <span className="meta" style={{ fontWeight: 400 }}>parte de 50: los riesgos restan y las señales positivas suman</span></h2>
+            <details className="signals" id="senales" aria-label="Señales del deal">
+              <summary className="section-title">
+                <span>Salud del deal</span> <HealthBadge score={health.score} signals={health.signals} />
+                <span className="meta" style={{ fontWeight: 400 }}>
+                  {health.signals.filter((x) => x.tone === "risk").length} riesgos · {health.signals.filter((x) => x.tone === "good").length} a favor
+                </span>
+                <span className="signals-toggle meta">Ver detalle</span>
+              </summary>
+              <p className="meta" style={{ margin: "4px 0 12px" }}>Parte de 50: los riesgos restan y las señales positivas suman.</p>
               <div className="signal-cols">
                 {(["risk", "good"] as const).map((tone) => {
                   const list = health!.signals.filter((x) => x.tone === tone);
@@ -442,7 +453,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                   );
                 })}
               </div>
-            </section>
+            </details>
           )}
 
           <ComposerTabs
