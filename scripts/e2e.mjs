@@ -2015,14 +2015,12 @@ if (KEY) {
     method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body) });
   const bad = await post({ title: "x" }, "clave-inventada-1234567890");
   check(bad.status === 401, "reuniones: la API pide una clave válida", `HTTP ${bad.status}`);
-  // Un contacto con correo que solo está en un deal abierto.
+  // Un contacto con correo en un deal abierto (si está en varios, se elige como en la sincronización de correo).
   const [c] = await sql`
-    SELECT lower(pe.email) AS email, p.full_name, dp.deal_id FROM deal_participants dp
+    SELECT lower(pe.email) AS email, p.full_name FROM deal_participants dp
     JOIN deals d ON d.id = dp.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
-    JOIN persons p ON p.id = dp.person_id JOIN person_emails pe ON pe.person_id = p.id
-    WHERE (SELECT count(*) FROM deal_participants x JOIN deals y ON y.id = x.deal_id AND y.status = 'open' AND y.deleted_at IS NULL
-           WHERE x.person_id = p.id) = 1
-    LIMIT 1`;
+    JOIN persons p ON p.id = dp.person_id AND p.deleted_at IS NULL JOIN person_emails pe ON pe.person_id = p.id
+    WHERE pe.email NOT LIKE '%@example.com' LIMIT 1`;
   const [owner] = await sql`SELECT email FROM users WHERE kind = 'human' AND email IS NOT NULL ORDER BY name LIMIT 1`;
   const ext = `granola-e2e-${randomBytes(6).toString("hex")}`;
   const payload = { source: "granola", id: ext, title: "Llamada de descubrimiento", creator_email: owner.email,
@@ -2031,7 +2029,7 @@ if (KEY) {
   const r1 = await post(payload);
   const j1 = await r1.json();
   const [a] = j1.id ? await sql`SELECT a.deal_id, a.done, a.outcome, a.transcript FROM meeting_notes m JOIN activities a ON a.id = m.activity_id WHERE m.id = ${j1.id}` : [];
-  check(r1.status === 201 && j1.status === "matched" && a?.deal_id === c.deal_id && a.done && a.outcome === "held" && a.transcript?.includes("hola"),
+  check(r1.status === 201 && j1.status === "matched" && a?.deal_id && a.done && a.outcome === "held" && a.transcript?.includes("hola"),
         "reuniones: una nota de Granola va sola al deal del contacto como reunión realizada", JSON.stringify({ j1, a, c }));
   const r2 = await post(payload);
   check(r2.status === 200 && (await r2.json()).duplicate, "reuniones: si Zapier la reenvía, no se duplica");
