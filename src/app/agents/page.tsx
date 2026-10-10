@@ -146,8 +146,7 @@ export default async function AgentsPage() {
         })}
       </div>
 
-      {admin && (
-        <section className="panel" aria-label="Instrucciones por fase">
+      <section className="panel" aria-label="Instrucciones por fase">
         <h2><Icon name="spark" />Instrucciones por fase del funnel</h2>
         <p className="meta" style={{ marginTop: 0 }}>Lo que has pedido en lenguaje natural en cada fase («cuando entre aquí, escríbele para agendar…»). Se escriben y se cambian desde cada pipeline.</p>
         <ul className="agent-rules">
@@ -163,7 +162,8 @@ export default async function AgentsPage() {
         </ul>
       </section>
 
-      <section className="panel" aria-label="Límites de los agentes" style={{ marginTop: 18 }}>
+      {admin && (
+        <section className="panel" aria-label="Límites de los agentes" style={{ marginTop: 18 }}>
           <h2>Límites</h2>
           <p className="muted">
             Presupuesto de IA al mes (el coste es estimado con los precios por millón de tokens de vuestro proveedor): al 80 % te avisa y al 100 % deja
