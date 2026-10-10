@@ -3,7 +3,8 @@ import type { IconName } from "@/components/Icon";
 /** Secciones del menú lateral. «Hoy» y «Ajustes» están siempre; el resto se puede ordenar u ocultar. */
 export const NAV_ITEMS: { href: string; match: string[]; label: string; icon: IconName; fixed?: boolean }[] = [
   { href: "/", match: ["/"], label: "Hoy", icon: "home", fixed: true },
-  { href: "/pipelines", match: ["/pipelines", "/deals"], label: "Deals", icon: "deals" },
+  { href: "/pipelines", match: ["/pipelines"], label: "Deals (tablero)", icon: "deals" },
+  { href: "/deals", match: ["/deals"], label: "Mis deals", icon: "list" },
   { href: "/inbox", match: ["/inbox"], label: "Bandeja de la IA", icon: "inbox" },
   { href: "/agents", match: ["/agents"], label: "Agentes", icon: "spark" },
   { href: "/sequences", match: ["/sequences"], label: "Secuencias", icon: "send" },

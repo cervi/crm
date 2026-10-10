@@ -68,7 +68,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const ownerId = isId(sp.owner) ? sp.owner : null;
   const mine = (col: string) => (ownerId ? sql`${sql.unsafe(col)} = ${ownerId}` : sql`true`);
 
-  const [connections, ai, users, d, [won], wonWeeks, actDays, [mail], [today], stages, board, recentWins] = await Promise.all([
+  const [connections, ai, users, d, [won], wonWeeks, actDays, [mail], [today], stages, board, recentWins, [goal]] = await Promise.all([
     listConnections(), getAiSettings(),
     listUsers(),
     buildDigest(ownerId, { ai: "cached" }),
@@ -99,14 +99,17 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       FROM pipelines p JOIN stages s ON s.pipeline_id = p.id
       LEFT JOIN deals d ON d.stage_id = s.id AND d.status = 'open' AND d.deleted_at IS NULL AND ${mine("d.owner_id")}
       WHERE p.is_active GROUP BY p.id, p.name, p.position, s.id, s.name, s.position ORDER BY p.position, s.position`,
-    sql<{ id: string; name: string; v: number; n: number }[]>`
-      SELECT u.id, u.name, coalesce(sum(d.value), 0)::float8 AS v, count(d.id)::int AS n
+    sql<{ id: string; name: string; v: number; n: number; target: number | null }[]>`
+      SELECT u.id, u.name, coalesce(sum(d.value), 0)::float8 AS v, count(d.id)::int AS n, u.monthly_target::float8 AS target
       FROM users u LEFT JOIN deals d ON d.owner_id = u.id AND d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= date_trunc('month', now())
-      WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name ORDER BY v DESC, n DESC, u.name LIMIT 6`,
+      WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name, u.monthly_target ORDER BY v DESC, n DESC, u.name LIMIT 6`,
     sql<{ id: string; title: string; value: number | null; currency: string; owner: string | null; won_at: Date }[]>`
       SELECT d.id, d.title, d.value::float8 AS value, d.currency, u.name AS owner, d.won_at FROM deals d LEFT JOIN users u ON u.id = d.owner_id
       WHERE d.status = 'won' AND d.deleted_at IS NULL AND d.won_at > now() - interval '30 days' AND ${mine("d.owner_id")}
       ORDER BY d.won_at DESC LIMIT 4`,
+    sql<{ target: number; people: number }[]>`
+      SELECT coalesce(sum(monthly_target), 0)::float8 AS target, count(monthly_target)::int AS people FROM users
+      WHERE is_active AND kind = 'human' AND (${ownerId}::uuid IS NULL OR id = ${ownerId}::uuid)`.catch(() => [{ target: 0, people: 0 }]),
   ]);
 
   const humans = users.filter((u) => u.kind === "human");
@@ -138,6 +141,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   };
   const nowPos = Math.min(100, Math.max(0, ((hour + new Date().getMinutes() / 60 - 8) / 12) * 100));
   const maxBoard = Math.max(1, ...board.map((b) => b.v));
+  // Qué parte del mes ha pasado (para comparar con el objetivo).
+  const nowD = new Date(), daysInMonth = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 0).getDate();
+  const monthPace = (nowD.getDate() - 1 + nowD.getHours() / 24) / daysInMonth;
 
   return (
     <main className="page b-home">
@@ -183,9 +189,21 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         </Link>
         <Link href="/reports" className="b-kpi k2">
           <span className="b-kpi-label"><Icon name="rocket" />Ganado este mes</span>
-          <strong>{compact(won.month)}</strong>
-          <Delta now={won.month} before={won.prev} />
-          <Spark values={wonWeeks.map((w) => w.v)} label="Ganado por semana, últimas 12 semanas" />
+          <strong>{compact(won.month)}{goal.target > 0 && <small> de {compact(goal.target)}</small>}</strong>
+          {goal.target > 0 ? (
+            <>
+              <span className={`b-delta ${won.month / goal.target >= monthPace ? "up" : "down"}`}
+                    title={`A estas alturas del mes, a ritmo constante, irías por el ${Math.round(monthPace * 100)} %.`}>
+                {pct(won.month, goal.target)} % del objetivo · {won.month / goal.target >= monthPace ? "vas por delante del ritmo" : `faltan ${compact(Math.max(0, goal.target - won.month))}`}
+              </span>
+              <span className="b-goal" aria-hidden="true"><i style={{ width: `${Math.min(100, pct(won.month, goal.target))}%` }} /><b style={{ left: `${monthPace * 100}%` }} /></span>
+            </>
+          ) : (
+            <>
+              <Delta now={won.month} before={won.prev} />
+              <Spark values={wonWeeks.map((w) => w.v)} label="Ganado por semana, últimas 12 semanas" />
+            </>
+          )}
         </Link>
         <Link href="/activities" className="b-kpi k3">
           <span className="b-kpi-label"><Icon name="activities" />Actividades esta semana</span>
@@ -311,7 +329,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
                 <span className={`pos p${i + 1}`}>{i + 1}</span>
                 <span className="b-av">{initials(b.name)}</span>
                 <span className="who">{b.name}<span className="bar"><i style={{ width: `${(b.v / maxBoard) * 100}%` }} /></span></span>
-                <span className="v">{b.v ? compact(b.v) : "—"}</span>
+                <span className="v">{b.v ? compact(b.v) : "—"}{b.target ? <span className="meta"> · {pct(b.v, b.target)} %</span> : null}</span>
               </li>
             ))}
           </ol>

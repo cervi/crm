@@ -11,6 +11,14 @@ export function ComposerTabs({ note, activity, email, call, files, filesLabel = 
   note: React.ReactNode; activity: React.ReactNode; email?: React.ReactNode; call?: React.ReactNode; files?: React.ReactNode; filesLabel?: string;
 }) {
   const [tab, setTab] = useState<"note" | "activity" | "call" | "email" | "files">("note");
+  const box = useRef<HTMLDivElement>(null);
+  // Con #nueva-actividad en la dirección, se abre directamente en «Actividad».
+  useEffect(() => {
+    if (window.location.hash !== "#nueva-actividad") return;
+    setTab("activity");
+    box.current?.scrollIntoView({ block: "center" });
+    setTimeout(() => box.current?.querySelector<HTMLInputElement>("[role=tabpanel]:not([hidden]) input[name=subject], div:not([hidden]) > form input[name=subject]")?.focus(), 50);
+  }, []);
   const tabs = [
     { key: "note" as const, label: "Nota", content: note },
     { key: "activity" as const, label: "Actividad", content: activity },
@@ -19,7 +27,7 @@ export function ComposerTabs({ note, activity, email, call, files, filesLabel = 
     ...(files ? [{ key: "files" as const, label: filesLabel, content: files }] : []),
   ];
   return (
-    <div className="composer">
+    <div className="composer" id="nueva-actividad" ref={box}>
       <div className="composer-tabs" role="tablist">
         {tabs.map((t) => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>{t.label}</button>)}
       </div>

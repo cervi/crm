@@ -2001,3 +2001,36 @@ tr.row-muted td { color: var(--muted); }
 .b-dot.ai { background: var(--series-7); } .b-dot.good { background: var(--good); } .b-dot.bad { background: var(--bad); }
 .b-agents { margin: -6px 0 12px; }
 @media (max-width: 1200px) { .b-third { grid-column: span 12; } }
+
+/* Mis deals */
+.chip-count { margin-left: 6px; font-size: 12px; font-weight: 700; padding: 0 6px; border-radius: 999px; background: var(--sunken); color: var(--muted); }
+.chips a[aria-current="page"] .chip-count { background: var(--panel); color: var(--accent-ink); }
+.chips a.warn .chip-count { background: var(--warn-soft); color: var(--warn); }
+tr.row-attn td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+
+/* Siguiente paso del deal */
+.next-step { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 12px 14px; border-radius: var(--r);
+  background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+.next-step-q { display: inline-flex; align-items: center; gap: 8px; }
+.next-step-q svg { width: 18px; height: 18px; stroke: var(--warn); flex: none; }
+.next-step-btns { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.next-step.done { background: var(--good-soft); border-color: transparent; color: var(--good); font-weight: 600; margin: 0; }
+.next-step.done svg { width: 16px; height: 16px; stroke: var(--good); }
+.next-step-pop { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; width: min(760px, calc(100vw - 32px));
+  box-shadow: var(--shadow-pop); border-radius: var(--r); background: var(--panel); white-space: normal; text-align: left; }
+.btn-link { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.next-custom { margin-top: 10px; }
+.next-custom summary { cursor: pointer; }
+.next-custom .form { margin-top: 8px; }
+.b-goal { position: relative; height: 10px; border-radius: 999px; background: var(--sunken); margin-top: 12px; }
+.b-goal i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: linear-gradient(90deg, var(--series-3), var(--series-1)); }
+.b-goal b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); opacity: .55; border-radius: 2px; }
+
+/* Atajos de teclado */
+.shortcuts h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 8px; }
+.shortcuts h3:first-child { margin-top: 0; }
+.shortcut-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.shortcut-list li { display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: center; }
+.kbds { display: inline-flex; gap: 4px; }
+kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
+  border-bottom-width: 2px; background: var(--panel-2); font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }

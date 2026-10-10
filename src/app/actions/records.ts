@@ -8,6 +8,8 @@ import { listFieldDefinitions, readCustomValues } from "@/lib/custom-fields";
 import { createOrganization, getOrganization, updateOrganization } from "@/lib/organizations";
 import { changeCompany, createPerson, getPerson, updatePerson } from "@/lib/persons";
 import { createActivity, completeActivity, reopenActivity } from "@/lib/activities";
+import { dealWithoutNext, scheduleNext, type NextPreset } from "@/lib/next-step";
+import { sql } from "@/lib/db";
 import { createNote } from "@/lib/notes";
 import { addActivityToCalendar } from "@/lib/mailbox";
 
@@ -128,17 +130,37 @@ export async function createNoteAction(back: string, _: ActionState, form: FormD
 }
 
 /** Marca o desmarca una actividad como hecha desde la tabla (sin formulario). */
-export async function toggleActivityDoneAction(activityId: string, done: boolean): Promise<{ error?: string }> {
+export async function toggleActivityDoneAction(activityId: string, done: boolean): Promise<{ error?: string; needsNext?: { id: string; title: string } }> {
   const g = await guard("write");
   if ("error" in g) return g;
+  let needsNext: { id: string; title: string } | null = null;
   try {
-    if (done) await completeActivity(g.actor, activityId, {});
-    else await reopenActivity(activityId);
+    if (done) {
+      await completeActivity(g.actor, activityId, {});
+      // Si era la última del deal, se propone programar la siguiente.
+      const [a] = await sql<{ deal_id: string | null }[]>`SELECT deal_id FROM activities WHERE id = ${activityId}`;
+      needsNext = await dealWithoutNext(a?.deal_id ?? null);
+    } else await reopenActivity(activityId);
   } catch (err) {
     return { error: toUserMessage(err) };
   }
   revalidatePath("/activities");
-  return {};
+  return needsNext ? { needsNext } : {};
+}
+
+/** Programa el siguiente paso de un deal con un clic (llamar mañana, seguimiento en N días…). */
+export async function scheduleNextAction(dealId: string, preset: NextPreset): Promise<{ error?: string; message?: string }> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  try {
+    await scheduleNext(g.actor, dealId, preset);
+  } catch (err) {
+    return { error: toUserMessage(err) };
+  }
+  revalidatePath("/activities");
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath("/deals");
+  return { message: "Siguiente paso programado." };
 }
 
 /** Marca varias actividades como hechas a la vez. */

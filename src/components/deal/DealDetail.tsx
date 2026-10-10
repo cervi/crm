@@ -34,6 +34,7 @@ import { EntityPicker } from "../EntityPicker";
 import { ProposalCard } from "../ai/ProposalCard";
 import { Icon } from "../Icon";
 import { ComposerTabs, EmailComposerFields, PanelControls } from "./DealClient";
+import { NextStepPrompt } from "../activities/NextStepPrompt";
 import { HistoryFeed } from "@/components/record/HistoryFeed";
 import { CallForm, FilesPanel, FollowersBlock, TagsBlock } from "@/components/record/Blocks";
 import { buildHistory } from "@/lib/history";
@@ -734,7 +735,9 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             <h2 className="section-title">Enfoque <span className="muted">{pending.length}</span></h2>
             {pending.length === 0 && (isOpen ? (
               <div className="next-prompt" role="region" aria-label="Siguiente actividad">
-                <p><strong>¿Qué es lo siguiente?</strong> <span className="muted">Este deal no tiene nada programado: déjalo planificado para que no se quede parado.</span></p>
+                <NextStepPrompt dealId={dealId} />
+                <details className="next-custom">
+                  <summary className="meta">Elegir tipo, asunto y fecha</summary>
                 <ActionForm action={createActivityAction.bind(null, back)} submitLabel="Programar" resetOnSuccess className="form inline">
                   <input type="hidden" name="deal_id" value={dealId} />
                   {primary && <input type="hidden" name="person_id" value={primary.person_id} />}
@@ -745,6 +748,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                   <label className="field" style={{ flex: 1 }}><span className="label">Asunto *</span><input name="subject" required placeholder="Llamada de seguimiento" /></label>
                   <label className="field"><span className="label">Cuándo *</span><input type="datetime-local" name="due_at" required /></label>
                 </ActionForm>
+                </details>
               </div>
             ) : <p className="muted">No hay nada pendiente.</p>)}
             <ul className="items">

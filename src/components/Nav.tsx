@@ -75,6 +75,9 @@ export function Nav({ inboxCount = 0, prefs = {} }: { inboxCount?: number; prefs
                 <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); setEditing(true); }}>
                   <Icon name="pencil" />Personalizar el menú
                 </button>
+                <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); window.dispatchEvent(new Event("crm:shortcuts")); }}>
+                  <Icon name="list" />Atajos de teclado<kbd style={{ marginLeft: "auto" }}>?</kbd>
+                </button>
               </div>
             )}
           </li>

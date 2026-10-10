@@ -10,6 +10,7 @@ import { unreadCount } from "@/lib/notifications";
 import { getNavPrefs } from "@/lib/nav-prefs";
 import { runningJob, STEP_LABELS } from "@/lib/pipedrive-import";
 import { ImportBanner } from "@/components/ImportBanner";
+import { Shortcuts } from "@/components/Shortcuts";
 import "@fontsource-variable/instrument-sans";
 import "./globals.css";
 
@@ -61,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                                        total: Object.values(importing.counts ?? {}).reduce((n, c) => n + (c.created ?? 0) + (c.updated ?? 0) + (c.skipped ?? 0), 0) }} />
             )}
             <div className="content">{children}</div>
+            <Shortcuts />
           </div>
         </div>
       </body>
