@@ -130,7 +130,7 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                 return (
                   <tr key={u.id} aria-label={`Cuenta de ${u.name}`}>
                     <td><span className="cell-main"><Avatar name={u.name} size="sm" /><span><strong>{u.name}</strong>{u.id === me.id && <span className="meta"> (tú)</span>}</span></span></td>
-                    <td>{conn && p ? <>{conn.email}<div className="meta">{p.label}</div></> : <span className="muted">Sin conectar</span>}</td>
+                    <td>{conn && p ? <>{conn.email}<div className="meta">{p.label}</div></> : <span className="muted">—</span>}</td>
                     <td>{!conn ? <span className="badge">Sin conectar</span>
                       : conn.status === "active" ? <span className="badge won">Conectada</span>
                       : <span className="badge lost" title={conn.last_error ?? undefined}>Hay que reconectar</span>}</td>

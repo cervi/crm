@@ -1671,8 +1671,8 @@ dialog.drawer[open] { animation: drawer-in .18s ease-out; }
 /* Tablas de ajustes */
 .settings-block { display: grid; gap: 12px; margin-top: 28px; }
 .block-head h2 { margin: 0; font-size: 17px; }
-.block-head p { margin: 2px 0 0; display: inline-flex; gap: 4px; align-items: center; }
-.block-head p svg { width: 13px; height: 13px; cursor: help; }
+.block-head p { margin: 2px 0 0; }
+.block-head p svg { width: 13px; height: 13px; cursor: help; vertical-align: -2px; }
 .block-head.row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 td.row-actions { text-align: right; white-space: nowrap; }
 td.row-actions > * { margin-left: 6px; vertical-align: middle; }
