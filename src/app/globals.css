@@ -1746,3 +1746,23 @@ tr.row-muted td { color: var(--muted); }
 .today-more-title { font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 14px; }
 .today-more { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 20px; }
 @media (max-width: 1000px) { .today-more { grid-template-columns: 1fr; } }
+
+/* Gráficos: ⓘ qué mide, explicación y detalle al pinchar */
+.chart-card-head { display: flex; align-items: center; gap: 6px; }
+.info-tip { position: relative; display: inline-flex; color: var(--muted); cursor: help; border-radius: 50%; }
+.info-tip svg { width: 15px; height: 15px; }
+.info-tip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.info-pop {
+  display: none; position: absolute; z-index: 20; top: calc(100% + 6px); left: -8px; width: 300px; padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: var(--shadow-pop);
+  font-size: 12.5px; font-weight: 400; color: var(--text-2); line-height: 1.45;
+}
+.info-tip:hover .info-pop, .info-tip:focus .info-pop { display: block; }
+.chart-insights { border-top: 1px solid var(--border); padding-top: 10px; font-size: 13px; color: var(--text-2); }
+.chart-insights strong { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+.chart-insights ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; line-height: 1.45; }
+.chart-box .clickable { cursor: pointer; }
+.chart-box svg.clickable { cursor: pointer; }
+.tip-note { font-size: 12px; color: var(--text-2) !important; border-top: 1px solid var(--border); padding-top: 4px; margin-top: 2px; }
+.tip-hint { font-size: 11.5px; color: var(--accent-ink) !important; font-weight: 600; }
+.drill-table td { vertical-align: top; }

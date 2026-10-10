@@ -14,8 +14,9 @@ import { ask, attribution, revenueMix, forecast, funnel, GOAL_METRICS, goalsProg
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
 import { toUserMessage } from "@/lib/errors";
-import { grainsFor, RANGE_PRESETS, resolveRange, salesAnalytics, SEGMENTS, type Grain, type Segment } from "@/lib/sales-analytics";
+import { chartInsights, grainsFor, RANGE_PRESETS, resolveRange, salesAnalytics, SEGMENTS, type Grain, type Segment } from "@/lib/sales-analytics";
 import { PeriodPicker } from "@/components/charts/PeriodPicker";
+import { ChartCard } from "@/components/charts/ChartCard";
 import { Suspense } from "react";
 import { GroupedBars, HBars, Lines, StackedBars } from "@/components/charts/SalesCharts";
 
@@ -57,6 +58,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const range = period.preset === "custom" ? period.label : period.label.charAt(0).toLowerCase() + period.label.slice(1);
   const GRAIN_LABEL: Record<Grain, string> = { day: "Por día", week: "Por semana", month: "Por mes", quarter: "Por trimestre" };
   const GRAIN_UNIT: Record<Grain, string> = { day: "día", week: "semana", month: "mes", quarter: "trimestre" };
+  const ins = chartInsights(sa);
+  const drillParams: Record<string, string> = { g: grain, seg: segment, ...(pipelineId ? { pipeline: pipelineId } : {}), ...(ownerId ? { owner: ownerId } : {}) };
   const delta = sa.totals.prevWon ? (sa.totals.won - sa.totals.prevWon) / sa.totals.prevWon : null;
   let answer: Answer | null = null, askError: string | null = null;
   if (sp.q) {
@@ -155,49 +158,52 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       </div>
 
       <div className="charts-grid">
-        <section className="chart-card wide" aria-label="Ingresos ganados">
-          <h3>Ingresos ganados{segment !== "none" && <span className="muted"> · por {SEGMENTS[segment].toLowerCase()}</span>}</h3>
-          <p className="chart-sub">Importe de los deals ganados en cada {GRAIN_UNIT[grain]}.</p>
-          <StackedBars periods={sa.periods} series={sa.wonValue} f="money" />
-        </section>
-        <section className="chart-card" aria-label="Nuevo pipeline">
-          <h3>Nuevo pipeline creado{segment !== "none" && <span className="muted"> · por {SEGMENTS[segment].toLowerCase()}</span>}</h3>
-          <p className="chart-sub">Importe de los deals que se crearon en cada periodo.</p>
-          <StackedBars periods={sa.periods} series={sa.createdValue} f="money" />
-        </section>
-        <section className="chart-card" aria-label="Ganados y perdidos">
-          <h3>Ganados y perdidos</h3>
-          <p className="chart-sub">Número de deals cerrados en cada periodo.</p>
+        <ChartCard wide label="Ingresos ganados" insights={ins.won}
+                   title={<>Ingresos ganados{segment !== "none" && <span className="muted"> · por {SEGMENTS[segment].toLowerCase()}</span>}</>}
+                   info={`Suma del importe de los deals marcados como ganados en cada ${GRAIN_UNIT[grain]}, según la fecha en que se ganaron. Pincha una barra para ver qué deals son.`}>
+          <StackedBars periods={sa.periods} series={sa.wonValue} f="money" notes={sa.wonCount.map((n) => (n ? `${n} deal${n === 1 ? "" : "s"} ganado${n === 1 ? "" : "s"}` : null))}
+                       drill={{ metric: "won", params: drillParams, title: "Deals ganados", bySegment: segment !== "none" }} />
+        </ChartCard>
+        <ChartCard label="Nuevo pipeline" insights={ins.created}
+                   title={<>Nuevo pipeline creado{segment !== "none" && <span className="muted"> · por {SEGMENTS[segment].toLowerCase()}</span>}</>}
+                   info={`Importe de los deals que se crearon en cada ${GRAIN_UNIT[grain]} (estén ahora abiertos, ganados o perdidos). Es lo que alimenta las ventas de los próximos meses.`}>
+          <StackedBars periods={sa.periods} series={sa.createdValue} f="money" notes={sa.createdCount.map((n) => (n ? `${n} deal${n === 1 ? "" : "s"} nuevo${n === 1 ? "" : "s"}` : null))}
+                       drill={{ metric: "created", params: drillParams, title: "Deals creados", bySegment: segment !== "none" }} />
+        </ChartCard>
+        <ChartCard label="Ganados y perdidos" insights={ins.winloss} title="Ganados y perdidos"
+                   info={`Cuántos deals se cerraron en cada ${GRAIN_UNIT[grain]}: los ganados y los perdidos, por la fecha de cierre.`}>
           <GroupedBars periods={sa.periods} f="number" series={[
             { key: "won", label: "Ganados", values: sa.wonCount, color: "var(--good)" },
             { key: "lost", label: "Perdidos", values: sa.lostCount, color: "var(--bad)" },
-          ]} />
-        </section>
-        <section className="chart-card" aria-label="Tasa de cierre">
-          <h3>Tasa de cierre</h3>
-          <p className="chart-sub">De los deals cerrados en el periodo, qué parte se ganó.</p>
-          <Lines periods={sa.periods} f="percent" maxValue={1} series={[{ key: "wr", label: "Tasa de cierre", values: sa.winRate }]} />
-        </section>
-        <section className="chart-card" aria-label="Ticket medio">
-          <h3>Ticket medio</h3>
-          <p className="chart-sub">Importe medio de los deals ganados.</p>
-          <Lines periods={sa.periods} f="money" series={[{ key: "avg", label: "Ticket medio", values: sa.avgDeal }]} />
-        </section>
-        <section className="chart-card" aria-label="Ciclo de venta">
-          <h3>Ciclo de venta</h3>
-          <p className="chart-sub">Días medios desde que se crea el deal hasta que se gana.</p>
-          <Lines periods={sa.periods} f="days" series={[{ key: "cycle", label: "Días hasta ganar", values: sa.cycleDays }]} />
-        </section>
-        <section className="chart-card" aria-label="Actividad del equipo">
-          <h3>Actividad hecha</h3>
-          <p className="chart-sub">Llamadas, reuniones, correos… completados en cada periodo.</p>
-          <StackedBars periods={sa.periods} series={sa.activities} f="number" />
-        </section>
-        <section className="chart-card" aria-label="Motivos de pérdida">
-          <h3>Motivos de pérdida</h3>
-          <p className="chart-sub">Deals perdidos ({range}), por motivo.</p>
+          ]} drill={{ metric: "closed", params: drillParams, title: "Deals cerrados", seriesMetric: { won: "won", lost: "lost" } }} />
+        </ChartCard>
+        <ChartCard label="Tasa de cierre" insights={ins.winrate} title="Tasa de cierre"
+                   info="De los deals cerrados en el periodo, qué parte se ganó: ganados ÷ (ganados + perdidos). Los que siguen abiertos no cuentan.">
+          <Lines periods={sa.periods} f="percent" maxValue={1} series={[{ key: "wr", label: "Tasa de cierre", values: sa.winRate }]}
+                 notes={sa.periods.map((_, i) => (sa.wonCount[i] + sa.lostCount[i] ? `${sa.wonCount[i]} ganados de ${sa.wonCount[i] + sa.lostCount[i]} cerrados` : null))}
+                 drill={{ metric: "closed", params: drillParams, title: "Deals cerrados" }} />
+        </ChartCard>
+        <ChartCard label="Ticket medio" insights={ins.avg} title="Ticket medio"
+                   info="Importe medio de los deals ganados en cada periodo. Un solo deal grande puede disparar un mes.">
+          <Lines periods={sa.periods} f="money" series={[{ key: "avg", label: "Ticket medio", values: sa.avgDeal }]}
+                 notes={sa.wonCount.map((n) => (n ? `media de ${n} deal${n === 1 ? "" : "s"}` : null))}
+                 drill={{ metric: "won", params: drillParams, title: "Deals ganados" }} />
+        </ChartCard>
+        <ChartCard label="Ciclo de venta" insights={ins.cycle} title="Ciclo de venta"
+                   info="Días medios desde que se crea un deal hasta que se gana, para los deals ganados en cada periodo.">
+          <Lines periods={sa.periods} f="days" series={[{ key: "cycle", label: "Días hasta ganar", values: sa.cycleDays }]}
+                 notes={sa.wonCount.map((n) => (n ? `media de ${n} deal${n === 1 ? "" : "s"}` : null))}
+                 drill={{ metric: "won", params: drillParams, title: "Deals ganados" }} />
+        </ChartCard>
+        <ChartCard label="Actividad del equipo" insights={ins.activities} title="Actividad hecha"
+                   info="Llamadas, reuniones, correos y tareas marcadas como hechas en cada periodo. Lo que se hace fuera del CRM no aparece.">
+          <StackedBars periods={sa.periods} series={sa.activities} f="number"
+                       drill={{ metric: "activities", params: drillParams, title: "Actividades hechas", seriesType: true }} />
+        </ChartCard>
+        <ChartCard label="Motivos de pérdida" insights={ins.lost} title="Motivos de pérdida"
+                   info={`Deals perdidos (${range}) agrupados por el motivo que se eligió al perderlos, con el importe que suponían.`}>
           <div className="hbars-wrap lost"><HBars f="number" rows={sa.lostReasons.map((r) => ({ label: r.label, value: r.n, note: money(r.value) }))} /></div>
-        </section>
+        </ChartCard>
         {segment !== "none" && (
           <section className="chart-card" aria-label={`Comparativa por ${SEGMENTS[segment].toLowerCase()}`}>
             <h3>Comparativa por {SEGMENTS[segment].toLowerCase()}</h3>
