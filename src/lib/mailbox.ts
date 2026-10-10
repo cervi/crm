@@ -549,6 +549,7 @@ export async function syncAllMailboxes(): Promise<SyncResult> {
     try {
       const r = await syncMailbox(conn);
       total.emails += r.emails; total.meetings += r.meetings; total.updated += r.updated;
+      if (r.notes) total.notes = (total.notes ?? 0) + r.notes;
     } catch (err) {
       total.error = err instanceof Error ? err.message : String(err);
     }

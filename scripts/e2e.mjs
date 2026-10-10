@@ -591,6 +591,10 @@ if (process.env.MOCK_URL) {
   check(meet?.meeting_url === "https://meet.example/ge1", "Google: la reunión guarda su enlace de Meet", JSON.stringify(meet));
   const s2 = await run();
   check(s2.sync?.emails === 0 && s2.sync?.meetings === 0, "Google: una segunda sincronización no duplica", JSON.stringify(s2.sync));
+  check(s1.sync?.notes === 1 && !s2.sync?.notes, "Google Meet: lee las notas de Gemini adjuntas a la reunión una sola vez", JSON.stringify({ s1: s1.sync, s2: s2.sync }));
+  const [mn] = await sql`SELECT m.status, a.done, a.outcome, a.note FROM meeting_notes m JOIN activities a ON a.id = m.activity_id WHERE m.source = 'meet' AND m.external_id = 'gcal:ge1'`;
+  check(mn?.status === "matched" && mn.done && mn.outcome === "held" && mn.note.includes("12.000"),
+        "Google Meet: la nota completa su reunión como realizada", JSON.stringify(mn));
 
   // Documentos de Google Drive.
   const ds = await (await get(`/api/drive/search?q=${encodeURIComponent("paco")}`)).json();
@@ -2003,6 +2007,43 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   }
   const worker = await fetch(`${BASE}/api/public/pdf-worker`);
   check(worker.status === 200 && (worker.headers.get("content-type") ?? "").includes("javascript"), "el visor de PDF tiene su «worker»");
+}
+
+// ------------------------------------------------------------- Reuniones grabadas (Granola vía Zapier)
+if (KEY) {
+  const post = (body, key = KEY) => fetch(`${BASE}/api/v1/meetings`, {
+    method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body) });
+  const bad = await post({ title: "x" }, "clave-inventada-1234567890");
+  check(bad.status === 401, "reuniones: la API pide una clave válida", `HTTP ${bad.status}`);
+  // Un contacto con correo que solo está en un deal abierto.
+  const [c] = await sql`
+    SELECT lower(pe.email) AS email, p.full_name, dp.deal_id FROM deal_participants dp
+    JOIN deals d ON d.id = dp.deal_id AND d.status = 'open' AND d.deleted_at IS NULL
+    JOIN persons p ON p.id = dp.person_id JOIN person_emails pe ON pe.person_id = p.id
+    WHERE (SELECT count(*) FROM deal_participants x JOIN deals y ON y.id = x.deal_id AND y.status = 'open' AND y.deleted_at IS NULL
+           WHERE x.person_id = p.id) = 1
+    LIMIT 1`;
+  const [owner] = await sql`SELECT email FROM users WHERE kind = 'human' AND email IS NOT NULL ORDER BY name LIMIT 1`;
+  const ext = `granola-e2e-${randomBytes(6).toString("hex")}`;
+  const payload = { source: "granola", id: ext, title: "Llamada de descubrimiento", creator_email: owner.email,
+    attendees_email: `${owner.email}, ${c.email}`, attendees_name: `Yo, ${c.full_name}`, started_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    summary: "## Resumen\n- Necesitan automatizar el seguimiento comercial.\n- Presupuesto aprobado.", transcript: "Ana: hola…\nYo: …", link: "https://notes.granola.ai/d/e2e" };
+  const r1 = await post(payload);
+  const j1 = await r1.json();
+  const [a] = j1.id ? await sql`SELECT a.deal_id, a.done, a.outcome, a.transcript FROM meeting_notes m JOIN activities a ON a.id = m.activity_id WHERE m.id = ${j1.id}` : [];
+  check(r1.status === 201 && j1.status === "matched" && a?.deal_id === c.deal_id && a.done && a.outcome === "held" && a.transcript?.includes("hola"),
+        "reuniones: una nota de Granola va sola al deal del contacto como reunión realizada", JSON.stringify({ j1, a, c }));
+  const r2 = await post(payload);
+  check(r2.status === 200 && (await r2.json()).duplicate, "reuniones: si Zapier la reenvía, no se duplica");
+  const j3 = await (await post({ source: "granola", id: `${ext}-int`, title: "Interna", attendees: [{ email: owner.email }], summary: "Solo el equipo." })).json();
+  check(j3.status === "ignored", "reuniones: las reuniones solo del equipo se descartan", JSON.stringify(j3));
+  const j4 = await (await post({ source: "granola", id: `${ext}-x`, title: "Desconocido", creator_email: owner.email,
+    attendees: [{ name: "Nadie", email: "nadie@empresa-que-no-existe-e2e.example" }], notes: "Hablamos de precios." })).json();
+  check(j4.status === "pending", "reuniones: si nadie está en el CRM, espera a que alguien la asigne", JSON.stringify(j4));
+  const page = (await (await get("/reuniones?ver=pending")).text()).replace(/<!-- -->/g, "");
+  check(page.includes("Reuniones grabadas") && page.includes("Desconocido") && page.includes("Asociar"), "reuniones: la bandeja muestra las pendientes");
+  const lk = await (await get("/api/lookup?type=deals&q=")).json();
+  check(Array.isArray(lk) && lk.length > 0, "reuniones: el buscador de deals para asignar funciona");
 }
 
 await sql.end();

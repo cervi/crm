@@ -51,6 +51,8 @@ function reset() {
     gcalendar: [
       { id: "ge1", status: "confirmed", summary: "Revisión con Paco (Meet)", start: { dateTime: gtime(at(-1, 9)) }, end: { dateTime: gtime(at(-1, 10)) },
         hangoutLink: "https://meet.example/ge1",
+        attachments: [{ fileId: "gdoc-notes-ge1", title: "Notas de Gemini - Revisión con Paco", mimeType: "application/vnd.google-apps.document",
+                        fileUrl: "https://docs.example/document/d/gdoc-notes-ge1/edit" }],
         attendees: [{ email: "ana@paco.example" }, { email: GME.email, self: true, responseStatus: "accepted" }], organizer: { email: GME.email } },
       ...[1, 2, 3, 4, 5, 6, 7, 8].flatMap((d) => [
         { id: `gbusy${d}`, status: "confirmed", summary: "Ocupado", start: { dateTime: gtime(at(d, 7)) }, end: { dateTime: gtime(at(d, 11)) } },
@@ -351,6 +353,12 @@ createServer(async (req, res) => {
                      sendUpdates: url.searchParams.get("sendUpdates") };
         state.gevents.push(ev);
         return send(res, 200, ev);
+      }
+      const exp = /^\/drive\/v3\/files\/([^/]+)\/export$/.exec(p);
+      if (exp) {
+        if (decodeURIComponent(exp[1]) !== "gdoc-notes-ge1") return send(res, 404, { error: { code: 404, message: "File not found" } });
+        res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+        return res.end("Resumen\nAna confirma que dirección aprueba el presupuesto de 12.000 € y quieren empezar en noviembre. Competencia: HubSpot.\n\nPróximos pasos\n- Enviar contrato esta semana");
       }
       if (p === "/drive/v3/files") {
         const m = /name contains '((?:[^'\\]|\\.)*)'/.exec(url.searchParams.get("q") ?? "");
