@@ -450,7 +450,7 @@ export async function recordView(t: string, ip: string | null, ua: string | null
   if (!recent) await log(sql, g.request.id, "viewed", { signerId: g.me.id, ip, ua });
   if (first) {
     const owner = g.request.sender_id ?? g.request.created_by;
-    if (owner) await notify(sql, { userId: owner, kind: "sign.viewed", title: `${g.me.name} ha abierto «${g.request.title}»`, body: "Aún no ha firmado.", link: `/firmas/${g.request.id}` });
+    if (owner && owner !== g.me.user_id) await notify(sql, { userId: owner, kind: "sign.viewed", title: `${g.me.name} ha abierto «${g.request.title}»`, body: "Aún no ha firmado.", link: `/firmas/${g.request.id}` });
   }
 }
 
@@ -520,7 +520,7 @@ export async function submitSignature(t: string, v: { values: Record<string, str
   });
   const owner = r.sender_id ?? r.created_by;
   const pending = g.signers.filter((s) => s.id !== me.id && s.status !== "signed").map((s) => s.name);
-  if (owner && !allSigned) {
+  if (owner && !allSigned && owner !== me.user_id) {
     await notify(sql, { userId: owner, kind: "sign.signed", title: `${me.name} ha firmado «${r.title}»`,
                         body: pending.length ? `Falta${pending.length === 1 ? "" : "n"}: ${pending.join(", ")}.` : null, link: `/firmas/${r.id}` });
   }
