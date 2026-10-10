@@ -110,7 +110,7 @@ export default async function TodayB({ searchParams }: { searchParams: Promise<{
   const firstFocus = d.focus.split("\n")[0]?.replace(/^\d+\.\s*/, "") ?? "";
 
   // Pipelines con sus fases (el embudo).
-  const pipes = Object.values(stages.reduce<Record<string, { id: string; name: string; stages: typeof stages }>>((acc, s) => {
+  const pipes = Object.values(stages.reduce<Record<string, { id: string; name: string; stages: (typeof stages)[number][] }>>((acc, s) => {
     (acc[s.pipeline_id] ??= { id: s.pipeline_id, name: s.pipeline, stages: [] }).stages.push(s);
     return acc;
   }, {})).filter((p) => p.stages.some((s) => s.n > 0));
