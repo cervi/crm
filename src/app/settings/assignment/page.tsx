@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { deleteAssignmentRuleAction, saveAssignmentRuleAction, setAssignmentEnabledAction } from "@/app/actions/assignment";
 import { ActionForm } from "@/components/ActionForm";
+import { Drawer } from "@/components/Drawer";
+import { Icon } from "@/components/Icon";
 import { assignmentSettings, FIELD_LABELS, listAssignmentRules, type AssignmentRule } from "@/lib/assignment";
 import { requireAdminPage } from "@/lib/auth";
 import { dateTime } from "@/lib/format";
@@ -56,46 +58,55 @@ export default async function AssignmentPage() {
         </div>
       </div>
 
-      <section className="panel">
-        <h2>Reparto automático: {settings.assignment_enabled ? "activado" : "desactivado"}</h2>
-        {settings.assignment_enabled && settings.assignment_since && (
-          <p className="meta">Se reparte lo que llega desde el {dateTime(settings.assignment_since)}.</p>
-        )}
-        <form action={setAssignmentEnabledAction.bind(null, !settings.assignment_enabled)}>
-          <button type="submit" className={settings.assignment_enabled ? "btn secondary" : "btn"}>
-            {settings.assignment_enabled ? "Desactivar" : "Activar el reparto"}
-          </button>
+      <section className="settings-inline" aria-label="Reparto automático">
+        <form action={setAssignmentEnabledAction.bind(null, !settings.assignment_enabled)} className="switch-row">
+          <button type="submit" className={settings.assignment_enabled ? "switch on" : "switch"} aria-pressed={settings.assignment_enabled}
+                  aria-label={settings.assignment_enabled ? "Desactivar el reparto" : "Activar el reparto"}><i /></button>
+          <h2 style={{ margin: 0, fontSize: 15 }}>Reparto automático: {settings.assignment_enabled ? "activado" : "desactivado"}</h2>
         </form>
+        {settings.assignment_enabled && settings.assignment_since && <p className="meta">Se reparte lo que llega desde el {dateTime(settings.assignment_since)}.</p>}
       </section>
 
-      <h2 className="section-title" style={{ marginTop: 22 }}>Reglas <span className="muted">(se aplica la primera que se cumpla)</span></h2>
-      {rules.length === 0 && <p className="muted">Sin reglas todavía. Empieza con una «Todos» para repartir todo por turnos.</p>}
-      <div className="rules">
-        {rules.map((r, i) => (
-          <article key={r.id} className="panel" aria-label={`Regla de reparto ${i + 1}`}>
-            <div className="rule-head">
-              <div>
-                <h3 style={{ margin: 0 }}>{i + 1}. {ENTITY[r.entity]} · {FIELD_LABELS[r.field]}{r.value ? ` «${r.value}»` : ""}</h3>
-                <p className="meta" style={{ margin: 0 }}>Por turnos entre {r.user_names.join(", ") || "—"}</p>
-              </div>
-              <form action={deleteAssignmentRuleAction.bind(null, r.id)}><ConfirmButton label="Quitar" confirm="Los leads nuevos dejarán de repartirse con esta regla." /></form>
-            </div>
-            <details>
-              <summary className="meta">Editar</summary>
-              <ActionForm action={saveAssignmentRuleAction.bind(null, r.id)} submitLabel="Guardar" secondary>
-                <RuleFields rule={r} users={humans} />
-              </ActionForm>
-            </details>
-          </article>
-        ))}
+      <div className="block-head row" style={{ marginBottom: 10 }}>
+        <div>
+          <h2>Reglas</h2>
+          <p className="meta">Se aplica la primera que se cumpla, de arriba abajo.</p>
+        </div>
+        <Drawer label={<><Icon name="plus" />Nueva regla</>} buttonClass="btn" title="Nueva regla de reparto">
+          <ActionForm action={saveAssignmentRuleAction.bind(null, null)} submitLabel="Añadir regla" resetOnSuccess>
+            <RuleFields users={humans} />
+          </ActionForm>
+        </Drawer>
       </div>
-
-      <section className="panel" style={{ marginTop: 18 }}>
-        <h2>Nueva regla</h2>
-        <ActionForm action={saveAssignmentRuleAction.bind(null, null)} submitLabel="Añadir regla" resetOnSuccess>
-          <RuleFields users={humans} />
-        </ActionForm>
-      </section>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th className="num">#</th><th>Aplica a</th><th>Cuando</th><th>Reparte por turnos entre</th><th><span className="sr-only">Acciones</span></th></tr></thead>
+          <tbody>
+            {rules.length === 0 && <tr><td colSpan={5} className="empty-row">Sin reglas todavía. Empieza con una «Todos» para repartir todo por turnos.</td></tr>}
+            {rules.map((r, i) => (
+              <tr key={r.id} aria-label={`Regla de reparto ${i + 1}`}>
+                <td className="num">{i + 1}</td>
+                <td>{ENTITY[r.entity]}</td>
+                <td>{FIELD_LABELS[r.field]}{r.value ? <> «{r.value}»</> : ""}</td>
+                <td>{r.user_names.join(", ") || <span className="muted">Nadie</span>}</td>
+                <td className="row-actions">
+                  <Drawer label="Editar" title={`Regla ${i + 1}`} subtitle={`${ENTITY[r.entity]} · ${FIELD_LABELS[r.field]}${r.value ? ` «${r.value}»` : ""}`} buttonTitle={`Editar la regla ${i + 1}`}>
+                    <section className="drawer-section">
+                      <ActionForm action={saveAssignmentRuleAction.bind(null, r.id)} submitLabel="Guardar cambios">
+                        <RuleFields rule={r} users={humans} />
+                      </ActionForm>
+                    </section>
+                    <section className="drawer-section">
+                      <h3>Quitar la regla</h3>
+                      <form action={deleteAssignmentRuleAction.bind(null, r.id)}><ConfirmButton label="Quitar la regla" confirm="Los leads nuevos dejarán de repartirse con esta regla." /></form>
+                    </section>
+                  </Drawer>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }

@@ -184,11 +184,14 @@ await step("reabrir y ganar el deal", async () => {
 
 await step("crear un campo personalizado y usarlo en un deal", async () => {
   await page.goto("/settings/fields?entity=deal");
-  await page.getByLabel("Nombre *").fill(`Prioridad ${stamp}`);
-  await page.getByLabel("Tipo *").selectOption({ label: "Opción única" });
-  await page.getByLabel(/Opciones \(solo/).fill("Alta\nMedia\nBaja");
-  await submit("Crear campo");
-  await page.locator(".item", { hasText: `Prioridad ${stamp}` }).waitFor();
+  await page.getByRole("button", { name: "Nuevo campo" }).click();
+  const dlg = page.locator("dialog[open]");
+  await dlg.getByLabel("Nombre *").fill(`Prioridad ${stamp}`);
+  await dlg.getByLabel("Tipo *").selectOption({ label: "Opción única" });
+  await dlg.getByLabel(/Opciones \(solo/).fill("Alta\nMedia\nBaja");
+  await dlg.getByRole("button", { name: "Crear campo" }).click();
+  await page.getByRole("row", { name: `Campo Prioridad ${stamp}` }).waitFor();
+  await page.keyboard.press("Escape");
   await page.goto(`/deals/${dealId}/edit`);
   await page.getByLabel(`Prioridad ${stamp}`).selectOption({ label: "Alta" });
   await submit("Guardar cambios");
@@ -199,26 +202,30 @@ await step("crear un campo personalizado y usarlo en un deal", async () => {
 
 await step("ajustes: añadir, reordenar y eliminar una fase", async () => {
   await page.goto("/settings/pipelines/10000000-0000-0000-0000-000000000002");
-  const add = page.locator("form", { has: page.getByRole("button", { name: "Añadir" }) });
+  await page.getByRole("button", { name: "Nueva fase" }).click();
+  const add = page.locator("dialog[open]");
   await add.getByLabel("Nombre").fill(`Fase ${stamp}`);
-  await add.getByRole("button", { name: "Añadir" }).click();
-  const item = page.locator(".item", { hasText: `Fase ${stamp}` });
+  await add.getByRole("button", { name: "Añadir fase" }).click();
+  const item = page.getByRole("row", { name: `Fase Fase ${stamp}` });
   await item.waitFor();
+  await page.keyboard.press("Escape");
   await item.getByRole("button", { name: `Subir Fase ${stamp}` }).click();
-  await page.waitForFunction((n) => [...document.querySelectorAll(".item strong")].map((e) => e.textContent).some((t) => t === `3. ${n}`), `Fase ${stamp}`);
-  await item.getByText("Eliminar fase").click();
-  await item.getByRole("button", { name: "Eliminar la fase" }).click();
-  await item.getByRole("button", { name: "Sí, eliminar la fase" }).click();
+  await page.waitForFunction((n) => [...document.querySelectorAll("tr")].some((tr) => tr.getAttribute("aria-label") === `Fase ${n}` && tr.querySelector(".stage-pos")?.textContent === "3"), `Fase ${stamp}`);
+  await item.getByRole("button", { name: `Editar la fase Fase ${stamp}` }).click();
+  const dlg = page.locator("dialog[open]");
+  await dlg.getByRole("button", { name: "Eliminar la fase" }).click();
+  await dlg.getByRole("button", { name: "Sí, eliminar la fase" }).click();
   await item.waitFor({ state: "detached" });
 });
 
 await step("ajustes: no deja eliminar una fase con deals", async () => {
   await page.goto("/settings/pipelines/10000000-0000-0000-0000-000000000003");
-  const item = page.locator(".item", { hasText: "Necesidad detectada" });
-  await item.getByText("Eliminar fase").click();
-  await item.getByRole("button", { name: "Eliminar la fase" }).click();
-  await item.getByRole("button", { name: "Sí, eliminar la fase" }).click();
-  await item.getByRole("alert").filter({ hasText: "Muévelos a otra fase" }).waitFor();
+  await page.getByRole("button", { name: "Editar la fase Necesidad detectada" }).click();
+  const dlg = page.locator("dialog[open]");
+  await dlg.getByRole("button", { name: "Eliminar la fase" }).click();
+  await dlg.getByRole("button", { name: "Sí, eliminar la fase" }).click();
+  await dlg.getByRole("alert").filter({ hasText: "Muévelos a otra fase" }).waitFor();
+  await page.keyboard.press("Escape");
 });
 
 await step("crear un lead a mano y convertirlo en deal", async () => {
@@ -919,12 +926,14 @@ await step("formulario web: crearlo en Ajustes y que un visitante lo envíe", as
 
 await step("productos en un deal (el importe se recalcula) y propuesta que el cliente abre y acepta", async () => {
   await page.goto("/settings/products");
-  const add = page.locator("section", { has: page.getByRole("heading", { name: "Nuevo producto" }) });
+  await page.getByRole("button", { name: "Nuevo producto" }).click();
+  const add = page.getByRole("dialog", { name: "Nuevo producto" });
   await add.getByLabel("Nombre").fill(`Licencia ${stamp}`);
   await add.getByLabel("Precio (€)").fill("1200");
   await add.getByLabel("Cobro").selectOption("yearly");
   await add.getByRole("button", { name: "Añadir producto" }).click();
-  await page.getByRole("article", { name: `Producto Licencia ${stamp}` }).waitFor();
+  await page.getByRole("row", { name: `Producto Licencia ${stamp}` }).waitFor();
+  await page.keyboard.press("Escape");
   const [open] = await sql`SELECT d.id FROM deals d WHERE d.status = 'open' AND d.deleted_at IS NULL
                            AND EXISTS (SELECT 1 FROM deal_participants dp WHERE dp.deal_id = d.id) ORDER BY d.created_at DESC LIMIT 1`;
   await page.goto(`/deals/${open.id}`);
