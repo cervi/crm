@@ -16,6 +16,8 @@ const NEW_ITEMS = [
   { href: "/leads/new", label: "Lead" },
   { href: "/persons/new", label: "Contacto" },
   { href: "/organizations/new", label: "Empresa" },
+  { href: "/firmas?nuevo=1", label: "Contrato para firmar" },
+  { href: "/biblioteca?subir=1", label: "Documento en la biblioteca" },
 ];
 
 const THEMES: { value: Theme; label: string }[] = [

@@ -2248,3 +2248,5 @@ button.sf-sign.mine { overflow: visible; }
   .signer-menu { top: auto; bottom: calc(100% + 6px); }
 }
 .save-block { display: inline-flex; align-items: center; gap: 10px; }
+.lib-share { display: grid; gap: 6px; margin-bottom: 8px; }
+.lib-share select { width: 100%; }

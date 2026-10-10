@@ -6,8 +6,8 @@ import { Drawer } from "../Drawer";
 import { Icon } from "../Icon";
 
 /** «Enviar a firmar»: subir un PDF (o elegir uno de los archivos del deal) y pasar a prepararlo. */
-export function NewSignRequest({ dealId, pdfs = [], templates = [], label = "Enviar un contrato a firmar", buttonClass = "btn secondary small" }: {
-  dealId?: string | null; pdfs?: { id: string; name: string }[]; templates?: { id: string; name: string }[]; label?: string; buttonClass?: string;
+export function NewSignRequest({ dealId, pdfs = [], templates = [], label = "Enviar un contrato a firmar", buttonClass = "btn secondary small", open = false }: {
+  dealId?: string | null; pdfs?: { id: string; name: string }[]; templates?: { id: string; name: string }[]; label?: string; buttonClass?: string; open?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -26,7 +26,7 @@ export function NewSignRequest({ dealId, pdfs = [], templates = [], label = "Env
     router.push(`/firmas/${j.id}${j.missing?.length ? `?faltan=${encodeURIComponent(j.missing.join(", "))}` : ""}`);
   };
   return (
-    <Drawer label={<><Icon name="pencil" />{label}</>} buttonClass={buttonClass} title="Enviar un contrato a firmar"
+    <Drawer defaultOpen={open} label={<><Icon name="pencil" />{label}</>} buttonClass={buttonClass} title="Enviar un contrato a firmar"
             subtitle="Sube el PDF. Después eliges quién firma, colocas las firmas y los demás campos, y lo envías.">
       <form className="form" onSubmit={submit}>
         {templates.length > 0 && (

@@ -16,7 +16,7 @@ const FILTERS = [
   { key: "declined", label: "Rechazados" }, { key: "expired", label: "Caducados" }, { key: "draft", label: "Borradores" },
 ] as const;
 
-export default async function SignListPage({ searchParams }: { searchParams: Promise<{ f?: string; mine?: string }> }) {
+export default async function SignListPage({ searchParams }: { searchParams: Promise<{ f?: string; mine?: string; nuevo?: string }> }) {
   const [me, sp] = await Promise.all([requireUser(), searchParams]);
   const status = FILTERS.some((x) => x.key === sp.f) ? sp.f || null : null;
   const mine = sp.mine !== "0";
@@ -37,7 +37,7 @@ export default async function SignListPage({ searchParams }: { searchParams: Pro
           <h1>Firmas</h1>
           <p className="muted" style={{ margin: 0 }}>Contratos enviados a firmar: quién ha firmado, quién falta y desde cuándo.</p>
         </div>
-        <div className="head-actions"><NewSignRequest buttonClass="btn" label="Nuevo documento para firmar" templates={templates.map((t) => ({ id: t.id, name: t.name }))} /></div>
+        <div className="head-actions"><NewSignRequest open={sp.nuevo === "1"} buttonClass="btn" label="Nuevo documento para firmar" templates={templates.map((t) => ({ id: t.id, name: t.name }))} /></div>
       </div>
       <nav className="chips" aria-label="Filtrar">
         {FILTERS.map((x) => {

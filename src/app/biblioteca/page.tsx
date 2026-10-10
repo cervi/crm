@@ -19,7 +19,7 @@ const kindLabel = (mime: string | null, kind: string) =>
   : /sheet|excel|csv/.test(mime ?? "") ? "Hoja de cálculo" : /word|document/.test(mime ?? "") ? "Documento" : /^image\//.test(mime ?? "") ? "Imagen"
   : /^video\//.test(mime ?? "") ? "Vídeo" : "Archivo";
 
-export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ carpeta?: string; q?: string; archivados?: string; ver?: string }> }) {
+export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ carpeta?: string; q?: string; archivados?: string; ver?: string; subir?: string }> }) {
   const [me, sp] = await Promise.all([requireUser(), searchParams]);
   const archived = sp.archivados === "1";
   const [items, all, folders] = await Promise.all([
@@ -54,7 +54,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
                 <label className="field"><span className="label">Descripción</span><textarea name="description" rows={2} /></label>
               </ActionForm>
             </Drawer>
-            <Drawer label={<><Icon name="plus" />Subir documento</>} buttonClass="btn" title="Subir a la biblioteca"><LibraryUpload folders={folders} /></Drawer>
+            <Drawer defaultOpen={sp.subir === "1"} label={<><Icon name="plus" />Subir documento</>} buttonClass="btn" title="Subir a la biblioteca"><LibraryUpload folders={folders} /></Drawer>
           </div>
         )}
       </div>
