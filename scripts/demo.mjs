@@ -11,7 +11,7 @@
 //
 // Para usar una IA real, ponla en Ajustes → Modelo de IA (con tu clave).
 // Abre http://localhost:3000 y para con Ctrl+C.
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync, unlinkSync } from "node:fs";
 import net from "node:net";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
@@ -36,7 +36,13 @@ if (!existsSync(path.join(root, "node_modules", "next"))) fail("Faltan las depen
 async function stopPrevious() {
   if (!existsSync(PIDFILE)) return;
   const pid = Number(readFileSync(PIDFILE, "utf8"));
+  // El número puede haberlo reutilizado otro proceso (tras reiniciar): solo se cierra si es de verdad una demo.
+  const isDemo = () => {
+    if (!pid || pid === process.pid) return false;
+    try { return /demo\.mjs/.test(execSync(`ps -p ${pid} -o command=`, { encoding: "utf8" })); } catch { return false; }
+  };
   try {
+    if (!isDemo()) throw new Error("no es una demo");
     process.kill(pid, 0);
     console.log("▸ Cerrando la demo que seguía abierta…");
     process.kill(pid, "SIGTERM");
