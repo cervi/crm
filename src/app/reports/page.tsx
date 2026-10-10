@@ -7,7 +7,7 @@ import { WidgetView } from "@/components/charts/WidgetView";
 import { aiReady, getAiSettings } from "@/lib/ai";
 import { listDashboards } from "@/lib/analytics";
 import { requireUser } from "@/lib/auth";
-import { money } from "@/lib/format";
+import { money, sourceLabel } from "@/lib/format";
 import { listPipelines } from "@/lib/pipelines";
 import { DEAL_TYPE_LABEL, ORIGIN_LABEL } from "@/lib/deal-types";
 import { ask, attribution, revenueMix, forecast, funnel, GOAL_METRICS, goalsProgress, velocity, type Answer } from "@/lib/reports";
@@ -337,11 +337,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         {attr.length === 0 ? <p className="muted">Todavía no hay datos.</p> : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Origen</th><th>Campaña (utm_campaign)</th><th className="num">Leads</th><th className="num">Deals</th><th className="num">Ganados</th><th className="num">Importe ganado</th><th className="num">Tasa de cierre</th></tr></thead>
+              <thead><tr><th>Origen</th><th>Campaña</th><th className="num">Leads</th><th className="num">Deals</th><th className="num">Ganados</th><th className="num">Importe ganado</th><th className="num">Tasa de cierre</th></tr></thead>
               <tbody>
                 {attr.map((r) => (
                   <tr key={`${r.source}|${r.campaign ?? ""}`}>
-                    <td>{r.source}</td><td>{r.campaign ?? "—"}</td><td className="num">{r.leads}</td><td className="num">{r.deals}</td>
+                    <td>{sourceLabel(r.source)}</td><td>{r.campaign ?? "—"}</td><td className="num">{r.leads}</td><td className="num">{r.deals}</td>
                     <td className="num">{r.won}</td><td className="num">{money(r.won_value)}</td>
                     <td className="num">{pct(r.won + r.lost ? r.won / (r.won + r.lost) : null)}</td>
                   </tr>

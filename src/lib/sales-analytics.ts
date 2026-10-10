@@ -372,6 +372,7 @@ export async function drillDown(opts: { metric: DrillMetric; grain: Grain; key: 
 }
 
 const eur = (n: number) => `${Math.round(n).toLocaleString("es-ES", { useGrouping: true })} €`;
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const pctTxt = (n: number) => `${Math.round(n * 100)} %`;
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
@@ -410,9 +411,9 @@ export function chartInsights(sa: SalesAnalytics): Record<"won" | "created" | "w
         const ac = change(acts[last], avg(acts.slice(0, last)));
         if (ac !== null && ac < -0.3) why.push(`hubo menos actividad comercial (${pctTxt(-ac)} menos llamadas, reuniones y correos)`);
         if (sa.wonCount[last] <= 1 && sa.totals.avgDeal) why.push("se cerraron muy pocos deals");
-        out.won.push(`${P[last].label} quedó un ${pctTxt(-c)} por debajo de la media${why.length ? `; seguramente porque ${why.join(", ")}` : ""}.`);
+        out.won.push(`${cap(P[last].label)} quedó un ${pctTxt(-c)} por debajo de la media${why.length ? `; seguramente porque ${why.join(", ")}` : ""}.`);
       } else if (c !== null && c > 0.3) {
-        out.won.push(`${P[last].label} quedó un ${pctTxt(c)} por encima de la media${sa.wonCount[last] ? ` gracias a ${sa.wonCount[last]} cierre${sa.wonCount[last] === 1 ? "" : "s"}` : ""}.`);
+        out.won.push(`${cap(P[last].label)} quedó un ${pctTxt(c)} por encima de la media${sa.wonCount[last] ? ` gracias a ${sa.wonCount[last]} cierre${sa.wonCount[last] === 1 ? "" : "s"}` : ""}.`);
       }
     }
     if (sa.wonValue.length > 1) {
@@ -474,7 +475,7 @@ export function chartInsights(sa: SalesAnalytics): Record<"won" | "created" | "w
   else {
     out.activities.push(`Se han completado ${ta} actividades (${Math.round(ta / n)} por ${unit} de media).`);
     const c = prev >= 0 ? change(acts[last], avg(acts.slice(0, last))) : null;
-    if (c !== null && Math.abs(c) > 0.3) out.activities.push(`${P[last].label} tuvo un ${pctTxt(Math.abs(c))} ${c > 0 ? "más" : "menos"} de actividad que la media${c < 0 ? ": menos actividad suele traducirse en menos cierres unas semanas después" : ""}.`);
+    if (c !== null && Math.abs(c) > 0.3) out.activities.push(`${cap(P[last].label)} tuvo un ${pctTxt(Math.abs(c))} ${c > 0 ? "más" : "menos"} de actividad que la media${c < 0 ? ": menos actividad suele traducirse en menos cierres unas semanas después" : ""}.`);
     if (sa.activities[0]) out.activities.push(`Lo más frecuente: ${sa.activities[0].label.toLowerCase()}.`);
   }
 
