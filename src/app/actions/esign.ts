@@ -8,6 +8,7 @@ import {
   cancelRequest, deleteDraft, duplicateRequest, getRequest, remind, saveFields, saveSettings, saveSigners, sendRequest,
   type FieldInput, type Signer, type SignerInput,
 } from "@/lib/esign";
+import { archiveTemplate, saveAsTemplate } from "@/lib/esign-templates";
 
 type Res<T = unknown> = { error?: string } & T;
 
@@ -73,4 +74,20 @@ export async function deleteSignAction(id: string, back: string, _: ActionState)
   if (res?.error) return res;
   revalidatePath("/firmas");
   redirect(back);
+}
+
+export async function saveSignTemplateAction(requestId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const res = await attempt(() => saveAsTemplate(g.actor, requestId, String(form.get("name") ?? "")));
+  revalidatePath("/firmas");
+  return res?.ok ? { ok: true, message: "Guardada. La tienes en «Enviar un contrato a firmar» → «Usar una plantilla»." } : res;
+}
+
+export async function archiveSignTemplateAction(id: string, _: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const res = await attempt(() => archiveTemplate(id));
+  revalidatePath("/firmas");
+  return res;
 }

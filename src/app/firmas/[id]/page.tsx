@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cancelSignAction, deleteSignAction, duplicateSignAction, remindSignAction } from "@/app/actions/esign";
+import { cancelSignAction, deleteSignAction, duplicateSignAction, remindSignAction, saveSignTemplateAction } from "@/app/actions/esign";
+import { Drawer } from "@/components/Drawer";
 import { ActionForm } from "@/components/ActionForm";
 import { Icon } from "@/components/Icon";
 import { SignEditor } from "@/components/esign/SignEditor";
@@ -31,8 +32,8 @@ const ago = (d: Date) => {
   return days === 0 ? "hoy" : days === 1 ? "hace 1 día" : `hace ${days} días`;
 };
 
-export default async function SignRequestPage({ params }: { params: Promise<{ id: string }> }) {
-  const [me, { id }] = await Promise.all([requireUser(), params]);
+export default async function SignRequestPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ faltan?: string }> }) {
+  const [me, { id }, sp] = await Promise.all([requireUser(), params, searchParams]);
   const g = await getRequest(id);
   if (!g) notFound();
   const { request: r, signers, fields, events } = g;
@@ -54,10 +55,16 @@ export default async function SignRequestPage({ params }: { params: Promise<{ id
             <p className="muted" style={{ margin: 0 }}>{r.file_name} · {r.pages.length} página{r.pages.length === 1 ? "" : "s"} · borrador guardado</p>
           </div>
           <div className="head-actions">
+            <Drawer label="Guardar como plantilla" title="Guardar como plantilla" subtitle="Guarda el PDF y los campos colocados (por papel: tu empresa, cliente…) para reutilizarlos.">
+              <ActionForm action={saveSignTemplateAction.bind(null, id)} submitLabel="Guardar plantilla">
+                <label className="field"><span className="label">Nombre de la plantilla</span><input name="name" defaultValue={r.title} maxLength={200} /></label>
+              </ActionForm>
+            </Drawer>
             <ActionForm action={deleteSignAction.bind(null, id, back)} submitLabel="Descartar borrador" secondary className="form inline"
                         confirm="Se borra este borrador. El PDF original no se toca." />
           </div>
         </div>
+        {sp.faltan && <p className="callout">De la plantilla faltan firmantes para: <strong>{sp.faltan}</strong>. Añádelos y coloca sus campos (el deal no tiene más contactos con correo).</p>}
         <SignEditor id={id} back={back} pages={r.pages}
           init={{ title: r.title, language: r.language, subject: r.subject, message: r.message, sequential: r.sequential, require_code: r.require_code,
                   reminder_days: r.reminder_days, expires_days: r.expires_days, sender_id: r.sender_id }}
@@ -94,6 +101,11 @@ export default async function SignRequestPage({ params }: { params: Promise<{ id
         <div className="head-actions">
           {r.has_signed && <a className={r.status === "completed" ? "btn" : "btn secondary"} href={`/api/firmas/${id}/pdf?v=signed&dl=1`}><Icon name="download" />Descargar firmado</a>}
           <a className="btn secondary" href={`/api/firmas/${id}/pdf?dl=1`}><Icon name="download" />Original</a>
+          <Drawer label="Guardar como plantilla" title="Guardar como plantilla" subtitle="El PDF y los campos de cada firmante quedan guardados para la próxima vez.">
+            <ActionForm action={saveSignTemplateAction.bind(null, id)} submitLabel="Guardar plantilla">
+              <label className="field"><span className="label">Nombre de la plantilla</span><input name="name" defaultValue={r.title.split(" · ")[0]} maxLength={200} /></label>
+            </ActionForm>
+          </Drawer>
           {r.status === "sent" && (
             <ActionForm action={cancelSignAction.bind(null, id)} submitLabel="Cancelar la firma" secondary className="form inline"
                         confirm="Los enlaces dejan de funcionar y nadie más podrá firmar. Lo ya firmado se conserva en el registro." />

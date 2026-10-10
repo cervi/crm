@@ -3,6 +3,7 @@ import { currentUser } from "@/lib/auth";
 import { createRequest } from "@/lib/esign";
 import { toUserMessage } from "@/lib/errors";
 import { getFile } from "@/lib/files";
+import { createFromTemplate } from "@/lib/esign-templates";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,10 @@ export async function POST(req: Request) {
   if (!form) return NextResponse.json({ error: "Elige un PDF." }, { status: 400 });
   const dealId = (form.get("deal_id") as string) || null;
   try {
+    if (form.get("template_id")) {
+      const r = await createFromTemplate({ type: "user", id: me.id }, String(form.get("template_id")), dealId);
+      return NextResponse.json({ id: r.id, missing: r.missing });
+    }
     let name = "", bytes: Uint8Array | null = null;
     const up = form.get("file");
     if (up && typeof up === "object" && "arrayBuffer" in up && up.size > 0) {

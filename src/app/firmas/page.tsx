@@ -3,6 +3,9 @@ import { DataTable } from "@/components/DataTable";
 import { NewSignRequest } from "@/components/esign/NewSignRequest";
 import { requireUser } from "@/lib/auth";
 import { listRequests, REQUEST_STATUS } from "@/lib/esign";
+import { listSignTemplates } from "@/lib/esign-templates";
+import { archiveSignTemplateAction } from "@/app/actions/esign";
+import { ActionForm } from "@/components/ActionForm";
 import { dateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +20,8 @@ export default async function SignListPage({ searchParams }: { searchParams: Pro
   const [me, sp] = await Promise.all([requireUser(), searchParams]);
   const status = FILTERS.some((x) => x.key === sp.f) ? sp.f || null : null;
   const mine = sp.mine !== "0";
-  const [rows, all] = await Promise.all([
-    listRequests({ status, ownerId: mine ? me.id : null }), listRequests({ ownerId: mine ? me.id : null }),
+  const [rows, all, templates] = await Promise.all([
+    listRequests({ status, ownerId: mine ? me.id : null }), listRequests({ ownerId: mine ? me.id : null }), listSignTemplates(),
   ]);
   const qs = (p: Record<string, string | null>) => {
     const u = new URLSearchParams();
@@ -34,7 +37,7 @@ export default async function SignListPage({ searchParams }: { searchParams: Pro
           <h1>Firmas</h1>
           <p className="muted" style={{ margin: 0 }}>Contratos enviados a firmar: quién ha firmado, quién falta y desde cuándo.</p>
         </div>
-        <div className="head-actions"><NewSignRequest buttonClass="btn" label="Nuevo documento para firmar" /></div>
+        <div className="head-actions"><NewSignRequest buttonClass="btn" label="Nuevo documento para firmar" templates={templates.map((t) => ({ id: t.id, name: t.name }))} /></div>
       </div>
       <nav className="chips" aria-label="Filtrar">
         {FILTERS.map((x) => {
@@ -75,6 +78,23 @@ export default async function SignListPage({ searchParams }: { searchParams: Pro
           };
         })}
       />
+
+      <section className="panel" style={{ marginTop: 18 }} aria-label="Plantillas de firma">
+        <h2>Plantillas</h2>
+        {templates.length === 0
+          ? <p className="muted" style={{ margin: 0 }}>Para el contrato que mandas siempre: prepáralo una vez y, desde su página, «Guardar como plantilla». La próxima vez los campos se colocan solos.</p>
+          : (
+            <ul className="doc-list">
+              {templates.map((t) => (
+                <li key={t.id}>
+                  <div><strong>{t.name}</strong><div className="meta">{t.roles.map((r) => r.label).join(" · ")} · {t.fields.length} campos · {t.pages.length} pág.{t.creator ? ` · de ${t.creator}` : ""}</div></div>
+                  <ActionForm action={archiveSignTemplateAction.bind(null, t.id)} submitLabel="Quitar" secondary className="form inline doc-remove"
+                              confirm="Se quita la plantilla. Los documentos ya enviados no cambian." />
+                </li>
+              ))}
+            </ul>
+          )}
+      </section>
     </main>
   );
 }

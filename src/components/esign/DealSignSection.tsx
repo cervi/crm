@@ -2,12 +2,14 @@ import Link from "next/link";
 import { sql } from "@/lib/db";
 import { listRequests, REQUEST_STATUS } from "@/lib/esign";
 import { NewSignRequest } from "./NewSignRequest";
+import { listSignTemplates } from "@/lib/esign-templates";
 
 /** En la ficha del deal: los contratos enviados a firmar y el botón para enviar uno. */
 export async function DealSignSection({ dealId }: { dealId: string }) {
-  const [rows, pdfs] = await Promise.all([
+  const [rows, pdfs, templates] = await Promise.all([
     listRequests({ dealId }),
     sql<{ id: string; name: string }[]>`SELECT id, name FROM files WHERE deal_id = ${dealId} AND (mime = 'application/pdf' OR name ILIKE '%.pdf') ORDER BY created_at DESC LIMIT 30`,
+    listSignTemplates(),
   ]);
   const waiting = rows.filter((r) => r.status === "sent").length;
   return (
@@ -29,7 +31,7 @@ export async function DealSignSection({ dealId }: { dealId: string }) {
           })}
         </ul>
       )}
-      <NewSignRequest dealId={dealId} pdfs={pdfs.filter((p) => !p.name.includes("(firmado)"))} />
+      <NewSignRequest dealId={dealId} pdfs={pdfs.filter((p) => !p.name.includes("(firmado)"))} templates={templates.map((t) => ({ id: t.id, name: t.name }))} />
     </details>
   );
 }
