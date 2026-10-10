@@ -43,7 +43,7 @@ export default async function MyDealsPage({ searchParams }: {
       <div className="page-head">
         <div>
           <h1>{ownerId === me.id ? "Mis deals" : who}</h1>
-          <p className="muted" style={{ margin: 0 }}>{who} de todos los pipelines: {counts.open} abiertos · {money(counts.value)}. Primero los que no tienen siguiente paso.</p>
+          <p className="muted" style={{ margin: 0 }}>{counts.open} abiertos en todos los pipelines · {money(counts.value)}. Arriba, los que no tienen siguiente paso.</p>
         </div>
         <div className="head-actions">
           <Link href="/deals/new" className="btn"><Icon name="plus" />Nuevo deal</Link>
@@ -81,6 +81,7 @@ export default async function MyDealsPage({ searchParams }: {
         empty={filter === "no_next" ? <>Todos tienen un siguiente paso. Así da gusto.</>
           : filter === "overdue" ? <>Nada vencido.</>
           : sp.q || pipelineId ? <>No hay deals con estos filtros. <Link href={qs({ q: undefined, pipeline: undefined })}>Quitar filtros</Link></>
+          : ownerId === me.id && counts.open === 0 ? <>No tienes deals a tu nombre. <Link href={qs({ owner: "all" })}>Ver los de todo el equipo</Link></>
           : <>No hay deals aquí.</>}
         columns={[
           { key: "deal", label: "Deal", required: true, pinned: true },
