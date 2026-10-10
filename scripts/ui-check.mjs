@@ -1291,6 +1291,43 @@ if (MOCK) {
     await shot("contactos");
   });
 
+  await step("IA por fase: desde la columna del tablero, escribir una instrucción, ver cómo la entiende y activarla", async () => {
+    const [pl] = await sql`SELECT p.id FROM pipelines p WHERE EXISTS (SELECT 1 FROM deals d WHERE d.pipeline_id = p.id AND d.status = 'open') ORDER BY p.position LIMIT 1`;
+    const [st] = await sql`SELECT s.id, s.name FROM stages s WHERE s.pipeline_id = ${pl.id} AND s.is_active
+                           AND EXISTS (SELECT 1 FROM deals d WHERE d.stage_id = s.id AND d.status = 'open') ORDER BY s.position LIMIT 1`;
+    await page.goto(`/pipelines/${pl.id}`);
+    await page.getByRole("link", { name: `IA en la fase ${st.name}` }).click();
+    await page.waitForURL(/\/agentes\?fase=/);
+    const stage = page.getByRole("listitem", { name: `Fase ${st.name}` });
+    await stage.getByLabel(`Instrucción en «${st.name}»`).fill("Cuando un deal entre aquí, escríbele para agendar una reunión con mis huecos (también a los que ya están).");
+    await stage.getByRole("button", { name: "Ver cómo lo va a hacer" }).click();
+    const plan = stage.getByLabel("Cómo lo ha entendido");
+    await plan.getByText(/lo redacta la IA, con tus huecos libres/).waitFor();
+    await plan.getByText("Lo he entendido así:").waitFor();
+    await shot("ia-por-fase-plan");
+    await plan.getByRole("button", { name: "Activar" }).click();
+    await stage.getByText(/te propondrá cada acción en la bandeja/).waitFor();
+    await stage.locator(".instr-card", { hasText: "escríbele para agendar" }).waitFor();
+    const [ins] = await sql`SELECT i.id, i.autonomy, (SELECT count(*)::int FROM automation_rules r WHERE r.instruction_id = i.id) AS rules
+                            FROM stage_instructions i WHERE i.stage_id = ${st.id}`;
+    expect(ins?.autonomy === "ask" && ins.rules === 1, JSON.stringify(ins));
+    // Probar con un deal (sin hacer nada)
+    const card = stage.locator(".instr-card", { hasText: "escríbele para agendar" });
+    await card.getByText("Probar con un deal").click();
+    await card.getByRole("button", { name: "Probar con este deal" }).click();
+    await card.getByLabel("Resultado de la prueba").getByText(/Haría:/).waitFor();
+    // Cambiar a «Sola» y volver a «Preguntarme»
+    await card.getByRole("button", { name: "Sola", exact: true }).click();
+    await card.locator('button[aria-pressed="true"]', { hasText: "Sola" }).waitFor();
+    const [a] = await sql`SELECT autonomy FROM automation_rules WHERE instruction_id = ${ins.id}`;
+    expect(a.autonomy === "auto", a.autonomy);
+    await card.getByRole("button", { name: "Preguntarme", exact: true }).click();
+    await card.locator('button[aria-pressed="true"]', { hasText: "Preguntarme" }).waitFor();
+    await shot("ia-por-fase");
+    await page.goto(`/pipelines/${pl.id}`);
+    await page.locator(".stage-ai.on").first().waitFor();
+  });
+
   await step("ajustes de correo: firma de cada cuenta", async () => {
     await page.goto("/settings/mailbox");
     const card = page.locator("article.mailbox").first();
