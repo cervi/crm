@@ -2180,3 +2180,19 @@ code.hash { font-size: 11px; word-break: break-all; }
   .signer-actions .btn { min-height: 44px; }
   .signer-doc { padding: 12px 6px 60px; }
 }
+
+/* Adjuntos y biblioteca */
+.attach { display: grid; gap: 8px; }
+.attach-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.attach-row .btn svg, .attach-chip svg { width: 14px; height: 14px; }
+.attach-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--sunken); font-size: 13px; }
+.attach-chip button { border: 0; background: transparent; cursor: pointer; color: var(--muted); padding: 2px 6px; border-radius: 999px; }
+.attach-chip button:hover { background: var(--border); color: var(--text); }
+.attach-panel { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px 12px; background: var(--panel-2); }
+.attach-panel .chips button { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 4px 12px; cursor: pointer; font: inherit; }
+.attach-panel .chips button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+.attach-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; max-height: 240px; overflow: auto; }
+.attach-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.attach-acts { display: inline-flex; gap: 6px; flex: none; }
+.doc-viewer .doc-image { display: grid; place-items: center; }
+.doc-viewer .doc-image img { max-width: 100%; box-shadow: var(--shadow-pop); }

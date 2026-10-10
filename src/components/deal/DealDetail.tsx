@@ -36,6 +36,8 @@ import { Icon } from "../Icon";
 import { ComposerTabs, EmailComposerFields, PanelControls } from "./DealClient";
 import { NextStepPrompt } from "../activities/NextStepPrompt";
 import { DealSignSection } from "../esign/DealSignSection";
+import { DealDocsSection } from "../library/DealDocsSection";
+import { attachablesFor } from "@/lib/library";
 import { HistoryFeed } from "@/components/record/HistoryFeed";
 import { CallForm, FilesPanel, FollowersBlock, TagsBlock } from "@/components/record/Blocks";
 import { buildHistory } from "@/lib/history";
@@ -116,6 +118,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
   }
   const linesTotal = lines.reduce((n, l) => n + l.subtotal, 0);
   const sequences = allSequences.filter((q) => q.is_active && q.steps > 0);
+  const attachables = await attachablesFor(dealId);
   const composerTemplates = templates.map((t) => ({
     id: t.id, name: t.name, subject: mergeTemplate(t.subject, { ...vars, huecos: "{huecos}" }).text,
     body: mergeTemplate(t.format === "html" ? htmlToText(t.body) : t.body, { ...vars, huecos: "{huecos}" }).text,
@@ -305,6 +308,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
           )}
 
           <DealSignSection dealId={dealId} />
+          <DealDocsSection dealId={dealId} />
 
           <details className="side-section" aria-label="Documentos" open={documents.length > 0}>
             <summary><h3>Documentos</h3><span className="meta">{documents.length}</span></summary>
@@ -517,7 +521,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                     <EmailComposerFields dealId={dealId} templates={composerTemplates}
                                          trackDefault={appSettings?.email_tracking ?? true} trackAvailable={publicBase() !== null}
                                          signatureHtml={signatureHtml} aiReady={aiReady(ai)}
-                                         engagement={Object.fromEntries([...engagementMap].map(([k, v]) => [k, { temperature: v.temperature, headline: v.headline, advice: v.advice }]))} />
+                                         engagement={Object.fromEntries([...engagementMap].map(([k, v]) => [k, { temperature: v.temperature, headline: v.headline, advice: v.advice }]))}
+                                         attachables={attachables} />
                   </ActionForm>
                 )
               ) : (

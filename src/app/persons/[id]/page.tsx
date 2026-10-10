@@ -38,6 +38,7 @@ import { EntityPicker } from "@/components/EntityPicker";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
 import { EmailComposerFields } from "@/components/deal/DealClient";
+import { attachablesFor } from "@/lib/library";
 import { ComposerTabsBox } from "@/components/record/Tabs";
 import { HistoryFeed } from "@/components/record/HistoryFeed";
 import {
@@ -95,6 +96,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
   const refs = { person_id: id, ...(current[0] ? { organization_id: current[0].organization_id } : {}) };
   const activeSequences = sequences.filter((s) => s.is_active && s.steps > 0);
 
+  const attachables = await attachablesFor(openDeals[0]?.id ?? null);
   return (
     <main className="page record-page">
       <div className="crumbs"><Link href="/persons">Contactos</Link></div>
@@ -259,7 +261,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
                         </select>
                       </label>
                     )}
-                    <EmailComposerFields dealId={openDeals[0]?.id ?? ""} templates={composerTemplates}
+                    <EmailComposerFields attachables={attachables} dealId={openDeals[0]?.id ?? ""} templates={composerTemplates}
                                          trackDefault={settings?.email_tracking ?? true} trackAvailable={publicBase() !== null} signatureHtml={signatureHtml}
                                          personId={id} aiReady={aiReady(aiSettings)}
                                          engagement={e1 ? { [id]: { temperature: e1.temperature, headline: e1.headline, advice: e1.advice } } : {}} />

@@ -39,6 +39,7 @@ export const FOLLOW_EVENTS: Record<string, (p: Record<string, unknown>) => strin
   "proposal.viewed": () => "El cliente ha abierto la propuesta",
   "proposal.accepted": () => "¡Propuesta aceptada!",
   "proposal.declined": () => "Propuesta rechazada",
+  "doc.viewed": (p) => `${p.person ?? "Alguien"} ha abierto «${p.name ?? "un documento"}»`,
   "sign.signed": (p) => `${p.name ?? "Alguien"} ha firmado «${p.title ?? "el contrato"}»`,
   "sign.declined": (p) => `${p.name ?? "Alguien"} ha rechazado firmar «${p.title ?? "el contrato"}»`,
   "sign.completed": (p) => `¡«${p.title ?? "El contrato"}» está firmado por todos!`,

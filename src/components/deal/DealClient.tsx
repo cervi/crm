@@ -5,6 +5,7 @@ import { aiEmailAction } from "@/app/actions/email-editor";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
+import { AttachmentPicker, type Attachable } from "../library/AttachmentPicker";
 
 /** Pestañas del compositor (nota / actividad / correo): solo cambian qué formulario se ve. */
 export function ComposerTabs({ note, activity, email, call, files, filesLabel = "Archivos" }: {
@@ -51,7 +52,7 @@ export type ComposerTemplate = { id: string; name: string; subject: string; body
 export type EngagementHint = { temperature: "caliente" | "templado" | "frio" | "sin_datos"; headline: string; advice: string };
 const TEMP_LABEL = { caliente: "Caliente", templado: "Templado", frio: "Frío", sin_datos: "Sin datos" } as const;
 
-export function EmailComposerFields({ dealId, templates, trackDefault, trackAvailable, signatureHtml, engagement = {}, personId, aiReady }: {
+export function EmailComposerFields({ dealId, templates, trackDefault, trackAvailable, signatureHtml, engagement = {}, personId, aiReady, attachables }: {
   dealId: string; templates: ComposerTemplate[]; trackDefault: boolean; trackAvailable: boolean;
   /** Cómo ha respondido cada posible destinatario a los correos anteriores. */
   engagement?: Record<string, EngagementHint>;
@@ -60,6 +61,8 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
   aiReady?: boolean;
   /** Firma de quien envía, ya con sus datos (vacía si no tiene). */
   signatureHtml?: string;
+  /** Lo que se puede adjuntar: archivos del deal y documentos de la biblioteca. */
+  attachables?: { files: Attachable[]; library: Attachable[] };
 }) {
   const [withSig, setWithSig] = useState(Boolean(signatureHtml));
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -173,6 +176,13 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
       <label className="field"><span className="label">Texto *</span>
         <textarea ref={ref} name="body" rows={8} required value={body} onChange={(e) => setBody(e.target.value)} />
       </label>
+      <AttachmentPicker dealId={dealId || null} personId={to ?? null} files={attachables?.files} library={attachables?.library}
+                        onInsert={(text) => {
+                          const el = ref.current!;
+                          const at = el.selectionStart ?? el.value.length;
+                          el.setRangeText(`${at && !/\n$/.test(el.value.slice(0, at)) ? "\n" : ""}${text}\n`, at, el.selectionEnd ?? at, "end");
+                          setBody(el.value);
+                        }} />
       {signatureHtml ? (
         <div className="compose-signature">
           <label className="checkbox"><input type="checkbox" name="signature" checked={withSig} onChange={(e) => setWithSig(e.target.checked)} />Añadir mi firma</label>

@@ -191,6 +191,8 @@ type EmailInput = {
   /** Seguir aperturas y clics (por defecto, lo que diga Ajustes). */
   track?: boolean;
   templateId?: string | null;
+  /** Archivos adjuntos (ya comprobado su tamaño). */
+  attachments?: (MailAttachment & { file_id?: string | null; library_id?: string | null; size?: number })[];
   /** Correo ya guardado (p. ej. uno programado que llega su hora). */
   emailId?: string;
 };
@@ -222,7 +224,8 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
 
   let sent: { ref: string };
   try {
-    sent = await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: v.to, subject: v.subject, body: v.body, html }));
+    sent = await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: v.to, subject: v.subject, body: v.body, html,
+                                                      attachments: v.attachments?.map((a) => ({ name: a.name, mime: a.mime, data: a.data })) }));
   } catch (err) {
     await sql`UPDATE emails SET status = 'failed', error = ${err instanceof Error ? err.message.slice(0, 500) : "Error al enviar"} WHERE id = ${row.id}`;
     throw err;
@@ -234,6 +237,13 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
   }));
   await sql`UPDATE emails SET status = 'sent', sent_at = now(), external_ref = ${sent.ref}, activity_id = ${activityId}, mailbox_id = ${conn.id}
             WHERE id = ${row.id}`;
+  // Qué adjuntos llevó (si es un programado, ya estaban apuntados).
+  if (v.attachments?.length && !v.emailId) {
+    for (const a of v.attachments) {
+      await sql`INSERT INTO email_attachments (email_id, file_id, library_id, name, size)
+                VALUES (${row.id}, ${a.file_id ?? null}, ${a.library_id ?? null}, ${a.name}, ${a.size ?? a.data.length})`;
+    }
+  }
   await sql`UPDATE mailbox_connections SET last_error = NULL WHERE id = ${conn.id}`;
   return { activityId: activityId!, from: conn.email, emailId: row.id };
 }

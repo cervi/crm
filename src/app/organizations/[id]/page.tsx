@@ -31,6 +31,7 @@ import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
 import { AccountPanel } from "@/components/AccountPanel";
 import { EmailComposerFields } from "@/components/deal/DealClient";
+import { attachablesFor } from "@/lib/library";
 import { ComposerTabsBox } from "@/components/record/Tabs";
 import { HistoryFeed } from "@/components/record/HistoryFeed";
 import {
@@ -75,6 +76,7 @@ export default async function OrganizationPage({ params, searchParams }: { param
   const refs = { organization_id: id };
   const web = org.website ? (org.website.startsWith("http") ? org.website : `https://${org.website}`) : null;
 
+  const attachables = await attachablesFor(openDeals[0]?.id ?? null);
   return (
     <main className="page record-page">
       <div className="crumbs"><Link href="/organizations">Empresas</Link></div>
@@ -219,7 +221,7 @@ export default async function OrganizationPage({ params, searchParams }: { param
                         </label>
                       )}
                     </div>
-                    <EmailComposerFields dealId={openDeals[0]?.id ?? ""} templates={[]} trackDefault={settings?.email_tracking ?? true}
+                    <EmailComposerFields attachables={attachables} dealId={openDeals[0]?.id ?? ""} templates={[]} trackDefault={settings?.email_tracking ?? true}
                                          trackAvailable={publicBase() !== null} signatureHtml={signatureHtml} />
                   </ActionForm>
                 ),

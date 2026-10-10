@@ -23,11 +23,27 @@ function pdfjs() {
  * encima de cada una para los campos. Las páginas ocupan su sitio desde el
  * principio (se sabe su tamaño) y se pintan al acercarse a la vista.
  */
-export function PdfPages({ url, pages, overlay, onPageClick, label, loadingText = "Cargando el documento…", pageLabel = (n: number) => `Página ${n}` }: {
-  url: string; pages: { w: number; h: number }[]; overlay?: (page: number) => ReactNode;
-  onPageClick?: (page: number, fx: number, fy: number) => void; label?: string; loadingText?: string; pageLabel?: (n: number) => string;
+export function PdfPages({ url, pages: known, overlay, onPageClick, onPageSeen, label, loadingText = "Cargando el documento…", pageLabel = (n: number) => `Página ${n}` }: {
+  url: string; pages?: { w: number; h: number }[]; overlay?: (page: number) => ReactNode;
+  onPageClick?: (page: number, fx: number, fy: number) => void; onPageSeen?: (page: number) => void; label?: string; loadingText?: string; pageLabel?: (n: number) => string;
 }) {
   const [doc, setDoc] = useState<PdfDoc | null>(null);
+  const [measured, setMeasured] = useState<{ w: number; h: number }[] | null>(null);
+  const pages = known ?? measured ?? [];
+  // Sin tamaños conocidos (p. ej. un PDF de la biblioteca), se leen del propio PDF.
+  useEffect(() => {
+    if (known || !doc) return;
+    let alive = true;
+    void (async () => {
+      const out: { w: number; h: number }[] = [];
+      for (let i = 1; i <= Math.min(doc.numPages, 300); i++) {
+        const vp = (await doc.getPage(i)).getViewport({ scale: 1 });
+        out.push({ w: vp.width, h: vp.height });
+      }
+      if (alive) setMeasured(out);
+    })();
+    return () => { alive = false; };
+  }, [doc, known]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let alive = true, loaded: PdfDoc | null = null;
@@ -43,7 +59,7 @@ export function PdfPages({ url, pages, overlay, onPageClick, label, loadingText 
       {error && <p className="form-error" role="alert">No se ha podido mostrar el PDF: {error}</p>}
       {!doc && !error && <p className="meta pdf-loading" role="status">{loadingText}</p>}
       {pages.map((p, i) => (
-        <PdfPageView key={i} doc={doc} n={i + 1} w={p.w} h={p.h} label={pageLabel(i + 1)}
+        <PdfPageView key={i} doc={doc} n={i + 1} w={p.w} h={p.h} label={pageLabel(i + 1)} onSeen={onPageSeen}
                      onClick={onPageClick ? (fx, fy) => onPageClick(i + 1, fx, fy) : undefined}>
           {overlay?.(i + 1)}
         </PdfPageView>
@@ -52,8 +68,8 @@ export function PdfPages({ url, pages, overlay, onPageClick, label, loadingText 
   );
 }
 
-function PdfPageView({ doc, n, w, h, label, onClick, children }: {
-  doc: PdfDoc | null; n: number; w: number; h: number; label: string; onClick?: (fx: number, fy: number) => void; children?: ReactNode;
+function PdfPageView({ doc, n, w, h, label, onClick, onSeen, children }: {
+  doc: PdfDoc | null; n: number; w: number; h: number; label: string; onClick?: (fx: number, fy: number) => void; onSeen?: (n: number) => void; children?: ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -64,10 +80,12 @@ function PdfPageView({ doc, n, w, h, label, onClick, children }: {
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVisible(true); }, { rootMargin: "600px 0px" });
+    // «Vista» de verdad: al menos media página en pantalla.
+    const seen = new IntersectionObserver(([e]) => { if (e.isIntersecting) onSeen?.(n); }, { threshold: 0.5 });
     const ro = new ResizeObserver(([e]) => setWidth(Math.round(e.contentRect.width)));
-    io.observe(el); ro.observe(el);
-    return () => { io.disconnect(); ro.disconnect(); };
-  }, []);
+    io.observe(el); ro.observe(el); seen.observe(el);
+    return () => { io.disconnect(); ro.disconnect(); seen.disconnect(); };
+  }, [n, onSeen]);
 
   useEffect(() => {
     if (!doc || !visible || !width || !canvas.current) return;

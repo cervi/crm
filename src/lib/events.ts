@@ -109,6 +109,7 @@ const LABELS: Record<string, string> = {
   "activity.created": "Actividad creada",
   "activity.completed": "Actividad completada",
   "activity.deleted": "Actividad borrada",
+  "doc.viewed": "Documento abierto",
   "sign.sent": "Contrato enviado a firmar",
   "sign.signed": "Contrato firmado por un firmante",
   "sign.declined": "Firma rechazada",

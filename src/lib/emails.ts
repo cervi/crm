@@ -1,3 +1,4 @@
+import { parseAttachRefs, resolveAttachments, saveAttachmentRefs, storedAttachments } from "./attachments";
 import { z } from "zod";
 import { sql } from "./db";
 import { UserError } from "./errors";
@@ -55,6 +56,7 @@ const composeSchema = z.object({
   track_present: z.string().optional(),
   template_id: optId,
   signature: z.string().optional(),
+  attachments: z.string().optional(),
 });
 
 export type ComposeResult = { scheduled: boolean; at?: Date };
@@ -62,6 +64,7 @@ export type ComposeResult = { scheduled: boolean; at?: Date };
 /** Envía (o programa) el correo escrito en la ficha del deal. Sale de tu buzón o, si no tienes, del del responsable. */
 export async function composeDealEmail(actor: Actor, dealId: string | null, data: unknown): Promise<ComposeResult> {
   const v = parse(composeSchema, data);
+  const files = await resolveAttachments(parseAttachRefs(v.attachments));
   const [p] = await sql<{ full_name: string; email: string | null; owner_id: string | null; organization_id: string | null }[]>`
     SELECT p.full_name,
            (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY (bounced_at IS NULL) DESC, is_primary DESC, created_at LIMIT 1) AS email,
@@ -89,12 +92,13 @@ export async function composeDealEmail(actor: Actor, dealId: string | null, data
       VALUES ('out', 'scheduled', ${dealId}, ${v.person_id}, ${p.organization_id}, ${conn.user_id}, ${conn.email}, ${p.email},
               ${p.full_name}, ${v.subject}, ${mail.text}, ${mail.html}, ${at}, ${v.template_id ?? null}, ${track ?? true}, ${actor.id})
       RETURNING id`;
+    await saveAttachmentRefs(row.id, files);
     await recordEvent(sql, actor, dealId ? "deal" : "person", dealId ?? v.person_id, "email.scheduled", { email_id: row.id, subject: v.subject, at: at.toISOString() });
     return { scheduled: true, at };
   }
   await sendEmail(conn, actor, {
     to: { email: p.email, name: p.full_name }, subject: v.subject, body: mail.text, html: mail.html,
-    dealId, personId: v.person_id, organizationId: p.organization_id, track, templateId: v.template_id ?? null,
+    dealId, personId: v.person_id, organizationId: p.organization_id, track, templateId: v.template_id ?? null, attachments: files,
   });
   return { scheduled: false };
 }
@@ -124,6 +128,7 @@ export async function sendDueEmails(limit = 20): Promise<{ sent: number; failed:
       await sendEmail(conn, { type: "user", id: e.created_by }, {
         to: { email: e.to_email, name: e.to_name }, subject: e.subject, body: e.body, html: e.body_html, dealId: e.deal_id,
         personId: e.person_id, organizationId: e.organization_id, track: e.track, templateId: e.template_id, emailId: e.id,
+        attachments: await storedAttachments(e.id),
       });
       sent++;
     } catch (err) {
