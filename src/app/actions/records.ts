@@ -3,7 +3,7 @@
 import { guard, writer } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { attempt, type ActionState } from "@/lib/errors";
+import { attempt, toUserMessage, type ActionState } from "@/lib/errors";
 import { listFieldDefinitions, readCustomValues } from "@/lib/custom-fields";
 import { createOrganization, getOrganization, updateOrganization } from "@/lib/organizations";
 import { changeCompany, createPerson, getPerson, updatePerson } from "@/lib/persons";
@@ -125,4 +125,30 @@ export async function createNoteAction(back: string, _: ActionState, form: FormD
   const res = await attempt(() => createNote(me, fields(form)));
   revalidatePath(back);
   return res;
+}
+
+/** Marca o desmarca una actividad como hecha desde la tabla (sin formulario). */
+export async function toggleActivityDoneAction(activityId: string, done: boolean): Promise<{ error?: string }> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  try {
+    if (done) await completeActivity(g.actor, activityId, {});
+    else await reopenActivity(activityId);
+  } catch (err) {
+    return { error: toUserMessage(err) };
+  }
+  revalidatePath("/activities");
+  return {};
+}
+
+/** Marca varias actividades como hechas a la vez. */
+export async function bulkCompleteActivitiesAction(ids: string[]): Promise<{ error?: string; message?: string }> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  let done = 0;
+  for (const id of ids.slice(0, 500)) {
+    try { await completeActivity(g.actor, id, {}); done++; } catch { /* ya hecha o borrada */ }
+  }
+  revalidatePath("/activities");
+  return { message: `${done} actividad${done === 1 ? "" : "es"} marcada${done === 1 ? "" : "s"} como hecha${done === 1 ? "" : "s"}.` };
 }

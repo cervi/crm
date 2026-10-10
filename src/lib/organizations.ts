@@ -19,6 +19,8 @@ export type OrganizationListRow = {
   next_activity: Date | null;
   last_activity: Date | null;
   tags: { name: string; color: string }[];
+  custom: Record<string, unknown>;
+  created_at: Date;
 };
 
 export async function listOrganizations({ q = "", owner, tag, activity, deals, sort = "name", limit = 300, me }: ListFilters = {}) {
@@ -27,7 +29,7 @@ export async function listOrganizations({ q = "", owner, tag, activity, deals, s
     : sort === "last" ? sql`last_activity DESC NULLS LAST` : sql`lower(x.name)`;
   return sql<OrganizationListRow[]>`
     SELECT * FROM (
-      SELECT o.id, o.name, o.domain, o.industry, o.city, o.created_at, u.name AS owner_name,
+      SELECT o.id, o.name, o.domain, o.industry, o.city, o.created_at, o.custom, u.name AS owner_name,
              (SELECT count(*)::int FROM person_organizations po WHERE po.organization_id = o.id AND po.status = 'current') AS contacts,
              (SELECT count(*)::int FROM deals d WHERE d.organization_id = o.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_deals,
              (SELECT coalesce(sum(d.value), 0)::text FROM deals d WHERE d.organization_id = o.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_value,

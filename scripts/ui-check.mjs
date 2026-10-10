@@ -830,10 +830,12 @@ await step("lista de deals: filtrar, guardar la vista y cambiar el responsable d
   await page.getByRole("link", { name: new RegExp(`Deals de Paco ${stamp}`) }).waitFor();
   // Columnas: se añade «Creado».
   await page.getByRole("button", { name: "Columnas" }).click();
-  await page.getByRole("dialog", { name: "Columnas" }).getByLabel("Creado").check();
-  await page.getByRole("button", { name: "Aplicar", exact: true }).click();
-  await page.waitForURL(/cols=/);
+  await page.getByRole("dialog", { name: "Columnas" }).getByLabel("Creado", { exact: true }).check();
   await page.locator("thead th", { hasText: "Creado" }).waitFor();
+  // Fijar una columna: queda pegada a la izquierda.
+  await page.getByRole("dialog", { name: "Columnas" }).locator("li", { hasText: "Fase" }).getByRole("button", { name: /Fijar/ }).click();
+  await page.locator("thead th.pin", { hasText: "Fase" }).waitFor();
+  await page.keyboard.press("Escape");
   // Acción en bloque.
   await page.getByLabel("Seleccionar Paco — contrato anual").check();
   await page.getByLabel("Seleccionar Paco — otra plataforma").check();

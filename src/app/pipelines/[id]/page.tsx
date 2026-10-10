@@ -8,7 +8,7 @@ import {
 import { HealthBadge } from "@/components/HealthBadge";
 import { recomputeHealth } from "@/lib/health";
 import { sql } from "@/lib/db";
-import { DEAL_COLUMNS, DEFAULT_DEAL_COLUMNS, parseDealColumns, type DealColumn } from "@/lib/deal-columns";
+import { DEAL_COLUMNS, parseDealColumns, type DealColumn } from "@/lib/deal-columns";
 import { formatCustomValue, listFieldDefinitions } from "@/lib/custom-fields";
 import { listLostReasons } from "@/lib/deals";
 import { activeActivityTypes } from "@/lib/activity-types";
@@ -17,8 +17,8 @@ import { listViews, normalizeQuery } from "@/lib/views";
 import { listSequences } from "@/lib/sequences";
 import { deleteViewAction, saveViewAction } from "@/app/actions/views";
 import { ActionForm } from "@/components/ActionForm";
-import { ColumnPicker } from "@/components/ColumnPicker";
-import { BulkSelectAll, DealBulkBar } from "@/components/DealBulkBar";
+import { DataTable } from "@/components/DataTable";
+import { DealBulkBar } from "@/components/DealBulkBar";
 import { Icon } from "@/components/Icon";
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
@@ -87,9 +87,10 @@ export default async function PipelinePage({ params, searchParams }: { params: P
   const selected = isId(sp.deal) ? sp.deal : null;
   const pos = selected ? order.indexOf(selected) : -1;
 
-  const sortHeader = (key: ListSort, label: string, num = false) => {
+  const sortHeader = (key: ListSort, label: string, num = false, inner = false) => {
     const active = listSort === key;
     const nextDir = active && dir === "asc" ? "desc" : "asc";
+    if (inner) return <Link href={qs({ sort: key, dir: nextDir, deal: undefined })} className="th-sort">{label}{active && (dir === "asc" ? " ↑" : " ↓")}</Link>;
     return (
       <th key={key} className={num ? "num" : undefined} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}>
         <Link href={qs({ sort: key, dir: nextDir, deal: undefined })} className="th-sort">{label}{active && (dir === "asc" ? " ↑" : " ↓")}</Link>
@@ -166,13 +167,6 @@ export default async function PipelinePage({ params, searchParams }: { params: P
               <input name="max" type="number" min={0} step="any" defaultValue={sp.max ?? ""} placeholder="hasta" aria-label="Importe hasta" className="num-input" />
               <button type="submit" className="btn secondary small">Filtrar</button>
               {filtered && <Link href={qs({ q: undefined, stage: undefined, flag: undefined, min: undefined, max: undefined, deal: undefined })} className="meta">Quitar filtros</Link>}
-              <span className="spacer" />
-              <ColumnPicker
-                options={[
-                  ...(Object.entries(DEAL_COLUMNS) as [DealColumn, string][]).map(([value, label]) => ({ value, label })),
-                  ...defs.map((d) => ({ value: `cf:${d.key}`, label: d.label })),
-                ]}
-                selected={columns} defaults={DEFAULT_DEAL_COLUMNS} />
             </form>
 
             <DealBulkBar
@@ -182,54 +176,37 @@ export default async function PipelinePage({ params, searchParams }: { params: P
               types={types.map((t) => ({ value: t.key, label: t.label }))}
               sequences={seqs.filter((q) => q.is_active && q.steps > 0).map((q) => ({ value: q.id, label: q.name }))} />
 
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="check-col"><BulkSelectAll /></th>
-                    {sortHeader("title", "Deal")}
-                    {columns.map((c) => {
-                      if (c.startsWith("cf:")) return <th key={c}>{defs.find((d) => `cf:${d.key}` === c)?.label}</th>;
-                      const col = c as DealColumn;
-                      const label = DEAL_COLUMNS[col];
-                      if (col === "status" || col === "source") return <th key={c}>{label}</th>;
-                      return sortHeader(col, label, col === "value" || col === "days");
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length === 0 && <tr><td colSpan={columns.length + 2} className="empty-row">No hay deals con estos filtros.</td></tr>}
-                  {rows.map((r) => (
-                    <tr key={r.id} className={selected === r.id ? "row-selected" : undefined}>
-                      <td className="check-col"><input type="checkbox" className="bulk-check" value={r.id} aria-label={`Seleccionar ${r.title}`} /></td>
-                      <td><Link href={qs({ deal: r.id })} scroll={false}><strong>{r.title}</strong></Link>{r.person_name && <div className="meta">{r.person_name}</div>}</td>
-                      {columns.map((c) => {
-                        if (c.startsWith("cf:")) {
-                          const def = defs.find((d) => `cf:${d.key}` === c);
-                          return <td key={c}>{def ? formatCustomValue(def, r.custom?.[def.key], users) || "—" : "—"}</td>;
-                        }
-                        switch (c as DealColumn) {
-                          case "organization": return <td key={c}>{r.organization_id ? <Link href={`/organizations/${r.organization_id}`}>{r.organization_name}</Link> : "—"}</td>;
-                          case "stage": return <td key={c}>{r.stage_name}</td>;
-                          case "value": return <td key={c} className="num">{money(r.value, r.currency)}</td>;
-                          case "days": return <td key={c} className="num">{r.status === "open" ? <>{r.days_in_stage}{r.is_rotten && <span className="badge warn" style={{ marginLeft: 6 }}>Parado</span>}</> : "—"}</td>;
-                          case "next_activity": return <td key={c}>{r.status !== "open" ? "—"
-                            : r.next_activity_at
-                              ? <span className={new Date(r.next_activity_at) < new Date() ? "tone-bad" : undefined}>{dateTime(r.next_activity_at)}</span>
-                              : <span className="badge">Sin actividad</span>}</td>;
-                          case "close": return <td key={c}>{date(r.expected_close_date)}</td>;
-                          case "owner": return <td key={c}>{r.owner_name ?? "—"}</td>;
-                          case "status": return <td key={c}><span className={`badge ${r.status}`}>{STATUS_LABELS[r.status]}</span></td>;
-                          case "created": return <td key={c}>{date(r.created_at)}</td>;
-                          case "source": return <td key={c}>{r.source ?? "—"}</td>;
-                          case "health": return <td key={c}>{r.status === "open" ? <HealthBadge score={r.health} compact /> : "—"}</td>;
-                        }
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable id={`deals${sp.cols ? `:${sp.cols}` : ""}`} selectable empty="No hay deals con estos filtros."
+              columns={[
+                { key: "title", label: "Deal", header: sortHeader("title", "Deal", false, true), required: true, pinned: true },
+                ...(Object.entries(DEAL_COLUMNS) as [DealColumn, string][]).map(([col, label]) => ({
+                  key: col, label, hidden: !columns.includes(col),
+                  className: col === "value" || col === "days" ? "num" : undefined,
+                  header: col === "status" || col === "source" ? undefined : sortHeader(col, label, col === "value" || col === "days", true),
+                })),
+                ...defs.filter((d) => !d.is_archived).map((d) => ({ key: `cf:${d.key}`, label: d.label, hidden: !columns.includes(`cf:${d.key}`) })),
+              ]}
+              rows={rows.map((r) => ({
+                id: r.id, label: r.title, className: selected === r.id ? "row-selected" : undefined,
+                cells: {
+                  title: <><Link href={qs({ deal: r.id })} scroll={false}><strong>{r.title}</strong></Link>{r.person_name && <div className="meta">{r.person_name}</div>}</>,
+                  organization: r.organization_id ? <Link href={`/organizations/${r.organization_id}`}>{r.organization_name}</Link> : null,
+                  stage: r.stage_name,
+                  value: money(r.value, r.currency),
+                  days: r.status === "open" ? <>{r.days_in_stage}{r.is_rotten && <span className="badge warn" style={{ marginLeft: 6 }}>Parado</span>}</> : null,
+                  next_activity: r.status !== "open" ? null
+                    : r.next_activity_at
+                      ? <span className={new Date(r.next_activity_at) < new Date() ? "tone-bad" : undefined}>{dateTime(r.next_activity_at)}</span>
+                      : <span className="badge">Sin actividad</span>,
+                  close: date(r.expected_close_date),
+                  owner: r.owner_name,
+                  status: <span className={`badge ${r.status}`}>{STATUS_LABELS[r.status]}</span>,
+                  created: date(r.created_at),
+                  source: r.source,
+                  health: r.status === "open" ? <HealthBadge score={r.health} compact /> : null,
+                  ...Object.fromEntries(defs.map((d) => [`cf:${d.key}`, formatCustomValue(d, r.custom?.[d.key], users) || null])),
+                },
+              }))} />
           </>
         )}
       </Suspense>

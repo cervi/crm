@@ -4,6 +4,7 @@ import { recordEvent, type Actor } from "./events";
 import { UserError } from "./errors";
 import { OUTCOMES } from "./format";
 import { activityTypes, assertActivityType } from "./activity-types";
+import { zonedToUtc } from "./slots";
 import { optId, optText, optional, parse, text } from "./validation";
 
 export type Activity = {
@@ -155,4 +156,72 @@ export async function completeActivity(actor: Actor, activityId: string, data: u
 
 export async function reopenActivity(activityId: string) {
   await sql`UPDATE activities SET done = false, outcome = NULL WHERE id = ${activityId}`;
+}
+
+// ---------------------------------------------------------------------------
+// Bandeja de actividades en tabla (como Pipedrive): periodo + tipo + responsable.
+// ---------------------------------------------------------------------------
+
+export const ACTIVITY_PERIODS = [
+  { key: "todo", label: "Para hacer", hint: "Todas las pendientes" },
+  { key: "overdue", label: "Vencidas", hint: "Pendientes con la fecha ya pasada" },
+  { key: "today", label: "Hoy", hint: "Pendientes con fecha de hoy" },
+  { key: "tomorrow", label: "Mañana", hint: "Pendientes con fecha de mañana" },
+  { key: "week", label: "Esta semana", hint: "Pendientes de lunes a domingo de esta semana" },
+  { key: "next_week", label: "Próxima semana", hint: "Pendientes de la semana que viene" },
+  { key: "done", label: "Hechas", hint: "Las últimas actividades completadas" },
+] as const;
+export type ActivityPeriod = (typeof ACTIVITY_PERIODS)[number]["key"];
+
+/** Límites (en UTC) de hoy, mañana, esta semana y la próxima, en la zona de la app. */
+export function activityRanges(now = new Date(), tz = process.env.TZ || "Europe/Madrid") {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now).split("-").map(Number);
+  const at = (offsetDays: number) => {
+    const t = new Date(Date.UTC(p[0], p[1] - 1, p[2] + offsetDays));
+    return zonedToUtc(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate(), 0, 0, tz);
+  };
+  const dow = (new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() + 6) % 7; // 0 = lunes
+  return {
+    today: at(0), tomorrow: at(1), dayAfter: at(2),
+    weekStart: at(-dow), nextWeek: at(7 - dow), weekAfter: at(14 - dow),
+  };
+}
+
+export async function listActivityBoard({ period, ownerId, type }: { period: ActivityPeriod; ownerId?: string | null; type?: string | null }) {
+  await activityTypes();
+  const r = activityRanges();
+  const owner = ownerId ?? null;
+  const range = {
+    todo: sql`NOT a.done`,
+    overdue: sql`NOT a.done AND a.due_at < now()`,
+    today: sql`NOT a.done AND a.due_at >= ${r.today} AND a.due_at < ${r.tomorrow}`,
+    tomorrow: sql`NOT a.done AND a.due_at >= ${r.tomorrow} AND a.due_at < ${r.dayAfter}`,
+    week: sql`NOT a.done AND a.due_at >= ${r.weekStart} AND a.due_at < ${r.nextWeek}`,
+    next_week: sql`NOT a.done AND a.due_at >= ${r.nextWeek} AND a.due_at < ${r.weekAfter}`,
+    done: sql`a.done`,
+  }[period];
+  const [items, counts, types] = await Promise.all([
+    sql<Activity[]>`
+      ${select()}
+      WHERE ${range}
+        AND (${owner}::uuid IS NULL OR a.owner_id = ${owner}::uuid)
+        AND (${type ?? null}::text IS NULL OR a.type = ${type ?? null})
+      ORDER BY ${period === "done" ? sql`a.done_at DESC NULLS LAST` : sql`a.due_at NULLS LAST, a.created_at`}
+      LIMIT 500`,
+    sql<{ todo: number; overdue: number; today: number; tomorrow: number; week: number; next_week: number }[]>`
+      SELECT count(*) FILTER (WHERE true)::int AS todo,
+             count(*) FILTER (WHERE a.due_at < now())::int AS overdue,
+             count(*) FILTER (WHERE a.due_at >= ${r.today} AND a.due_at < ${r.tomorrow})::int AS today,
+             count(*) FILTER (WHERE a.due_at >= ${r.tomorrow} AND a.due_at < ${r.dayAfter})::int AS tomorrow,
+             count(*) FILTER (WHERE a.due_at >= ${r.weekStart} AND a.due_at < ${r.nextWeek})::int AS week,
+             count(*) FILTER (WHERE a.due_at >= ${r.nextWeek} AND a.due_at < ${r.weekAfter})::int AS next_week
+      FROM activities a
+      WHERE NOT a.done AND (${owner}::uuid IS NULL OR a.owner_id = ${owner}::uuid)
+        AND (${type ?? null}::text IS NULL OR a.type = ${type ?? null})`,
+    sql<{ type: string; n: number }[]>`
+      SELECT a.type, count(*)::int AS n FROM activities a
+      WHERE ${range} AND (${owner}::uuid IS NULL OR a.owner_id = ${owner}::uuid)
+      GROUP BY a.type ORDER BY n DESC`,
+  ]);
+  return { items, counts: counts[0], types };
 }

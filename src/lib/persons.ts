@@ -17,6 +17,8 @@ export type PersonListRow = {
   next_activity: Date | null;
   last_activity: Date | null;
   tags: { name: string; color: string }[];
+  custom: Record<string, unknown>;
+  created_at: Date;
 };
 
 export type ListFilters = {
@@ -35,7 +37,7 @@ export async function listPersons({ q = "", owner, tag, activity, deals, sort = 
     : sort === "last" ? sql`x.last_activity DESC NULLS LAST` : sql`lower(x.full_name)`;
   return sql<PersonListRow[]>`
     SELECT * FROM (
-      SELECT p.id, p.full_name, p.created_at,
+      SELECT p.id, p.full_name, p.created_at, p.custom,
              (SELECT email FROM person_emails WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS email,
              (SELECT phone FROM person_phones WHERE person_id = p.id ORDER BY is_primary DESC, created_at LIMIT 1) AS phone,
              cur.organization_id, o.name AS organization_name, cur.job_title, u.name AS owner_name,
