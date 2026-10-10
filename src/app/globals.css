@@ -1567,9 +1567,11 @@ a.boss-cell:hover { text-decoration: none; border-color: var(--border-strong); }
 .boss-state { white-space: nowrap; }
 
 /* ---------------------------------------------------------------- Informes: análisis de ventas */
-.reports > * + * { margin-top: 20px; }
-.reports .kpis { margin: 0; }
-.reports .reports-grid { margin: 0; }
+/* Todos los bloques de Informes con el mismo aire entre ellos. */
+main.reports { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-content: start; }
+main.reports > * { margin-top: 0 !important; margin-bottom: 0 !important; }
+main.reports > .page-head { margin-bottom: -4px !important; }
+main.reports > .sales-head { margin-top: 18px !important; }
 .reports .panel h2 { margin-top: 0; }
 .sales-head { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; justify-content: space-between; margin-top: 36px !important; }
 .sales-head h2 { margin: 0; font-size: 20px; }
