@@ -69,7 +69,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const ownerId = isId(sp.owner) ? sp.owner : null;
   const mine = (col: string) => (ownerId ? sql`${sql.unsafe(col)} = ${ownerId}` : sql`true`);
 
-  const [connections, ai, users, d, [won], wonWeeks, actDays, [mail], [today], stages, board, recentWins, [goal]] = await Promise.all([
+  const [connections, ai, users, d, [won], wonWeeks, actDays, [mail], [today], stages, board, recentWins, [goal], hotDocs, waitingSigns] = await Promise.all([
     listConnections(), getAiSettings(),
     listUsers(),
     buildDigest(ownerId, { ai: "cached" }),
@@ -124,6 +124,20 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               WHERE d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= date_trunc('month', now())
                 AND (EXISTS (SELECT 1 FROM pick WHERE user_id IS NULL) OR d.owner_id IN (SELECT user_id FROM pick))) AS won
       FROM pick`.catch(() => [{ target: 0, won: 0 }]),
+    // Documentos compartidos que están mirando ahora mismo (48 h).
+    sql<{ id: string; name: string; who: string | null; deal_id: string | null; views: number; last: Date }[]>`
+      SELECT l.id, coalesce(i.name, f.name) AS name, p.full_name AS who, l.deal_id, l.view_count AS views, l.last_viewed_at AS last
+      FROM doc_links l LEFT JOIN library_items i ON i.id = l.library_id LEFT JOIN files f ON f.id = l.file_id LEFT JOIN persons p ON p.id = l.person_id
+      LEFT JOIN deals d ON d.id = l.deal_id
+      WHERE l.last_viewed_at > now() - interval '48 hours' AND ${mine("coalesce(d.owner_id, l.created_by)")}
+      ORDER BY l.last_viewed_at DESC LIMIT 3`.catch(() => []),
+    // Contratos esperando firma.
+    sql<{ id: string; title: string; days: number; names: string }[]>`
+      SELECT r.id, r.title, floor(extract(epoch FROM now() - r.sent_at) / 86400)::int AS days,
+             string_agg(s.name, ', ' ORDER BY s.position) AS names
+      FROM sign_requests r JOIN sign_signers s ON s.request_id = r.id AND s.status = 'pending'
+      WHERE r.status = 'sent' AND ${mine("coalesce(r.sender_id, r.created_by)")}
+      GROUP BY r.id ORDER BY r.sent_at LIMIT 3`.catch(() => []),
   ]);
 
   const humans = users.filter((u) => u.kind === "human");
@@ -273,6 +287,30 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               <ul className="b-hotlist">
                 {d.hotOpens.slice(0, 3).map((h, i) => (
                   <li key={i}><Link href={h.href ?? "/emails"}>{h.title}</Link><div className="meta">{h.detail} · {time(h.at)}</div></li>
+                ))}
+              </ul>
+            </>
+          )}
+          {hotDocs.length > 0 && (
+            <>
+              <h3><span className="flame" aria-hidden="true">●</span>Están mirando tus documentos</h3>
+              <ul className="b-hotlist">
+                {hotDocs.map((h) => (
+                  <li key={h.id}><Link href={h.deal_id ? `/deals/${h.deal_id}#documentos-enviados` : "/biblioteca"}>{h.who ?? "Alguien"} ha abierto «{h.name}»</Link>
+                    <div className="meta">{h.views} {h.views === 1 ? "vez" : "veces"} · la última a las {time(h.last)}</div></li>
+                ))}
+              </ul>
+            </>
+          )}
+          {waitingSigns.length > 0 && (
+            <>
+              <h3><span className="warn" aria-hidden="true">●</span>Contratos esperando firma</h3>
+              <ul className="b-attn">
+                {waitingSigns.map((w) => (
+                  <li key={w.id} className={w.days >= 3 ? "p1" : "p2"}>
+                    <Link href={`/firmas/${w.id}`}><strong>{w.title}</strong><span className="v">{w.days === 0 ? "hoy" : `${w.days} d`}</span></Link>
+                    <div className="meta">Falta: {w.names}</div>
+                  </li>
                 ))}
               </ul>
             </>
