@@ -1652,6 +1652,7 @@ main.reports > .sales-head { margin-top: 18px !important; }
 dialog.drawer {
   position: fixed; inset: 0 0 0 auto; margin: 0; height: 100vh; max-height: 100vh; width: min(560px, 100vw); max-width: 100vw;
   padding: 0; border: 0; border-left: 1px solid var(--border); background: var(--bg); color: var(--text); box-shadow: var(--shadow-pop);
+  text-align: left; white-space: normal; font-weight: 400; overflow-x: hidden;
 }
 dialog.drawer::backdrop { background: rgba(15, 20, 30, .32); }
 dialog.drawer[open] { animation: drawer-in .18s ease-out; }
@@ -1678,8 +1679,8 @@ td.row-actions > * { margin-left: 6px; vertical-align: middle; }
 td.row-actions form { display: inline-flex; }
 tr.row-muted td { color: var(--muted); }
 .users-table td, .accounts-table td { vertical-align: middle; }
-.role-legend { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
-.role-legend li { display: grid; gap: 2px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); font-size: 13px; }
+.role-legend { list-style: none; margin: -6px 0 16px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 22px; font-size: 12.5px; }
+.role-legend li { display: inline-flex; gap: 6px; }
 .role-legend li span { color: var(--muted); }
 .empty-state { display: grid; gap: 4px; justify-items: start; padding: 22px 20px; background: var(--panel); border: 1px dashed var(--control-border); border-radius: var(--r); }
 
