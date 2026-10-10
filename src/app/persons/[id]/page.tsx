@@ -39,6 +39,7 @@ import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
 import { EmailComposerFields } from "@/components/deal/DealClient";
 import { attachablesFor } from "@/lib/library";
+import { PersonDocsSection } from "@/components/library/PersonDocsSection";
 import { ComposerTabsBox } from "@/components/record/Tabs";
 import { HistoryFeed } from "@/components/record/HistoryFeed";
 import {
@@ -216,6 +217,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
             </section>
           )}
 
+          <PersonDocsSection personId={id} />
           <section className="side-section" aria-label="Secuencias">
             <h3>Secuencias</h3>
             {enrollments.length === 0 && <p className="muted" style={{ margin: 0 }}>No está en ninguna.</p>}
