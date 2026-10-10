@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createUserAction, resetPasswordAction, signOutUserAction, updateUserAction } from "@/app/actions/auth";
+import { createUserAction, resetPasswordAction, setUserSsoAction, signOutUserAction, updateUserAction } from "@/app/actions/auth";
+import { METHOD_LABEL } from "@/lib/login-log";
 import { ActionForm } from "@/components/ActionForm";
 import { Avatar } from "@/components/Avatar";
 import { Drawer } from "@/components/Drawer";
@@ -33,6 +34,7 @@ export default async function UsersPage() {
   const access = (u: (typeof users)[number]) =>
     !u.is_active ? { label: "Desactivado", cls: "", hint: "No puede entrar. Sus deals y su historia se conservan." }
     : u.locked ? { label: "Bloqueado", cls: "lost", hint: "Demasiados intentos fallidos. Ponle una contraseña temporal para desbloquearlo." }
+    : !u.has_password && u.sso_enabled ? { label: "Con Google/Microsoft", cls: "won", hint: "Entra con su cuenta de Google o Microsoft (sin contraseña)." }
     : !u.has_password ? { label: "Sin acceso", cls: "", hint: "Existe (por ejemplo, traído de Pipedrive) pero aún no puede entrar. Dale acceso con una contraseña inicial." }
     : u.must_change_password ? { label: "Contraseña temporal", cls: "warn", hint: "Tendrá que cambiarla al entrar." }
     : { label: "Activo", cls: "won", hint: "Puede entrar." };
@@ -44,7 +46,7 @@ export default async function UsersPage() {
       <div className="page-head">
         <div>
           <h1>Usuarios y permisos</h1>
-          <p className="muted" style={{ margin: 0 }}>Quién entra al CRM y qué puede hacer. Lo que cada uno cambia queda a su nombre en la historia.</p>
+          <p className="muted" style={{ margin: 0 }}>Quién entra al CRM y qué puede hacer. Lo que cada uno cambia queda a su nombre en la historia. <Link href="/settings/security">Registro de accesos</Link></p>
         </div>
         <div className="head-actions">
           <Drawer label={<><Icon name="plus" />Dar acceso a alguien</>} buttonClass="btn" title="Dar acceso a alguien"
@@ -83,11 +85,12 @@ export default async function UsersPage() {
                   </td>
                   <td>{ROLE_LABELS[u.role]}</td>
                   <td><span className={`badge ${a.cls}`} title={a.hint}>{a.label}</span>{(a.label === "Sin acceso" || a.label === "Bloqueado") && <div className="meta">{a.label === "Bloqueado" ? "Ponle una contraseña temporal" : "Aún no puede entrar"}</div>}</td>
-                  <td className="nowrap">{u.last_login_at ? dateTime(u.last_login_at) : <span className="muted">Nunca</span>}</td>
+                  <td className="nowrap">{u.last_login_at ? <>{dateTime(u.last_login_at)}{u.last_login_method && <div className="meta">con {METHOD_LABEL[u.last_login_method]?.toLowerCase() ?? u.last_login_method}</div>}</> : <span className="muted">Nunca</span>}
+                    {u.failed_logins > 0 && <div className="meta tone-bad">{u.failed_logins} intento{u.failed_logins === 1 ? "" : "s"} fallido{u.failed_logins === 1 ? "" : "s"}</div>}</td>
                   <td className="num">{u.open_deals || <span className="muted">—</span>}</td>
                   <td className="row-actions">
-                    <Drawer label={u.has_password || !u.is_active ? "Editar" : "Dar acceso"} buttonClass={u.has_password || !u.is_active ? "btn secondary small" : "btn small"}
-                            title={u.name} subtitle={`${u.email ?? "sin email"} · ${ROLE_LABELS[u.role]}`} buttonTitle={`${u.has_password || !u.is_active ? "Editar" : "Dar acceso"} a ${u.name}`}>
+                    <Drawer label={u.has_password || u.sso_enabled || !u.is_active ? "Editar" : "Dar acceso"} buttonClass={u.has_password || u.sso_enabled || !u.is_active ? "btn secondary small" : "btn small"}
+                            title={u.name} subtitle={`${u.email ?? "sin email"} · ${ROLE_LABELS[u.role]}`} buttonTitle={`${u.has_password || u.sso_enabled || !u.is_active ? "Editar" : "Dar acceso"} a ${u.name}`}>
                       {(() => {
                         const access = (
                           <section className="drawer-section" key="access">
@@ -115,7 +118,18 @@ export default async function UsersPage() {
                             </ActionForm>
                           </section>
                         );
-                        return u.has_password ? [data, access] : [access, data];
+                        const sso = (
+                          <section className="drawer-section" key="sso">
+                            <h3>Google o Microsoft</h3>
+                            <p className="meta" style={{ marginTop: 0 }}>{u.sso_enabled
+                              ? `Puede entrar con la cuenta de Google o Microsoft de ${u.email ?? "su correo"}${u.has_password ? " (y también con su contraseña)" : ""}.`
+                              : `Deja que entre con la cuenta de Google o Microsoft de ${u.email ?? "su correo"}, sin necesidad de contraseña.`}</p>
+                            <ActionForm action={setUserSsoAction.bind(null, u.id, !u.sso_enabled)} secondary className="form inline"
+                                        submitLabel={u.sso_enabled ? "Quitar la entrada con Google/Microsoft" : "Permitir entrar con Google/Microsoft"}
+                                        confirm={u.sso_enabled && !u.has_password ? "Sin contraseña ni Google/Microsoft no podrá entrar." : undefined} />
+                          </section>
+                        );
+                        return u.has_password || u.sso_enabled ? [data, access, sso] : [access, sso, data];
                       })()}
                       {u.sessions > 0 && u.id !== me.id && (
                         <section className="drawer-section">

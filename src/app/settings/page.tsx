@@ -6,6 +6,7 @@ export const metadata = { title: "Ajustes" };
 
 const SECTIONS: { href: string; title: string; text: string; icon: IconName; everyone?: boolean }[] = [
   { href: "/settings/users", icon: "persons", title: "Usuarios y permisos", text: "Quién entra al CRM y qué puede hacer: administradores, comerciales y solo lectura." },
+  { href: "/settings/security", icon: "user", title: "Accesos y seguridad", text: "Entrar con Google o Microsoft, alta automática por dominio, quién ha entrado (y quién lo ha intentado) y las sesiones abiertas." },
   { href: "/settings/mailbox", icon: "inbox", title: "Correo, calendario y documentos", everyone: true, text: "Conecta Microsoft 365 o Google Workspace: enviar desde tu correo, registrar correos y reuniones, ofrecer tus huecos y enlazar documentos." },
   { href: "/settings/assignment", icon: "leads", title: "Reparto de leads y deals", text: "Asignar solos los leads y deals nuevos por origen, etapa, puntuación o importe, por turnos." },
   { href: "/settings/booking", icon: "activities", everyone: true, title: "Enlace de reserva", text: "Tu página pública para que los contactos elijan un hueco de tu calendario." },

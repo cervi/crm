@@ -74,7 +74,7 @@ export async function sessionUser(token: string | undefined | null): Promise<Ses
            s.id AS session_id, s.last_seen_at < now() - interval '1 hour' AS stale
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ${tokenHash(token)} AND s.expires_at > now()
-      AND u.is_active AND u.kind = 'human' AND u.password_hash IS NOT NULL`;
+      AND u.is_active AND u.kind = 'human' AND (u.password_hash IS NOT NULL OR u.sso_enabled)`;
   if (!row) return null;
   if (row.stale) await sql`UPDATE sessions SET last_seen_at = now() WHERE id = ${row.session_id}`;
   return { id: row.id, name: row.name, email: row.email, role: row.role, must_change_password: row.must_change_password };
@@ -104,7 +104,7 @@ export async function checkCredentials(emailInput: string, password: string): Pr
     return generic;
   }
   const [user] = await sql<SessionUser[]>`
-    UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = now() WHERE id = ${u.id}
+    UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = now(), last_login_method = 'password' WHERE id = ${u.id}
     RETURNING id, name, coalesce(email, '') AS email, role, must_change_password`;
   return { user };
 }

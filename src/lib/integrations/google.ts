@@ -85,13 +85,15 @@ export const google: Provider = {
   configured: () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
   missingEnv: () => [!process.env.GOOGLE_CLIENT_ID && "GOOGLE_CLIENT_ID", !process.env.GOOGLE_CLIENT_SECRET && "GOOGLE_CLIENT_SECRET"].filter(Boolean) as string[],
 
-  authorizeUrl({ state, challenge, redirectUri, loginHint }) {
-    const q = new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID ?? "", response_type: "code", redirect_uri: redirectUri,
-      scope: GOOGLE_SCOPES.join(" "), state, code_challenge: challenge, code_challenge_method: "S256",
-      // offline + consent: así Google entrega el token de renovación.
-      access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true",
-    });
+  authorizeUrl({ state, challenge, redirectUri, loginHint, login }) {
+    const q = new URLSearchParams(login
+      // Solo para entrar al CRM: quién eres, sin acceso a nada más.
+      ? { client_id: process.env.GOOGLE_CLIENT_ID ?? "", response_type: "code", redirect_uri: redirectUri, scope: "openid email profile",
+          state, code_challenge: challenge, code_challenge_method: "S256", prompt: "select_account" }
+      : { client_id: process.env.GOOGLE_CLIENT_ID ?? "", response_type: "code", redirect_uri: redirectUri,
+          scope: GOOGLE_SCOPES.join(" "), state, code_challenge: challenge, code_challenge_method: "S256",
+          // offline + consent: así Google entrega el token de renovación.
+          access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true" });
     if (loginHint) q.set("login_hint", loginHint);
     return `${AUTH_URL()}?${q}`;
   },

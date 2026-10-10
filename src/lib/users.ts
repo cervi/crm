@@ -17,13 +17,13 @@ export async function listUsers(): Promise<UserRow[]> {
 export type AdminUserRow = {
   id: string; name: string; email: string | null; role: Role; is_active: boolean;
   has_password: boolean; last_login_at: Date | null; locked: boolean; must_change_password: boolean;
-  open_deals: number; sessions: number;
+  open_deals: number; sessions: number; sso_enabled: boolean; last_login_method: string | null; failed_logins: number;
 };
 
 export async function listAllUsers(): Promise<AdminUserRow[]> {
   return sql<AdminUserRow[]>`
     SELECT u.id, u.name, u.email, u.role, u.is_active, u.password_hash IS NOT NULL AS has_password,
-           u.last_login_at, coalesce(u.locked_until > now(), false) AS locked, u.must_change_password,
+           u.last_login_at, coalesce(u.locked_until > now(), false) AS locked, u.must_change_password, u.sso_enabled, u.last_login_method, u.failed_logins,
            (SELECT count(*)::int FROM deals d WHERE d.owner_id = u.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_deals,
            (SELECT count(*)::int FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS sessions
     FROM users u WHERE u.kind = 'human'
@@ -64,7 +64,7 @@ export async function createUser(input: Record<string, unknown>): Promise<string
 async function adminsLeft(exceptId: string): Promise<number> {
   const [r] = await sql<{ n: number }[]>`
     SELECT count(*)::int AS n FROM users
-    WHERE kind = 'human' AND role = 'admin' AND is_active AND password_hash IS NOT NULL AND id <> ${exceptId}`;
+    WHERE kind = 'human' AND role = 'admin' AND is_active AND (password_hash IS NOT NULL OR sso_enabled) AND id <> ${exceptId}`;
   return r.n;
 }
 

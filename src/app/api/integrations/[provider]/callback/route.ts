@@ -3,6 +3,9 @@ import { isProviderKey, PROVIDERS, ProviderError, providerMessage } from "@/lib/
 import { apiClient } from "@/lib/integrations/http";
 import { saveConnection } from "@/lib/mailbox";
 import { back, COOKIE, COOKIE_PATH, openState, publicOrigin } from "../shared";
+import { createSession, SESSION_COOKIE } from "@/lib/session";
+import { ssoLogin } from "@/lib/sso";
+import { clientInfo } from "@/lib/esign-request";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +22,33 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   };
   if (!isProviderKey(key)) return done({ error: "Proveedor no válido." });
   const provider = PROVIDERS[key];
+
+  // Entrar al CRM con Google o Microsoft.
+  if (saved?.purpose === "login") {
+    const toLogin = (error: string) => {
+      const res = NextResponse.redirect(`${origin}/login?${new URLSearchParams({ error })}`);
+      res.cookies.set(COOKIE, "", { path: COOKIE_PATH, maxAge: 0 });
+      return res;
+    };
+    const code = url.searchParams.get("code");
+    if (url.searchParams.get("error")) return toLogin(`${provider.label} no ha confirmado tu cuenta. Vuelve a intentarlo.`);
+    if (saved.provider !== key || !code || url.searchParams.get("state") !== saved.state) return toLogin("La entrada ha caducado. Vuelve a intentarlo.");
+    try {
+      const tokens = await provider.exchangeCode(code, saved.verifier, saved.redirect, true);
+      const client = apiClient({ provider: provider.label, tokens, refresh: provider.refresh, save: async () => {} });
+      const me = await provider.profile(client);
+      const { ip, ua } = clientInfo(req.headers);
+      const r = await ssoLogin(key, me.email, me.displayName, ip, ua);
+      if ("error" in r) return toLogin(r.error);
+      const s = await createSession(r.userId, ua);
+      const res = NextResponse.redirect(`${origin}${saved.next || "/"}`);
+      res.cookies.set(COOKIE, "", { path: COOKIE_PATH, maxAge: 0 });
+      res.cookies.set(SESSION_COOKIE, s.token, { httpOnly: true, sameSite: "lax", path: "/", expires: s.expires, secure: origin.startsWith("https://") });
+      return res;
+    } catch (err) {
+      return toLogin(err instanceof ProviderError || !(err instanceof Error) ? providerMessage(err) : err.message);
+    }
+  }
 
   if (url.searchParams.get("error")) {
     const msg = url.searchParams.get("error_description")?.split("\n")[0] ?? url.searchParams.get("error")!;

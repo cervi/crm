@@ -2196,3 +2196,28 @@ code.hash { font-size: 11px; word-break: break-all; }
 .attach-acts { display: inline-flex; gap: 6px; flex: none; }
 .doc-viewer .doc-image { display: grid; place-items: center; }
 .doc-viewer .doc-image img { max-width: 100%; box-shadow: var(--shadow-pop); }
+
+/* Entrada */
+.bare:has(.login) { padding: 0; place-items: stretch; }
+.login { display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 520px); min-height: 100vh; width: 100%; }
+.login-side { color: #fff; padding: 40px 48px; display: flex; flex-direction: column; justify-content: space-between; gap: 30px;
+  background: radial-gradient(800px 300px at 0% 0%, rgba(255,255,255,.16), transparent 60%),
+              radial-gradient(500px 300px at 100% 100%, color-mix(in srgb, var(--series-5) 60%, transparent), transparent 70%),
+              linear-gradient(130deg, #1f4fd0 0%, #5b4bd8 55%, #8a4fd1 100%); }
+.login-side h2 { font-size: clamp(28px, 3vw, 40px); letter-spacing: -.02em; margin: 0 0 22px; max-width: 16ch; color: #fff; }
+.login-side ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; font-size: 16px; }
+.login-side li { display: flex; align-items: center; gap: 10px; }
+.login-side li svg { width: 20px; height: 20px; stroke: #fff; padding: 3px; border-radius: 50%; background: rgba(255,255,255,.18); }
+.login-side .meta { color: rgba(255,255,255,.75); }
+.auth-brand.light { color: #fff; }
+.login .login-card { align-self: center; justify-self: center; width: min(400px, calc(100% - 32px)); box-shadow: none; border: 0; background: transparent; }
+.login .login-card h1 { font-size: 26px; }
+.sso-buttons { display: grid; gap: 10px; }
+.sso-btn { justify-content: center; gap: 10px; height: 44px; font-weight: 600; }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.admin-login summary { cursor: pointer; }
+@media (max-width: 860px) {
+  .login { grid-template-columns: 1fr; }
+  .login-side { display: none; }
+}

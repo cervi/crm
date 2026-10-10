@@ -46,8 +46,9 @@ export type Provider = {
   meeting: string;
   configured(): boolean;
   missingEnv(): string[];
-  authorizeUrl(o: { state: string; challenge: string; redirectUri: string; loginHint?: string }): string;
-  exchangeCode(code: string, verifier: string, redirectUri: string): Promise<Tokens>;
+  /** `login`: solo para entrar al CRM (nombre y correo), sin acceso al correo ni al calendario. */
+  authorizeUrl(o: { state: string; challenge: string; redirectUri: string; loginHint?: string; login?: boolean }): string;
+  exchangeCode(code: string, verifier: string, redirectUri: string, login?: boolean): Promise<Tokens>;
   refresh(refreshToken: string): Promise<Tokens>;
   profile(c: ApiClient): Promise<{ email: string; displayName: string | null; scheduling: Partial<Scheduling> }>;
   /** Envía un correo; con `html`, va también en HTML (con el texto como alternativa donde se pueda). */

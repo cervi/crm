@@ -19,6 +19,8 @@ const GRAPH = () => (process.env.MS_GRAPH_URL ?? "https://graph.microsoft.com/v1
 const TENANT = () => process.env.MS_TENANT_ID || "organizations";
 const TOKEN_URL = () => `${LOGIN()}/${TENANT()}/oauth2/v2.0/token`;
 const NAME = "Microsoft";
+/** Para entrar al CRM basta con saber quién eres. */
+const LOGIN_SCOPES = "openid email profile User.Read";
 
 const token = (body: Record<string, string>) => tokenRequest(NAME, TOKEN_URL(), {
   client_id: process.env.MS_CLIENT_ID ?? "", client_secret: process.env.MS_CLIENT_SECRET ?? "",
@@ -64,15 +66,16 @@ export const microsoft: Provider = {
   configured: () => Boolean(process.env.MS_CLIENT_ID && process.env.MS_CLIENT_SECRET),
   missingEnv: () => [!process.env.MS_CLIENT_ID && "MS_CLIENT_ID", !process.env.MS_CLIENT_SECRET && "MS_CLIENT_SECRET"].filter(Boolean) as string[],
 
-  authorizeUrl({ state, challenge, redirectUri, loginHint }) {
+  authorizeUrl({ state, challenge, redirectUri, loginHint, login }) {
     const q = new URLSearchParams({
       client_id: process.env.MS_CLIENT_ID ?? "", response_type: "code", redirect_uri: redirectUri, response_mode: "query",
-      scope: MICROSOFT_SCOPES.join(" "), state, code_challenge: challenge, code_challenge_method: "S256", prompt: "select_account",
+      scope: login ? LOGIN_SCOPES : MICROSOFT_SCOPES.join(" "), state, code_challenge: challenge, code_challenge_method: "S256", prompt: "select_account",
     });
     if (loginHint) q.set("login_hint", loginHint);
     return `${LOGIN()}/${TENANT()}/oauth2/v2.0/authorize?${q}`;
   },
-  exchangeCode: (code, verifier, redirectUri) => token({ grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: redirectUri }),
+  exchangeCode: (code, verifier, redirectUri, login) => token({ grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: redirectUri,
+                                                                ...(login ? { scope: LOGIN_SCOPES } : {}) }),
   refresh: (refreshToken) => token({ grant_type: "refresh_token", refresh_token: refreshToken }),
 
   async profile(c) {
