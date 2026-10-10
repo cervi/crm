@@ -66,3 +66,15 @@ export const FUNNEL_STAGES = [
 export const STATUS_LABELS: Record<string, string> = {
   open: "Abierto", won: "Ganado", lost: "Perdido", converted: "Convertido", archived: "Archivado",
 };
+
+/** Orígenes que llegan con nombre interno (p. ej. de Pipedrive), en castellano. */
+const SOURCE_LABELS: Record<string, string> = {
+  manuallycreated: "Creado a mano", manual: "Creado a mano", api: "Integración (API)", import: "Importado", importer: "Importado",
+  webforms: "Formulario web", webform: "Formulario web", leadbooster: "Chatbot (LeadBooster)", prospector: "Prospector",
+  marketplace: "Marketplace", workflowautomation: "Automatización", livechat: "Chat en directo", campaigns: "Campañas",
+  messagingintegration: "Mensajería", dealconversion: "Desde un lead", leadconversion: "Desde un lead",
+};
+export function sourceLabel(source: string | null | undefined): string | null {
+  if (!source) return null;
+  return SOURCE_LABELS[source.replace(/[\s_-]/g, "").toLowerCase()] ?? source;
+}

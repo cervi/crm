@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TRASH_DAYS } from "@/lib/trash";
 import { trashAction } from "@/app/actions/trash";
 import { ScoreBadge, ScoreReasons } from "@/components/ScoreBadge";
 import { FitBadge } from "@/components/FitBadge";
@@ -58,7 +59,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <ActionForm action={archiveLeadAction.bind(null, id)} submitLabel="Archivar" secondary className="form inline" />
         )}
         <ActionForm action={trashAction.bind(null, "lead", id)} submitLabel="Borrar lead" pendingLabel="…" secondary className="form inline"
-          confirm="El lead irá a la papelera; desde allí se puede recuperar durante un tiempo." />
+          confirm={`El lead irá a la papelera; desde allí se puede recuperar durante ${TRASH_DAYS} días.`} />
       </div>
 
       <div className="split">

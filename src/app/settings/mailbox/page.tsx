@@ -29,7 +29,7 @@ async function SlotsPreview({ conn }: { conn: Connection }) {
       ? <pre className="slots-preview">{formatSlots(slots, conn.scheduling.timezone)}</pre>
       : <p className="muted">No hay huecos libres con estas preferencias en los próximos {conn.scheduling.horizon_days} días.</p>;
   } catch (err) {
-    return <p className="tone-bad">{err instanceof Error ? err.message : "No se pudo leer el calendario."}</p>;
+    return <p className="tone-bad">No hemos podido leer tu calendario. Prueba a reconectar la cuenta.{err instanceof Error && <span className="meta"> ({err.message})</span>}</p>;
   }
 }
 
@@ -91,28 +91,6 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
       {sp.connected && <p className="callout good">{sp.outbound ? "Buzón de outbound conectado" : "Cuenta conectada"}: {sp.connected}.</p>}
       {sp.error && <p className="callout bad" role="alert">{sp.error}</p>}
 
-      <section className="panel">
-        <h2>Proveedores</h2>
-        <ul className="provider-list">
-          {PROVIDER_LIST.map((p) => {
-            const missing = [...p.missingEnv(), ...(encryption ? [] : ["TOKEN_ENCRYPTION_KEY"])];
-            return (
-              <li key={p.key}>
-                <div className="provider-row">
-                  <strong>{p.label}</strong>
-                  <span className="meta">{p.mail} · {p.calendar} · {p.drive}</span>
-                  <span className={`badge ${missing.length ? "" : "won"}`}>{missing.length ? "Sin activar" : "Activo"}</span>
-                </div>
-                <details>
-                  <summary className="meta">Cómo activarlo{missing.length > 0 && ` (falta: ${missing.join(", ")})`}</summary>
-                  <SetupSteps provider={p} redirect={redirectUri(p.key, origin)} />
-                  {!encryption && <p className="meta">Además, <code>TOKEN_ENCRYPTION_KEY</code>: una clave aleatoria de 32 caracteres o más para cifrar los accesos guardados. Y <code>APP_URL</code> con la dirección pública del CRM.</p>}
-                </details>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
 
       <section aria-label={me.role === "admin" ? "Cuentas del equipo" : "Tu cuenta"} className="settings-block">
         <div className="block-head">
@@ -135,10 +113,10 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                       : conn.status === "active" ? <span className="badge won">Conectada</span>
                       : <span className="badge lost" title={conn.last_error ?? undefined}>Hay que reconectar</span>}</td>
                     <td className="nowrap">{conn ? (conn.mail_synced_at || conn.calendar_synced_at ? dateTime(conn.calendar_synced_at ?? conn.mail_synced_at) : <span className="muted">Todavía no</span>) : <span className="muted">—</span>}</td>
-                    <td>{sig ? <span className="badge won">Puesta</span> : <span className="muted">Sin firma</span>}</td>
+                    <td>{sig ? "Puesta" : <span className="muted">Sin firma</span>}</td>
                     <td className="row-actions">
                       {!conn && available.length > 0 && (u.id === me.id || me.role === "admin") && available.map((ap) => (
-                        <a key={ap.key} className={u.id === me.id ? "btn small" : "btn secondary small"} href={`/api/integrations/${ap.key}/connect?user=${u.id}`}>Conectar {ap.label}</a>
+                        <a key={ap.key} className="btn secondary small" href={`/api/integrations/${ap.key}/connect?user=${u.id}`}>Conectar {ap.label}</a>
                       ))}
                       {conn && conn.status !== "active" && PROVIDERS[conn.provider].configured() && encryption && (
                         <a className="btn small" href={`/api/integrations/${conn.provider}/connect?user=${u.id}`}>Reconectar</a>
@@ -146,7 +124,12 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                       <Drawer label="Configurar" title={u.name} buttonTitle={`Configurar la cuenta de ${u.name}`}
                               subtitle={conn && p ? `${p.label} · ${conn.email}` : "Sin cuenta conectada"}
                               defaultOpen={false}>
-                        {conn?.last_error && <p className="callout bad" style={{ marginTop: 0 }}>{conn.last_error}</p>}
+                        {conn?.last_error && (
+                          <div className="callout bad" style={{ marginTop: 0 }}>
+                            No hemos podido sincronizar esta cuenta. Prueba a reconectarla; si sigue fallando, avisa a un administrador.
+                            <details><summary className="meta">Detalle técnico</summary><code>{conn.last_error}</code></details>
+                          </div>
+                        )}
                         <section className="drawer-section">
                           <h3>Firma de los correos</h3>
                           <ActionForm action={saveSignatureAction.bind(null, u.id)} submitLabel="Guardar firma">
@@ -194,7 +177,7 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                             <h3>Conexión</h3>
                             <div className="head-actions" style={{ marginLeft: 0 }}>
                               {conn.status === "active" && <ActionForm action={syncMailboxAction.bind(null, u.id)} submitLabel="Sincronizar ahora" pendingLabel="Sincronizando…" secondary className="form inline" />}
-                              <ActionForm action={disconnectMailboxAction.bind(null, u.id)} submitLabel="Desconectar la cuenta" pendingLabel="…" secondary className="form inline"
+                              <ActionForm action={disconnectMailboxAction.bind(null, u.id)} submitLabel="Desconectar la cuenta" pendingLabel="Desconectando…" secondary className="form inline"
                                           confirm={`¿Desconectar la cuenta de ${u.name}? Los correos dejarán de registrarse y de salir desde su buzón hasta que la vuelva a conectar.`} />
                             </div>
                           </section>
@@ -207,17 +190,41 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
             </tbody>
           </table>
         </div>
-        {available.length === 0 && <p className="meta">Para conectar cuentas, activa antes Microsoft 365 o Google Workspace en «Proveedores».</p>}
+        {available.length === 0 && <p className="meta">{me.role === "admin" ? "Para conectar cuentas, activa antes Microsoft 365 o Google Workspace en «Proveedores» (abajo)." : "Todavía no se puede conectar ninguna cuenta: pídeselo a un administrador (tiene que activar Microsoft 365 o Google Workspace)."}</p>}
       </section>
+
+      {me.role === "admin" && (
+      <section className="panel settings-block" aria-label="Proveedores">
+          <h2>Proveedores</h2>
+          <p className="meta" style={{ marginTop: 0 }}>Se activan una vez para toda la empresa; después cada persona conecta su cuenta.</p>
+          <ul className="provider-list">
+            {PROVIDER_LIST.map((p) => {
+              const missing = [...p.missingEnv(), ...(encryption ? [] : ["TOKEN_ENCRYPTION_KEY"])];
+              return (
+                <li key={p.key}>
+                  <div className="provider-row">
+                    <strong>{p.label}</strong>
+                    <span className="meta">{p.mail} · {p.calendar} · {p.drive}</span>
+                    <span className={`badge ${missing.length ? "" : "won"}`}>{missing.length ? "Sin activar" : "Activo"}</span>
+                  </div>
+                  <details>
+                    <summary className="meta">Cómo activarlo{missing.length > 0 && ` (falta: ${missing.join(", ")})`}</summary>
+                    <SetupSteps provider={p} redirect={redirectUri(p.key, origin)} />
+                    {!encryption && <p className="meta">Además, <code>TOKEN_ENCRYPTION_KEY</code>: una clave aleatoria de 32 caracteres o más para cifrar los accesos guardados. Y <code>APP_URL</code> con la dirección pública del CRM.</p>}
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {me.role === "admin" && (
         <section aria-label="Buzones de outbound" className="settings-block">
           <div className="block-head row">
             <div>
               <h2>Buzones de outbound</h2>
-              <p className="meta" title="Si una campaña rebota o la marcan como spam, vuestro dominio de siempre no se resiente. Cada buzón empieza enviando 10 correos al día y sube 5 cada día hasta su límite; si rebota más del 5 % en una semana, se pausa solo y te avisa.">
-                Para las campañas, usad buzones de dominios secundarios (p. ej. <code>aikit-mail.com</code>), nunca el principal. <Icon name="info" />
-              </p>
+              <p className="meta">Para campañas, usad buzones de dominios secundarios, nunca el principal: si algo rebota o se marca como spam, vuestro dominio de siempre no se resiente. Cada buzón empieza con 10 correos al día y sube 5 al día hasta su límite; si rebota más del 5 % en una semana, se pausa solo y te avisa.</p>
             </div>
             <div className="head-actions">
               {available.map((p) => (

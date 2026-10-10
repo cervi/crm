@@ -6,7 +6,7 @@ import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { FitBadge } from "@/components/FitBadge";
-import { date, FUNNEL_STAGES, STATUS_LABELS } from "@/lib/format";
+import { date, FUNNEL_STAGES, STATUS_LABELS, sourceLabel } from "@/lib/format";
 import { DataTable } from "@/components/DataTable";
 import { requireUser } from "@/lib/auth";
 
@@ -95,7 +95,7 @@ export default async function LeadsPage({ searchParams }: {
             score: <ScoreBadge score={l.score} reasons={l.score_reasons} />,
             fit: <FitBadge fit={l.fit} reason={l.fit_reason} />,
             org: l.organization_id ? <Link href={`/organizations/${l.organization_id}`}>{l.organization_name}</Link> : null,
-            source: l.source ? <>{l.source}{l.source_detail && <div className="meta">{l.source_detail}</div>}</> : null,
+            source: l.source ? <>{sourceLabel(l.source)}{l.source_detail && <div className="meta">{l.source_detail}</div>}</> : null,
             utm: l.utm?.utm_campaign ?? l.utm?.utm_source ?? null,
             funnel: l.funnel_stage ? <span className={`badge ${l.funnel_stage}`}>{l.funnel_stage.toUpperCase()}</span> : null,
             tags: l.tags.length ? l.tags.map((t) => <span key={t} className="badge" style={{ marginRight: 4 }}>{t}</span>) : null,

@@ -222,9 +222,8 @@ await step("ajustes: no deja eliminar una fase con deals", async () => {
   await page.goto("/settings/pipelines/10000000-0000-0000-0000-000000000003");
   await page.getByRole("button", { name: "Editar la fase Necesidad detectada" }).click();
   const dlg = page.locator("dialog[open]");
-  await dlg.getByRole("button", { name: "Eliminar la fase" }).click();
-  await dlg.getByRole("button", { name: "Sí, eliminar la fase" }).click();
-  await dlg.getByRole("alert").filter({ hasText: "Muévelos a otra fase" }).waitFor();
+  await dlg.getByText(/muévelos antes a otra fase/).waitFor();
+  expect(await dlg.getByRole("button", { name: "Eliminar la fase" }).count() === 0, "deja intentar eliminar una fase con deals");
   await page.keyboard.press("Escape");
 });
 
@@ -1009,7 +1008,7 @@ await step("mención en una nota avisa; borrar un lead y recuperarlo; fusionar d
 
 await step("dar acceso a un comercial, que entra, cambia su contraseña temporal y no ve los ajustes de admin", async () => {
   await page.goto("/settings/users");
-  await page.getByRole("button", { name: "Editar a Customer Success" }).click();
+  await page.getByRole("button", { name: "Dar acceso a Customer Success" }).click();
   const card = page.getByRole("dialog", { name: "Customer Success" });
   await card.getByLabel("Contraseña inicial").fill("temporal-cs-12345");
   await card.getByRole("button", { name: "Dar acceso" }).click();

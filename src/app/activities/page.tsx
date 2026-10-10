@@ -118,8 +118,9 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
     listUsers(), activityTypes(),
   ]);
   // Si no tengo nada pendiente (p. ej. el administrador), enseño las del equipo.
-  if (!sp.owner && board && board.counts.todo === 0 && board.items.length === 0) {
-    owner = null;
+  let showingTeam = false;
+  if (!sp.owner && me.role === "admin" && board && board.counts.todo === 0 && board.items.length === 0) {
+    owner = null; showingTeam = true;
     board = await listActivityBoard({ period, ownerId: null, type });
   }
   const link = (patch: Record<string, string | null>) => {
@@ -179,6 +180,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
             </nav>
           </div>
 
+          {showingTeam && <p className="callout" style={{ margin: "0 0 12px" }}>No tienes nada pendiente: te enseñamos las del equipo.</p>}
           <ActivityBulkBar />
           <DataTable id="activities" selectable
             empty={period === "done" ? "Todavía no hay actividades hechas." : "Nada pendiente aquí. 🎉"}
@@ -219,7 +221,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
                   org: a.organization_id ? <Link href={`/organizations/${a.organization_id}`}>{a.organization_name}</Link> : null,
                   due: period === "done"
                     ? (a.done_at ? dateTime(a.done_at) : null)
-                    : <span className={w.overdue ? "tone-bad" : undefined} title={a.due_at ? dateTime(a.due_at) : undefined}>{w.text}</span>,
+                    : <span className={w.overdue ? "tone-bad" : undefined} title={a.due_at ? dateTime(a.due_at) : undefined}>{w.text}{w.overdue && <span className="overdue-tag"> · vencida</span>}</span>,
                   duration: a.duration_minutes ? `${a.duration_minutes} min` : null,
                   outcome: a.outcome ? <span className={a.outcome === "no_show" ? "badge lost" : "badge won"}>{outcomeLabel(a.outcome)}</span> : null,
                   type: label(a.type),

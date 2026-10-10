@@ -605,7 +605,7 @@ details.lose > summary::-webkit-details-marker { display: none; }
 .deal-title-block h1 { font-size: 24px; }
 .deal-sub { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px; color: var(--text-2); }
 .deal-sub .owner { display: inline-flex; align-items: center; gap: 6px; }
-.deal-actions { display: flex; gap: 8px; align-items: center; }
+.deal-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .stage-days { font-weight: 650; margin-right: 6px; opacity: .85; }
 .deal-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px; align-items: start; }
 @media (max-width: 900px) { .deal-layout { grid-template-columns: 1fr; } }
@@ -1687,3 +1687,9 @@ tr.row-muted td { color: var(--muted); }
 .switch-row { display: inline-flex; align-items: center; gap: 10px; }
 .settings-inline { display: grid; gap: 4px; margin-bottom: 20px; }
 .settings-inline .meta { margin: 0; max-width: 80ch; }
+.overdue-tag { font-weight: 600; }
+.quick-error { display: block; font-size: 11.5px; color: var(--bad); max-width: 140px; white-space: normal; }
+@media (max-width: 720px) {
+  .quick-done { position: relative; }
+  .quick-done::after { content: ""; position: absolute; inset: -11px; }
+}

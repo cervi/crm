@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Botón de envío que pide confirmación en el sitio (sin ventanas del navegador)
@@ -8,6 +8,14 @@ import { useState } from "react";
  */
 export function ConfirmButton({ label, confirm, className = "btn secondary small", ariaLabel }: { label: string; confirm: string; className?: string; ariaLabel?: string }) {
   const [armed, setArmed] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!armed) return;
+    cancelRef.current?.focus();
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setArmed(false); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [armed]);
   if (!armed) {
     return <button type="button" className={className} aria-label={ariaLabel} onClick={() => setArmed(true)}>{label}</button>;
   }
@@ -15,7 +23,7 @@ export function ConfirmButton({ label, confirm, className = "btn secondary small
     <span className="confirm-inline" role="alert">
       <span>{confirm}</span>
       <button type="submit" className="btn danger small">Sí, {label.charAt(0).toLowerCase()}{label.slice(1)}</button>
-      <button type="button" className="btn secondary small" onClick={() => setArmed(false)}>Cancelar</button>
+      <button type="button" ref={cancelRef} className="btn secondary small" onClick={() => setArmed(false)}>Cancelar</button>
     </span>
   );
 }

@@ -23,7 +23,7 @@ import { DealBulkBar } from "@/components/DealBulkBar";
 import { Icon } from "@/components/Icon";
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
-import { date, dateTime, money, STATUS_LABELS } from "@/lib/format";
+import { date, dateTime, money, STATUS_LABELS, sourceLabel } from "@/lib/format";
 import { Board } from "@/components/Board";
 import { instructionCounts } from "@/lib/stage-agents";
 import { PipelineToolbar } from "@/components/PipelineToolbar";
@@ -203,7 +203,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
                   owner: r.owner_name,
                   status: <span className={`badge ${r.status}`}>{STATUS_LABELS[r.status]}</span>,
                   created: date(r.created_at),
-                  source: r.source,
+                  source: sourceLabel(r.source),
                   health: r.status === "open" ? <HealthBadge score={r.health} compact /> : null,
                   ...Object.fromEntries(defs.map((d) => [`cf:${d.key}`, formatCustomValue(d, r.custom?.[d.key], users) || null])),
                 },

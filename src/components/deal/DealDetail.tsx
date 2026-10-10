@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TRASH_DAYS } from "@/lib/trash";
 import { ExportLink } from "../ExportLink";
 import { dealParticipants, getDeal, listLostReasons, stageHistory } from "@/lib/deals";
 import { listStages } from "@/lib/pipelines";
@@ -19,7 +20,7 @@ import { regenerateBriefAction } from "@/app/actions/ai";
 import { addDocumentAction, removeDocumentAction } from "@/app/actions/documents";
 import { DrivePicker } from "./DrivePicker";
 import { sendDealEmailAction } from "@/app/actions/mailbox";
-import { OUTCOMES, activityLabel, date, dateTime, isSessionType, money, STATUS_LABELS } from "@/lib/format";
+import { OUTCOMES, activityLabel, date, dateTime, isSessionType, money, STATUS_LABELS, sourceLabel } from "@/lib/format";
 import { activeActivityTypes } from "@/lib/activity-types";
 import {
   addParticipantAction, loseDealAction, moveDealFormAction, removeParticipantAction, reopenDealAction, winDealAction,
@@ -187,8 +188,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               <ActionForm action={reopenDealAction.bind(null, dealId)} submitLabel="Reabrir" secondary className="form inline" />
             )}
             <Link href={`/deals/${dealId}/edit`} className="btn secondary">Editar</Link>
-            <ActionForm action={trashAction.bind(null, "deal", dealId)} submitLabel="Borrar deal" pendingLabel="…" secondary className="form inline deal-trash"
-                        confirm="El deal irá a la papelera; desde allí se puede recuperar durante un tiempo." />
+            <ActionForm action={trashAction.bind(null, "deal", dealId)} submitLabel="Borrar deal" pendingLabel="Borrando…" secondary className="form inline deal-trash"
+                        confirm={`El deal irá a la papelera; desde allí se puede recuperar durante ${TRASH_DAYS} días.`} />
           </div>
         </div>
 
@@ -233,7 +234,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               <div className="dl-row"><dt>Empresa</dt><dd>{deal.organization_id ? <Link href={`/organizations/${deal.organization_id}`}>{deal.organization_name}</Link> : "—"}</dd></div>
               <div className="dl-row"><dt>Contacto</dt><dd>{primary ? <Link href={`/persons/${primary.person_id}`}>{primary.full_name}</Link> : "—"}</dd></div>
               <div className="dl-row"><dt>Cierre previsto</dt><dd>{date(deal.expected_close_date)}</dd></div>
-              <div className="dl-row"><dt>Origen</dt><dd>{deal.source ?? "—"}</dd></div>
+              <div className="dl-row"><dt>Origen</dt><dd>{sourceLabel(deal.source) ?? "—"}</dd></div>
               {lead && <div className="dl-row"><dt>Lead</dt><dd><Link href={`/leads/${lead.id}`}>{lead.source_detail ?? lead.source ?? "Ver lead"}</Link></dd></div>}
               <div className="dl-row"><dt>Creado</dt><dd>{date(deal.created_at)}</dd></div>
             </dl>

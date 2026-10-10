@@ -49,7 +49,7 @@ export default async function UsersPage() {
         <div className="head-actions">
           <Drawer label={<><Icon name="plus" />Dar acceso a alguien</>} buttonClass="btn" title="Dar acceso a alguien"
                   subtitle="Tendrá que cambiar la contraseña la primera vez que entre.">
-            <ActionForm action={createUserAction} submitLabel="Crear usuario" resetOnSuccess>
+            <ActionForm action={createUserAction} submitLabel="Dar acceso" resetOnSuccess>
               <label className="field"><span className="label">Nombre *</span><input name="name" required /></label>
               <label className="field"><span className="label">Email *</span><input name="email" type="email" required /></label>
               <RoleSelect />
@@ -82,29 +82,41 @@ export default async function UsersPage() {
                     </span>
                   </td>
                   <td>{ROLE_LABELS[u.role]}</td>
-                  <td><span className={`badge ${a.cls}`} title={a.hint}>{a.label}</span></td>
+                  <td><span className={`badge ${a.cls}`} title={a.hint}>{a.label}</span>{(a.label === "Sin acceso" || a.label === "Bloqueado") && <div className="meta">{a.label === "Bloqueado" ? "Ponle una contraseña temporal" : "Aún no puede entrar"}</div>}</td>
                   <td className="nowrap">{u.last_login_at ? dateTime(u.last_login_at) : <span className="muted">Nunca</span>}</td>
                   <td className="num">{u.open_deals || <span className="muted">—</span>}</td>
                   <td className="row-actions">
-                    <Drawer label="Editar" title={u.name} subtitle={`${u.email ?? "sin email"} · ${ROLE_LABELS[u.role]}`} buttonTitle={`Editar a ${u.name}`}>
-                      <section className="drawer-section">
-                        <h3>Datos y rol</h3>
-                        <ActionForm action={updateUserAction.bind(null, u.id)} submitLabel="Guardar cambios">
-                          <label className="field"><span className="label">Nombre *</span><input name="name" required defaultValue={u.name} /></label>
-                          <label className="field"><span className="label">Email *</span><input name="email" type="email" required defaultValue={u.email ?? ""} /></label>
-                          <RoleSelect value={u.role} />
-                          <label className="checkbox"><input type="checkbox" name="is_active" defaultChecked={u.is_active} disabled={u.id === me.id} />Puede entrar al CRM (activo)</label>
-                          {u.id === me.id && <input type="hidden" name="is_active" value="on" />}
-                        </ActionForm>
-                      </section>
-                      <section className="drawer-section">
-                        <h3>{u.has_password ? "Contraseña" : "Dar acceso"}</h3>
-                        <p className="meta" style={{ marginTop: 0 }}>{u.has_password ? "Pon una contraseña temporal si la ha olvidado o está bloqueado: tendrá que cambiarla al entrar y se cierran sus sesiones." : "Ponle una contraseña inicial para que pueda entrar. Tendrá que cambiarla al entrar."}</p>
-                        <ActionForm action={resetPasswordAction.bind(null, u.id)} submitLabel={u.has_password ? "Poner contraseña temporal" : "Dar acceso"} secondary resetOnSuccess>
-                          <label className="field"><span className="label">{u.has_password ? "Contraseña temporal *" : "Contraseña inicial *"}</span>
-                            <input name="password" type="text" required minLength={10} autoComplete="off" /></label>
-                        </ActionForm>
-                      </section>
+                    <Drawer label={u.has_password || !u.is_active ? "Editar" : "Dar acceso"} buttonClass={u.has_password || !u.is_active ? "btn secondary small" : "btn small"}
+                            title={u.name} subtitle={`${u.email ?? "sin email"} · ${ROLE_LABELS[u.role]}`} buttonTitle={`${u.has_password || !u.is_active ? "Editar" : "Dar acceso"} a ${u.name}`}>
+                      {(() => {
+                        const access = (
+                          <section className="drawer-section" key="access">
+                            <h3>{u.has_password ? "Contraseña" : "Dar acceso"}</h3>
+                            <p className="meta" style={{ marginTop: 0 }}>{u.has_password ? "Pon una contraseña temporal si la ha olvidado o está bloqueado: tendrá que cambiarla al entrar y se cierran sus sesiones." : "Ponle una contraseña inicial para que pueda entrar. Pásasela por un canal seguro: tendrá que cambiarla al entrar."}</p>
+                            <ActionForm action={resetPasswordAction.bind(null, u.id)} submitLabel={u.has_password ? "Poner contraseña temporal" : "Dar acceso"} secondary={u.has_password} resetOnSuccess>
+                              <label className="field"><span className="label">{u.has_password ? "Contraseña temporal *" : "Contraseña inicial *"}</span>
+                                <input name="password" type="text" required minLength={10} autoComplete="off" />
+                                <span className="meta">Mínimo 10 caracteres.</span></label>
+                            </ActionForm>
+                          </section>
+                        );
+                        const data = (
+                          <section className="drawer-section" key="data">
+                            <h3>Datos y rol</h3>
+                            <ActionForm action={updateUserAction.bind(null, u.id)} submitLabel="Guardar cambios" secondary={!u.has_password}>
+                              <label className="field"><span className="label">Nombre *</span><input name="name" required defaultValue={u.name} /></label>
+                              <label className="field"><span className="label">Email *</span><input name="email" type="email" required defaultValue={u.email ?? ""} /></label>
+                              <RoleSelect value={u.role} />
+                              <label className="checkbox"><input type="checkbox" name="is_active" defaultChecked={u.is_active} disabled={u.id === me.id} />
+                                {u.has_password ? "Cuenta activa (puede entrar al CRM)" : "Cuenta activa (aún no puede entrar: falta darle acceso)"}
+                                {u.id === me.id && <span className="meta"> · no puedes desactivarte a ti mismo</span>}</label>
+                              {u.id === me.id && <input type="hidden" name="is_active" value="on" />}
+                              <p className="meta" style={{ margin: 0 }}>Si la desactivas, dejará de poder entrar y se cerrarán sus sesiones. Sus deals se conservan.</p>
+                            </ActionForm>
+                          </section>
+                        );
+                        return u.has_password ? [data, access] : [access, data];
+                      })()}
                       {u.sessions > 0 && u.id !== me.id && (
                         <section className="drawer-section">
                           <h3>Sesiones abiertas</h3>

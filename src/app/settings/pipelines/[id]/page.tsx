@@ -101,9 +101,12 @@ export default async function PipelineSettingsPage({ params }: { params: Promise
                     </section>
                     <section className="drawer-section">
                       <h3>Eliminar la fase</h3>
-                      <p className="meta" style={{ margin: 0 }}>{s.deals ? `Tiene ${s.deals} deal${s.deals === 1 ? "" : "s"}: muévelos antes a otra fase.` : "No tiene deals."}</p>
-                      <ActionForm action={deleteStageAction.bind(null, s.id)} submitLabel="Eliminar la fase" secondary
-                                  confirm={`Se eliminará la fase «${s.name}». No se puede deshacer.`} />
+                      {s.deals ? (
+                        <p className="meta" style={{ margin: 0 }}>Tiene {s.deals} deal{s.deals === 1 ? "" : "s"}: muévelos antes a otra fase desde el <Link href={`/pipelines/${id}`}>tablero</Link> y luego podrás eliminarla.</p>
+                      ) : (
+                        <ActionForm action={deleteStageAction.bind(null, s.id)} submitLabel="Eliminar la fase" secondary
+                                    confirm={`Se eliminará la fase «${s.name}». Si tuvo deals en el pasado, se desactiva para conservar la historia.`} />
+                      )}
                     </section>
                   </Drawer>
                 </td>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TRASH_DAYS } from "@/lib/trash";
 import { notFound } from "next/navigation";
 import { trashAction } from "@/app/actions/trash";
 import { changeOwnerAction, mergeWithAction, sendContactEmailAction } from "@/app/actions/contact";
@@ -102,7 +103,7 @@ export default async function OrganizationPage({ params, searchParams }: { param
               <a href="#fusionar">Fusionar con otra empresa</a>
               <div className="dropdown-sep" />
               <ActionForm action={trashAction.bind(null, "organization", id)} submitLabel="Borrar empresa" pendingLabel="…" secondary className="form inline"
-                confirm="Irá a la papelera; sus contactos y deals se conservan y se puede recuperar durante un tiempo." />
+                confirm={`Irá a la papelera; sus contactos y deals se conservan y se puede recuperar durante ${TRASH_DAYS} días.`} />
             </div>
           </details>
         </nav>

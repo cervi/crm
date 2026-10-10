@@ -28,6 +28,15 @@ export function ActionForm({ action, children, submitLabel, pendingLabel, classN
   const [, startTransition] = useTransition();
   const ref = useRef<HTMLFormElement>(null);
   const [armed, setArmed] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  // Al pedir confirmación, el foco va a «Cancelar» (dos Intro seguidos no confirman) y Esc cancela.
+  useEffect(() => {
+    if (!armed) return;
+    cancelRef.current?.focus();
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setArmed(false); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [armed]);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -60,7 +69,7 @@ export function ActionForm({ action, children, submitLabel, pendingLabel, classN
         <button type="submit" disabled={pending} className={armed ? "btn danger" : danger ? "btn danger" : good ? "btn good" : secondary ? "btn secondary" : "btn"}>
           {pending ? (pendingLabel ?? "Guardando…") : armed ? `Sí, ${submitLabel.charAt(0).toLowerCase()}${submitLabel.slice(1)}` : submitLabel}
         </button>
-        {armed && <button type="button" className="btn secondary" onClick={() => setArmed(false)}>Cancelar</button>}
+        {armed && <button type="button" ref={cancelRef} className="btn secondary" onClick={() => setArmed(false)}>Cancelar</button>}
         {saved && !pending && <span className="form-saved" role="status">✓ Hecho</span>}
       </div>
     </form>

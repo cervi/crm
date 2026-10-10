@@ -21,10 +21,13 @@ export function QuickDone({ id, done, subject }: { id: string; done: boolean; su
     });
   };
   return (
+    <>
     <button type="button" className={`quick-done${on ? " on" : ""}${pending ? " busy" : ""}`} onClick={toggle} aria-pressed={on}
             aria-label={on ? `Marcar «${subject}» como pendiente` : `Marcar «${subject}» como hecha`}
             title={error ?? (on ? "Hecha · clic para deshacer" : "Marcar como hecha")}>
       <Icon name="check" />
     </button>
+    {error && <span className="quick-error" role="status">{error}</span>}
+    </>
   );
 }

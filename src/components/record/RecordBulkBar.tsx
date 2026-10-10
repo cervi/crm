@@ -84,7 +84,7 @@ export function RecordBulkBar({ kind, users, types, sequences = [], tags = [] }:
               <input name="due_date" type="date" aria-label="Fecha" required defaultValue={new Date().toISOString().slice(0, 10)} />
             </>
           )}
-          {armed && <span className="confirm-inline">{`Se moverán ${count} a la papelera (se pueden recuperar durante un tiempo).`}</span>}
+          {armed && <span className="confirm-inline">{`Se moverán ${count} a la papelera (se pueden recuperar durante 30 días).`}</span>}
           <button type="submit" className={armed ? "btn small danger" : "btn small"} disabled={!op || pending}>
             {pending ? "Aplicando…" : !op ? "Aplicar" : armed ? `Sí, mover a la papelera (${count})` : `${LABELS[op]} (${count})`}
           </button>
