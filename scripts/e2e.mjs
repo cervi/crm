@@ -1955,6 +1955,56 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   await sql`UPDATE users SET is_active = true, must_change_password = false, password_hash = NULL, role = 'member' WHERE id = ${MEMBER_ID}`;
 }
 
+// ------------------------------------------------------------- Firmas, biblioteca, accesos y piloto automático
+{
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]>>endobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000052 00000 n \n0000000101 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n164\n%%EOF");
+  // Biblioteca: subir, enlace con seguimiento y visita.
+  let fd = new FormData();
+  fd.set("file", new Blob([pdf], { type: "application/pdf" }), "presentacion-e2e.pdf"); fd.set("folder", "Presentaciones");
+  const up = await get("/api/biblioteca", { method: "POST", body: fd });
+  const lib = await up.json().catch(() => ({}));
+  check(up.status === 200 && lib.id, "biblioteca: subir un PDF", `HTTP ${up.status} ${JSON.stringify(lib)}`);
+  if (lib.id) {
+    const token = `e2e-${randomBytes(9).toString("base64url")}`;
+    await sql`INSERT INTO doc_links (token, library_id, deal_id, created_by) VALUES (${token}, ${lib.id}, ${DEAL_OPEN}, ${ADMIN_ID})`;
+    const page = await fetch(`${BASE}/d/${token}`);
+    check(page.status === 200, "documento compartido: se abre sin sesión", `HTTP ${page.status}`);
+    const view = await (await fetch(`${BASE}/api/public/d/${token}/view`, { method: "POST", headers: { "content-type": "application/json", "user-agent": "Mozilla/5.0 Chrome/120" }, body: "{}" })).json();
+    const bot = await (await fetch(`${BASE}/api/public/d/${token}/view`, { method: "POST", headers: { "content-type": "application/json", "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1)" }, body: "{}" })).json();
+    const [l] = await sql`SELECT view_count FROM doc_links WHERE token = ${token}`;
+    check(Boolean(view.view) && !bot.view && l.view_count === 1, "documento compartido: cuenta la visita (y no la de los robots)", JSON.stringify({ view, bot, l }));
+    const libPage = await (await get(`/biblioteca?ver=${lib.id}`)).text();
+    check(libPage.includes("presentacion-e2e") && libPage.includes("Quién ha abierto"), "biblioteca: quién lo ha abierto");
+  }
+  // Firma: subir el PDF desde un deal y prepararlo.
+  fd = new FormData();
+  fd.set("file", new Blob([pdf], { type: "application/pdf" }), "contrato-e2e.pdf"); fd.set("deal_id", DEAL_OPEN);
+  const sr = await get("/api/firmas", { method: "POST", body: fd });
+  const sj = await sr.json().catch(() => ({}));
+  check(sr.status === 200 && sj.id, "firma: subir el contrato", `HTTP ${sr.status} ${JSON.stringify(sj)}`);
+  if (sj.id) {
+    const editor = (await (await get(`/firmas/${sj.id}`)).text()).replace(/<!-- -->/g, "");
+    check(editor.includes("Preparar para firmar") && editor.includes("Firmantes y mensaje"), "firma: el editor abre en el paso 1");
+    const pdfRes = await get(`/api/firmas/${sj.id}/pdf`);
+    check(pdfRes.status === 200 && (pdfRes.headers.get("content-type") ?? "").includes("pdf"), "firma: el PDF se sirve para colocar campos");
+    const [signer] = await sql`SELECT token FROM sign_signers WHERE request_id = ${sj.id} LIMIT 1`;
+    if (signer) {
+      const pub = (await (await fetch(`${BASE}/firma/${signer.token}`)).text()).replace(/<!-- -->/g, "");
+      check(pub.includes("Este documento ya no está disponible para firmar") || pub.includes("Firmar") || pub.includes("no está disponible"),
+            "firma: el enlace del firmante de un borrador no deja firmar");
+    }
+    const bad = await fetch(`${BASE}/firma/no-existe-este-enlace-de-firma-123`);
+    check((await bad.text()).includes("no es válido"), "firma: un enlace inventado no sirve");
+  }
+  for (const [path, text] of [["/firmas", "Firmas"], ["/settings/security", "Registro de accesos"], ["/settings/autopilot", "Piloto automático"], ["/deals", "Mis deals"]]) {
+    const r = await get(path);
+    const html = (await r.text()).replace(/<!-- -->/g, "");
+    check(r.status === 200 && html.includes(text), `${path} abre`, `HTTP ${r.status}`);
+  }
+  const worker = await fetch(`${BASE}/api/public/pdf-worker`);
+  check(worker.status === 200 && (worker.headers.get("content-type") ?? "").includes("javascript"), "el visor de PDF tiene su «worker»");
+}
+
 await sql.end();
 console.log(`\n${failed === 0 ? "✓" : "✗"} ${passed} correctas, ${failed} fallidas`);
 process.exit(failed === 0 ? 0 : 1);
