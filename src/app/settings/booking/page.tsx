@@ -39,11 +39,11 @@ export default async function BookingSettingsPage() {
         <h2>{page ? "Tu página" : "Crear tu página"}</h2>
         <ActionForm action={saveBookingPageAction} submitLabel="Guardar">
           <div className="grid-2">
-            <label className="field"><span className="label">Dirección</span>
+            <label className="field"><span className="label">Dirección *</span>
               <input name="slug" required defaultValue={page?.slug ?? slugify(me.name)} pattern="[a-z0-9][a-z0-9\-]{2,40}" />
               <span className="meta">/book/<em>esta-direccion</em></span></label>
-            <label className="field"><span className="label">Título</span><input name="title" required defaultValue={page?.title ?? "Reunión de 30 minutos"} /></label>
-            <label className="field"><span className="label">Duración (min)</span>
+            <label className="field"><span className="label">Título *</span><input name="title" required defaultValue={page?.title ?? "Reunión de 30 minutos"} /></label>
+            <label className="field"><span className="label">Duración (min) *</span>
               <input name="duration_minutes" type="number" min={10} max={240} step={5} required defaultValue={page?.duration_minutes ?? 30} /></label>
             <label className="field"><span className="label">Tipo de actividad</span>
               <select name="activity_type" defaultValue={page?.activity_type ?? "video_call"}>

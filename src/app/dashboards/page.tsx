@@ -15,7 +15,7 @@ export default async function DashboardsIndex() {
       <section className="panel stack">
         <p className="muted" style={{ margin: 0 }}>Crea tu primer dashboard y añade los widgets con las métricas que quieras seguir.</p>
         <ActionForm action={createDashboardAction} submitLabel="Crear dashboard">
-          <label className="field"><span className="label">Nombre</span><input name="name" required placeholder="Ventas" /></label>
+          <label className="field"><span className="label">Nombre *</span><input name="name" required placeholder="Ventas" /></label>
         </ActionForm>
       </section>
     </main>

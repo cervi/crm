@@ -18,7 +18,7 @@ export function Decision({ token }: { token: string }) {
       const d = new FormData(e.currentTarget, submitter);
       start(() => action(d));
     }}>
-      <label className="field"><span className="label">Tu nombre</span><input name="name" required autoComplete="name" /></label>
+      <label className="field"><span className="label">Tu nombre *</span><input name="name" required autoComplete="name" /></label>
       <label className="field"><span className="label">Comentario (opcional)</span><textarea name="note" rows={2} /></label>
       {state?.error && <p className="form-error" role="alert">{state.error}</p>}
       <div className="form-actions">

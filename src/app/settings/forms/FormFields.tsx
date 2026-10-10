@@ -7,10 +7,10 @@ export function FormEditorFields({ f, aiOn }: { f?: WebForm | null; aiOn: boolea
   return (
     <>
       <div className="grid-2">
-        <label className="field"><span className="label">Nombre interno</span><input name="name" required defaultValue={f?.name ?? ""} placeholder="Contacto de la web" /></label>
-        <label className="field"><span className="label">Dirección</span><input name="slug" required defaultValue={f?.slug ?? ""} placeholder="contacto" />
+        <label className="field"><span className="label">Nombre interno *</span><input name="name" required defaultValue={f?.name ?? ""} placeholder="Contacto de la web" /></label>
+        <label className="field"><span className="label">Dirección *</span><input name="slug" required defaultValue={f?.slug ?? ""} placeholder="contacto" />
           <span className="meta">/f/<em>esta-direccion</em></span></label>
-        <label className="field"><span className="label">Título visible</span><input name="title" required defaultValue={f?.title ?? "Hablemos"} /></label>
+        <label className="field"><span className="label">Título visible *</span><input name="title" required defaultValue={f?.title ?? "Hablemos"} /></label>
         <label className="field"><span className="label">Texto bajo el título</span><input name="description" defaultValue={f?.description ?? ""} /></label>
       </div>
       <fieldset className="fieldset">
@@ -28,7 +28,7 @@ export function FormEditorFields({ f, aiOn }: { f?: WebForm | null; aiOn: boolea
       <fieldset className="fieldset">
         <legend>Al recibirlo</legend>
         <div className="grid-3">
-          <label className="field"><span className="label">Origen</span><input name="source" required defaultValue={f?.source ?? "formulario web"} /></label>
+          <label className="field"><span className="label">Origen *</span><input name="source" required defaultValue={f?.source ?? "formulario web"} /></label>
           <label className="field"><span className="label">Detalle del origen</span><input name="source_detail" defaultValue={f?.source_detail ?? ""} placeholder="Página de precios" /></label>
           <label className="field"><span className="label">Crea</span>
             <select name="intent" defaultValue={f?.intent ?? "lead"}>
@@ -42,7 +42,7 @@ export function FormEditorFields({ f, aiOn }: { f?: WebForm | null; aiOn: boolea
           <label className="field"><span className="label">Etiquetas (separadas por comas)</span><input name="tags" defaultValue={f?.tags.join(", ") ?? ""} /></label>
           <label className="field"><span className="label">Llevar después a (opcional)</span><input name="redirect_url" type="url" defaultValue={f?.redirect_url ?? ""} placeholder="https://…/gracias" /></label>
         </div>
-        <label className="field"><span className="label">Mensaje de gracias</span><input name="success_message" required defaultValue={f?.success_message ?? "¡Gracias! Te escribimos muy pronto."} /></label>
+        <label className="field"><span className="label">Mensaje de gracias *</span><input name="success_message" required defaultValue={f?.success_message ?? "¡Gracias! Te escribimos muy pronto."} /></label>
       </fieldset>
       <fieldset className="fieldset">
         <legend>Chat con IA</legend>

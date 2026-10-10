@@ -17,10 +17,10 @@ function TemplateFields({ t, admin }: { t?: Template; admin: boolean }) {
   return (
     <>
       <div className="grid-2">
-        <label className="field"><span className="label">Nombre</span><input name="name" required maxLength={100} defaultValue={t?.name} /></label>
+        <label className="field"><span className="label">Nombre *</span><input name="name" required maxLength={100} defaultValue={t?.name} /></label>
         <label className="field"><span className="label">Asunto</span><input name="subject" maxLength={300} defaultValue={t?.subject} /></label>
       </div>
-      <label className="field"><span className="label">Texto</span><textarea name="body" rows={8} required defaultValue={t?.body} /></label>
+      <label className="field"><span className="label">Texto *</span><textarea name="body" rows={8} required defaultValue={t?.body} /></label>
       {admin && <label className="checkbox"><input type="checkbox" name="shared" defaultChecked={t ? t.shared : false} />Compartida con el equipo</label>}
     </>
   );

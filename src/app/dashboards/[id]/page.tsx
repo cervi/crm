@@ -38,11 +38,11 @@ export default async function DashboardPage({ params }: { params: Promise<{ id: 
           <summary className="btn secondary">Gestionar</summary>
           <div className="panel popover stack">
             <ActionForm action={renameDashboardAction.bind(null, id)} submitLabel="Renombrar" className="form">
-              <label className="field"><span className="label">Nombre de este dashboard</span>
+              <label className="field"><span className="label">Nombre de este dashboard *</span>
                 <input name="name" required defaultValue={current.name} /></label>
             </ActionForm>
             <ActionForm action={createDashboardAction} submitLabel="Crear dashboard" secondary className="form">
-              <label className="field"><span className="label">Nuevo dashboard</span><input name="name" required placeholder="Nombre" /></label>
+              <label className="field"><span className="label">Nuevo dashboard *</span><input name="name" required placeholder="Nombre" /></label>
             </ActionForm>
             <details>
               <summary className="meta">Eliminar este dashboard</summary>

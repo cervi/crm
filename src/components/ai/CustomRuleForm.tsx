@@ -96,7 +96,7 @@ export function CustomRuleForm({ action, types, stages, pipelines = [], users = 
     : trigger === "deal_idle" ? "Días sin movimiento" : null;
   return (
     <ActionForm action={action} submitLabel={submitLabel} resetOnSuccess={!initial}>
-      <label className="field"><span className="label">Nombre de la regla</span>
+      <label className="field"><span className="label">Nombre de la regla *</span>
         <input name="name" required defaultValue={initial?.name ?? ""} placeholder="Tras la demo, enviar la propuesta" />
       </label>
 
@@ -168,12 +168,12 @@ export function CustomRuleForm({ action, types, stages, pipelines = [], users = 
         </label>
         {kind === "create_activity" && (
           <div className="grid-3">
-            <label className="field"><span className="label">Tipo</span>
+            <label className="field"><span className="label">Tipo *</span>
               <select name="action_type" defaultValue={a.activity_type ?? "task"} required>
                 {types.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </label>
-            <label className="field"><span className="label">Asunto</span>
+            <label className="field"><span className="label">Asunto *</span>
               <input name="action_subject" required defaultValue={a.subject ?? ""} placeholder="Enviar la propuesta a {nombre}" />
             </label>
             <label className="field"><span className="label">Para dentro de (días)</span>
@@ -186,10 +186,10 @@ export function CustomRuleForm({ action, types, stages, pipelines = [], users = 
         )}
         {isEmail && (
           <>
-            <label className="field"><span className="label">Asunto</span>
+            <label className="field"><span className="label">Asunto *</span>
               <input name="action_email_subject" required defaultValue={a.subject ?? ""} placeholder="Siguientes pasos: {deal}" />
             </label>
-            <label className="field"><span className="label">Texto</span>
+            <label className="field"><span className="label">Texto *</span>
               <textarea name="action_email_body" rows={6} required defaultValue={a.body ?? "Hola {nombre},\n\n\n\nUn saludo,\n{responsable}"} />
             </label>
           </>
@@ -201,7 +201,7 @@ export function CustomRuleForm({ action, types, stages, pipelines = [], users = 
           </label>
         )}
         {kind === "assign_owner" && (
-          <label className="field"><span className="label">Nuevo responsable</span>
+          <label className="field"><span className="label">Nuevo responsable *</span>
             <select name="action_owner" defaultValue={a.owner_id ?? ""} required>
               <option value="" disabled>Elige a la persona</option>
               {users.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -209,18 +209,18 @@ export function CustomRuleForm({ action, types, stages, pipelines = [], users = 
           </label>
         )}
         {kind === "add_note" && (
-          <label className="field"><span className="label">Texto de la nota</span>
+          <label className="field"><span className="label">Texto de la nota *</span>
             <textarea name="action_note_content" rows={3} required defaultValue={a.content ?? ""} placeholder="Revisar con {responsable}: {deal} está en «{fase}»." />
           </label>
         )}
         {kind === "webhook" && (
-          <label className="field"><span className="label">Dirección del webhook</span>
+          <label className="field"><span className="label">Dirección del webhook *</span>
             <input name="action_url" type="url" required defaultValue={a.url ?? ""} placeholder="https://hooks.zapier.com/…" />
             <span className="meta">Recibe un POST con JSON: el evento, la regla y los datos del deal (título, importe, fase, empresa, responsable, contacto y enlace).</span>
           </label>
         )}
         {kind === "notify" && (
-          <label className="field"><span className="label">Mensaje</span>
+          <label className="field"><span className="label">Mensaje *</span>
             <input name="action_message" required defaultValue={a.message ?? ""} placeholder="«{actividad}» no se ha hecho: ¿qué hacemos con {deal}?" />
           </label>
         )}

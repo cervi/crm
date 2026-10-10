@@ -30,12 +30,12 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
       <section className="panel">
         <h2>Contraseña</h2>
         <ActionForm action={changePasswordAction} submitLabel="Cambiar contraseña" resetOnSuccess>
-          <label className="field"><span className="label">Contraseña actual</span>
+          <label className="field"><span className="label">Contraseña actual *</span>
             <input name="current" type="password" required autoComplete="current-password" /></label>
           <div className="grid-2">
-            <label className="field"><span className="label">Nueva contraseña</span>
+            <label className="field"><span className="label">Nueva contraseña *</span>
               <input name="password" type="password" required minLength={10} autoComplete="new-password" /></label>
-            <label className="field"><span className="label">Repítela</span>
+            <label className="field"><span className="label">Repítela *</span>
               <input name="repeat" type="password" required minLength={10} autoComplete="new-password" /></label>
           </div>
           <p className="meta" style={{ margin: 0 }}>Al menos 10 caracteres. Al cambiarla se cierran tus sesiones en otros dispositivos.</p>
@@ -47,7 +47,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           <section className="panel">
             <h2>Tus datos</h2>
             <ActionForm action={updateProfileAction} submitLabel="Guardar" secondary className="form inline">
-              <label className="field"><span className="label">Nombre</span><input name="name" required defaultValue={user.name} /></label>
+              <label className="field"><span className="label">Nombre *</span><input name="name" required defaultValue={user.name} /></label>
             </ActionForm>
             <p className="meta">El email y el rol los cambia un administrador.</p>
           </section>

@@ -66,7 +66,7 @@ export function StepForm({ step, first, types, sequenceId, contacts, templates, 
         />
       ) : (
         <>
-          <label className="field"><span className="label">Qué hay que hacer</span>
+          <label className="field"><span className="label">Qué hay que hacer *</span>
             <input name="subject" required maxLength={300} defaultValue={step?.kind === "task" ? step.subject : "Llamar a {{nombre}}"} aria-label={`Asunto de ${label}`} />
           </label>
           <label className="field"><span className="label">Notas para quien lo haga (admite variables)</span>

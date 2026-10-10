@@ -20,9 +20,9 @@ function ContractFields({ c, users }: { c?: Awaited<ReturnType<typeof contractsO
   return (
     <div className="grid-2">
       <label className="field span-2"><span className="label">Nombre</span><input name="name" required defaultValue={c?.name ?? "Contrato anual"} /></label>
-      <label className="field"><span className="label">Inicio</span><input name="start_date" type="date" required defaultValue={c?.start_date ?? new Date().toISOString().slice(0, 10)} /></label>
+      <label className="field"><span className="label">Inicio *</span><input name="start_date" type="date" required defaultValue={c?.start_date ?? new Date().toISOString().slice(0, 10)} /></label>
       <label className="field"><span className="label">Renovación</span><input name="renewal_date" type="date" defaultValue={c?.renewal_date ?? ""} /></label>
-      <label className="field"><span className="label">Importe anual (€)</span><input name="annual_value" type="number" min={0} step="0.01" required defaultValue={c ? Number(c.annual_value) : ""} /></label>
+      <label className="field"><span className="label">Importe anual (€) *</span><input name="annual_value" type="number" min={0} step="0.01" required defaultValue={c ? Number(c.annual_value) : ""} /></label>
       <label className="field"><span className="label">Licencias contratadas</span><input name="seats" type="number" min={1} defaultValue={c?.seats ?? ""} /></label>
       <label className="field"><span className="label">Responsable de CS</span>
         <select name="cs_owner_id" defaultValue={c?.cs_owner_id ?? ""}><option value="">—</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>

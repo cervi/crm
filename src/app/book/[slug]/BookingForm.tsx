@@ -56,8 +56,8 @@ export function BookingForm({ slug, token, timezone, slots, person }: {
       </fieldset>
       {token && <input type="hidden" name="r" value={token} />}
       <div className="grid-2">
-        <label className="field"><span className="label">Tu nombre</span><input name="name" required defaultValue={person?.name} autoComplete="name" /></label>
-        <label className="field"><span className="label">Tu email</span><input name="email" type="email" required defaultValue={person?.email} autoComplete="email" /></label>
+        <label className="field"><span className="label">Tu nombre *</span><input name="name" required defaultValue={person?.name} autoComplete="name" /></label>
+        <label className="field"><span className="label">Tu email *</span><input name="email" type="email" required defaultValue={person?.email} autoComplete="email" /></label>
       </div>
       {!person && <label className="field"><span className="label">Empresa</span><input name="company" autoComplete="organization" /></label>}
       <label className="field"><span className="label">¿Algo que debamos saber? (opcional)</span><textarea name="note" rows={3} /></label>

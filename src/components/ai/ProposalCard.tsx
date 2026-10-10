@@ -46,7 +46,7 @@ export function ProposalCard({ item, showDeal = true, canSend = false }: { item:
         {item.action_type === "draft_email" && <EmailDraftFields to={s(p.to)} subject={s(p.subject)} body={s(p.body)} canSend={canSend} />}
         {item.action_type === "create_task" && (
           <>
-            <label className="field"><span className="label">Tarea</span><input name="subject" defaultValue={s(p.subject)} required /></label>
+            <label className="field"><span className="label">Tarea *</span><input name="subject" defaultValue={s(p.subject)} required /></label>
             {s(p.note) && (
               <details className="proposal-note">
                 <summary className="meta">Ver y editar la descripción</summary>

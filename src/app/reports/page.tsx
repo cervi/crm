@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { deleteGoalAction, saveAnswerAction, saveGoalAction } from "@/app/actions/reports";
 import { ActionForm } from "@/components/ActionForm";
@@ -72,15 +73,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <h1>Informes</h1>
         <span className="spacer" />
         <form method="get" className="toolbar" style={{ margin: 0 }}>
-          <select name="pipeline" defaultValue={pipelineId ?? ""} aria-label="Pipeline">
+          {(["r", "from", "to", "g", "seg"] as const).map((k) => sp[k] ? <input key={k} type="hidden" name={k} value={sp[k]} /> : null)}
+          <AutoSubmitSelect name="pipeline" defaultValue={pipelineId ?? ""} aria-label="Pipeline">
             <option value="">Todos los pipelines</option>
             {active.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <select name="owner" defaultValue={ownerId ?? ""} aria-label="Responsable">
+          </AutoSubmitSelect>
+          <AutoSubmitSelect name="owner" defaultValue={ownerId ?? ""} aria-label="Responsable">
             <option value="">Todo el equipo</option>
             {humans.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-          <button className="btn secondary">Ver</button>
+          </AutoSubmitSelect>
+          <noscript><button className="btn secondary">Aplicar</button></noscript>
         </form>
         <Link href="/dashboards" className="btn secondary">Dashboards</Link>
       </div>
@@ -236,6 +238,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <table>
             <thead><tr><th>Responsable</th><th className="num">Deals</th><th className="num">Importe</th><th className="num">Ponderado</th></tr></thead>
             <tbody>
+              {fc.byOwner.length === 0 && <tr><td colSpan={4} className="empty-row">No hay deals abiertos con responsable.</td></tr>}
               {fc.byOwner.map((r) => (
                 <tr key={r.owner}><td>{r.owner}</td><td className="num">{r.deals}</td><td className="num">{money(r.value)}</td><td className="num">{money(r.weighted)}</td></tr>
               ))}
@@ -279,7 +282,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                 <select name="metric">{Object.entries(GOAL_METRICS).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}</select></label>
               <label className="field"><span className="label">Periodo</span>
                 <select name="period"><option value="month">Mes</option><option value="quarter">Trimestre</option></select></label>
-              <label className="field"><span className="label">Objetivo</span><input name="target" type="number" min={1} step="any" required /></label>
+              <label className="field"><span className="label">Objetivo *</span><input name="target" type="number" min={1} step="any" required /></label>
               <label className="field"><span className="label">Pipeline</span>
                 <select name="pipeline_id" defaultValue=""><option value="">Todos</option>{active.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
             </ActionForm>

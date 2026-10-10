@@ -43,7 +43,7 @@ export default async function ImportPage() {
           </p>
           {!encryptionConfigured() && <p className="callout bad">Falta TOKEN_ENCRYPTION_KEY en el servidor para guardar el token.</p>}
           <ActionForm action={connectPipedriveAction} submitLabel="Conectar" className="form inline">
-            <label className="field" style={{ flex: 1 }}><span className="label">Token de API</span>
+            <label className="field" style={{ flex: 1 }}><span className="label">Token de API *</span>
               <input name="token" type="password" autoComplete="off" required /></label>
           </ActionForm>
         </section>

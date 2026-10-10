@@ -40,7 +40,7 @@ export default async function FieldsPage({ searchParams }: { searchParams: Promi
                   <span className="spacer" /><code>{d.key}</code>
                 </div>
                 <ActionForm action={updateFieldAction.bind(null, d.id)} submitLabel="Guardar" secondary className="form inline">
-                  <label className="field" style={{ flex: 1 }}><span className="label">Nombre</span><input name="label" required defaultValue={d.label} /></label>
+                  <label className="field" style={{ flex: 1 }}><span className="label">Nombre *</span><input name="label" required defaultValue={d.label} /></label>
                   {isOption && (
                     <label className="field" style={{ flex: 1 }}><span className="label">Opciones (una por línea)</span>
                       <textarea name="options" rows={3} defaultValue={(d.options ?? []).map((o) => o.label).join("\n")} /></label>

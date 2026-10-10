@@ -105,10 +105,10 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
         </label>
       )}
       <input type="hidden" name="template_id" value={templateId} />
-      <label className="field"><span className="label">Asunto</span>
+      <label className="field"><span className="label">Asunto *</span>
         <input name="subject" required value={subject} onChange={(e) => setSubject(e.target.value)} />
       </label>
-      <label className="field"><span className="label">Texto</span>
+      <label className="field"><span className="label">Texto *</span>
         <textarea ref={ref} name="body" rows={8} required value={body} onChange={(e) => setBody(e.target.value)} />
       </label>
       {signatureHtml ? (

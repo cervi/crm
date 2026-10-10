@@ -16,7 +16,7 @@ export const metadata = { title: "Pipeline" };
 async function StageFields({ s }: { s?: { name: string; win_probability: number | null; rotten_after_days: number | null; required_activity_type: string | null } }) {
   return (
     <>
-      <label className="field" style={{ flex: 2 }}><span className="label">Nombre</span><input name="name" required defaultValue={s?.name} /></label>
+      <label className="field" style={{ flex: 2 }}><span className="label">Nombre *</span><input name="name" required defaultValue={s?.name} /></label>
       <label className="field" style={{ width: 110 }}><span className="label">Probab. %</span>
         <input type="number" name="win_probability" min={0} max={100} defaultValue={s?.win_probability ?? ""} /></label>
       <label className="field" style={{ width: 130 }}><span className="label">Parado tras (días)</span>
@@ -51,7 +51,7 @@ export default async function PipelineSettingsPage({ params }: { params: Promise
         <section className="panel">
           <h2>Datos del pipeline</h2>
           <ActionForm action={updatePipelineAction.bind(null, id)} submitLabel="Guardar" secondary className="form inline">
-            <label className="field" style={{ flex: 1 }}><span className="label">Nombre</span><input name="name" required defaultValue={pipeline.name} /></label>
+            <label className="field" style={{ flex: 1 }}><span className="label">Nombre *</span><input name="name" required defaultValue={pipeline.name} /></label>
             <label className="field" style={{ flex: 2 }}><span className="label">Descripción</span><input name="description" defaultValue={pipeline.description ?? ""} /></label>
             <label className="field"><span className="label">Tipo</span>
               <select name="kind" defaultValue={pipeline.kind}>{Object.entries(PIPELINE_KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>

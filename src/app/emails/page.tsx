@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { DataTable } from "@/components/DataTable";
 import { requireUser } from "@/lib/auth";
 import { dateTime } from "@/lib/format";
@@ -41,19 +42,19 @@ export default async function SentPage({ searchParams }: { searchParams: Promise
         <Link href={qs({ f: "opened", page: undefined })} className="today-stat"><span className="label">Abiertos</span><strong>{pct(stats.opened, stats.tracked)}</strong><span className="meta">{stats.opened} de {stats.tracked} con seguimiento</span></Link>
         <Link href={qs({ f: "clicked", page: undefined })} className="today-stat"><span className="label">Con clics</span><strong>{pct(stats.clicked, stats.tracked)}</strong><span className="meta">{stats.clicked} correos</span></Link>
         <Link href={qs({ f: "replied", page: undefined })} className="today-stat"><span className="label">Respondidos</span><strong>{pct(stats.replied, stats.sent)}</strong><span className="meta">{stats.replied} correos</span></Link>
-        <Link href={qs({ f: "opened_no_reply", page: undefined })} className="today-stat warn"><span className="label">Abiertos sin responder</span><strong>{Math.max(0, stats.opened - stats.replied)}</strong><span className="meta">buen momento para llamar</span></Link>
+        <Link href={qs({ f: "opened_no_reply", page: undefined })} className={`today-stat ${stats.opened - stats.replied > 0 ? "warn" : ""}`}><span className="label">Abiertos sin responder</span><strong>{Math.max(0, stats.opened - stats.replied)}</strong><span className="meta">buen momento para llamar</span></Link>
       </section>
 
       <form className="toolbar">
         <input type="hidden" name="who" value={who} />
         <input name="q" defaultValue={sp.q ?? ""} placeholder="Asunto, contacto, email o deal" aria-label="Buscar" />
-        <select name="f" defaultValue={filter} aria-label="Lectura">
+        <AutoSubmitSelect name="f" defaultValue={filter} aria-label="Lectura">
           {Object.entries(SENT_FILTERS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        <button className="btn secondary">Filtrar</button>
+        </AutoSubmitSelect>
+        <button className="sr-only" tabIndex={-1}>Buscar</button>
       </form>
 
-      <DataTable id="emails" empty="No hay correos con estos filtros."
+      <DataTable id="emails" empty={sp.q || filter !== "all" ? <>No hay correos con estos filtros. <Link href="/emails">Quitar filtros</Link></> : "Todavía no has enviado correos desde el CRM. Escribe desde la ficha de un deal o un contacto, o con una secuencia."}
         columns={[
           { key: "subject", label: "Correo", required: true, pinned: true },
           { key: "to", label: "Para" },

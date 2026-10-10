@@ -149,7 +149,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             <h1>{deal.title}</h1>
             <div className="deal-sub">
               <span className={`badge ${deal.status}`}>{STATUS_LABELS[deal.status]}</span>
-              {deal.deal_type !== "new" && <span className="badge ai" title={deal.origin === "cs" ? "Lo lleva Customer Success" : undefined}>{DEAL_TYPE_LABEL[deal.deal_type]}</span>}
+              {deal.deal_type !== "new" && <span className="badge" title={deal.origin === "cs" ? "Lo lleva Customer Success" : undefined}>{DEAL_TYPE_LABEL[deal.deal_type]}</span>}
               <strong>{money(deal.value, deal.currency)}</strong>
               {health && <a href="#senales" className="health-link"><HealthBadge score={health.score} signals={health.signals} /></a>}
               {deal.organization_id && <Link href={`/organizations/${deal.organization_id}`}>{deal.organization_name}</Link>}
@@ -242,6 +242,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
 
           <section className="side-section">
             <h3>Contactos <span className="muted">{participants.length}</span></h3>
+            {participants.length === 0 && <p className="meta" style={{ margin: "0 0 6px" }}>Sin contactos. Añade al menos a la persona que decide.</p>}
             <ul className="mini-list">
               {participants.map((p) => (
                 <li key={p.person_id}>
@@ -319,7 +320,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 <DrivePicker dealId={dealId} driveName={provider.drive} source={sender!.provider} action={addDocumentAction.bind(null, dealId, back)} />
               )}
               <ActionForm action={addDocumentAction.bind(null, dealId, back)} submitLabel="Enlazar" resetOnSuccess secondary>
-                <label className="field"><span className="label">Enlace</span><input name="url" type="url" required placeholder="https://…" /></label>
+                <label className="field"><span className="label">Enlace *</span><input name="url" type="url" required placeholder="https://…" /></label>
                 <label className="field"><span className="label">Título</span><input name="title" placeholder="Propuesta, presentación…" /></label>
               </ActionForm>
             </details>
@@ -362,7 +363,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
               <details>
                 <summary className="meta">+ Añadir a una secuencia</summary>
                 <ActionForm action={enrollAction.bind(null, dealId, back)} submitLabel="Añadir" resetOnSuccess secondary>
-                  <label className="field"><span className="label">Secuencia</span>
+                  <label className="field"><span className="label">Secuencia *</span>
                     <select name="sequence_id" required defaultValue="">
                       <option value="" disabled>Elige…</option>
                       {sequences.map((q) => <option key={q.id} value={q.id}>{q.name} ({q.steps} pasos)</option>)}
@@ -477,7 +478,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                       {types.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
                     </select>
                   </label>
-                  <label className="field"><span className="label">Asunto</span><input name="subject" required /></label>
+                  <label className="field"><span className="label">Asunto *</span><input name="subject" required /></label>
                   <label className="field"><span className="label">Fecha y hora</span><input type="datetime-local" name="due_at" /></label>
                   <label className="field"><span className="label">Duración (min)</span><input type="number" name="duration_minutes" min={5} max={480} placeholder="30" /></label>
                   <label className="field"><span className="label">Responsable</span>
@@ -557,12 +558,12 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 <details>
                   <summary className="meta">+ Añadir producto</summary>
                   <ActionForm action={addLineAction.bind(null, dealId, back)} submitLabel="Añadir" resetOnSuccess secondary className="form inline">
-                    <label className="field"><span className="label">Producto</span>
+                    <label className="field"><span className="label">Producto *</span>
                       <select name="product_id" required defaultValue="">
                         <option value="" disabled>Elige…</option>
                         {catalog.map((p) => <option key={p.id} value={p.id}>{p.name} · {money(p.unit_price)}</option>)}
                       </select></label>
-                    <label className="field"><span className="label">Cantidad</span><input name="quantity" type="number" min={0.01} step="any" defaultValue={1} required style={{ width: 90 }} /></label>
+                    <label className="field"><span className="label">Cantidad *</span><input name="quantity" type="number" min={0.01} step="any" defaultValue={1} required style={{ width: 90 }} /></label>
                     <label className="field"><span className="label">Precio (vacío: el del catálogo)</span><input name="unit_price" type="number" min={0} step="0.01" style={{ width: 130 }} /></label>
                     <label className="field"><span className="label">Dto. %</span><input name="discount_pct" type="number" min={0} max={100} step="any" style={{ width: 80 }} /></label>
                   </ActionForm>
@@ -598,7 +599,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                     <details>
                       <summary className="meta">Revisar el texto</summary>
                       <ActionForm action={updateProposalAction.bind(null, p.id, back)} submitLabel="Guardar" secondary>
-                        <label className="field"><span className="label">Título</span><input name="title" required defaultValue={p.title} /></label>
+                        <label className="field"><span className="label">Título *</span><input name="title" required defaultValue={p.title} /></label>
                         <label className="field"><span className="label">Texto</span><textarea name="intro" rows={8} defaultValue={p.intro} /></label>
                         <label className="field"><span className="label">Válida hasta</span><input name="valid_until" type="date" defaultValue={p.valid_until ?? ""} /></label>
                       </ActionForm>
@@ -650,7 +651,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                 <details>
                   <summary className="meta">+ Añadir paso</summary>
                   <ActionForm action={addPlanStepAction.bind(null, dealId, back)} submitLabel="Añadir" resetOnSuccess secondary className="form inline">
-                    <label className="field" style={{ flex: 1 }}><span className="label">Paso</span><input name="title" required placeholder="Validación de seguridad" /></label>
+                    <label className="field" style={{ flex: 1 }}><span className="label">Paso *</span><input name="title" required placeholder="Validación de seguridad" /></label>
                     <label className="field"><span className="label">Quién</span>
                       <select name="side" defaultValue="client"><option value="us">Nosotros</option><option value="client">Cliente</option><option value="both">Ambos</option></select></label>
                     <label className="field"><span className="label">Persona</span><input name="owner_name" style={{ width: 140 }} /></label>
@@ -737,8 +738,8 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                     <select name="type" defaultValue={stageInfo?.required_activity_type ?? "call"}>
                       {types.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
                     </select></label>
-                  <label className="field" style={{ flex: 1 }}><span className="label">Asunto</span><input name="subject" required placeholder="Llamada de seguimiento" /></label>
-                  <label className="field"><span className="label">Cuándo</span><input type="datetime-local" name="due_at" required /></label>
+                  <label className="field" style={{ flex: 1 }}><span className="label">Asunto *</span><input name="subject" required placeholder="Llamada de seguimiento" /></label>
+                  <label className="field"><span className="label">Cuándo *</span><input type="datetime-local" name="due_at" required /></label>
                 </ActionForm>
               </div>
             ) : <p className="muted">No hay nada pendiente.</p>)}

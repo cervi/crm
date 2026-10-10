@@ -31,7 +31,7 @@ export async function ActivityPanel({ activities, refs, back, users }: {
                 {types.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </label>
-            <label className="field"><span className="label">Asunto</span><input name="subject" required /></label>
+            <label className="field"><span className="label">Asunto *</span><input name="subject" required /></label>
             <label className="field"><span className="label">Fecha y hora</span><input type="datetime-local" name="due_at" /></label>
             <label className="field"><span className="label">Duración (min)</span><input type="number" name="duration_minutes" min={1} /></label>
             <label className="field"><span className="label">Responsable</span>

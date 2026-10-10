@@ -21,8 +21,13 @@ export default async function SequencesPage() {
         <Link className="btn secondary" href="/sequences/tasks">Correos manuales por enviar</Link>
       </div>
 
-      {sequences.length === 0 && <p className="muted">Todavía no hay secuencias.</p>}
-      <div className="table-wrap" style={{ marginBottom: 18 }}>
+      {sequences.length === 0 && (
+        <div className="empty-state" style={{ marginBottom: 18 }}>
+          <strong>Todavía no hay secuencias.</strong>
+          <span className="meta">Una secuencia escribe a cada contacto varios correos (y tareas) espaciados en el tiempo, y se para sola si responde. Crea la primera con el formulario de abajo.</span>
+        </div>
+      )}
+      {sequences.length > 0 && <div className="table-wrap" style={{ marginBottom: 18 }}>
         <table>
           <thead>
             <tr><th>Secuencia</th><th className="num">Pasos</th><th className="num">En marcha</th><th className="num">Terminadas</th><th className="num">Respondieron</th><th>Estado</th></tr>
@@ -40,13 +45,13 @@ export default async function SequencesPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       <section className="panel">
         <h2>Nueva secuencia</h2>
         <ActionForm action={createSequenceAction} submitLabel="Crear y añadir pasos">
           <div className="grid-2">
-            <label className="field"><span className="label">Nombre</span><input name="name" required maxLength={120} placeholder="Seguimiento tras la demo" /></label>
+            <label className="field"><span className="label">Nombre *</span><input name="name" required maxLength={120} placeholder="Seguimiento tras la demo" /></label>
             <label className="field"><span className="label">Para qué es (opcional)</span><input name="description" maxLength={1000} /></label>
           </div>
         </ActionForm>

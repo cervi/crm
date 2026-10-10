@@ -42,7 +42,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
       <section className="today-stats" aria-label="Resumen">
         <Link href={qs({ f: null })} className="today-stat"><span className="label">Clientes</span><strong>{all.length}</strong><span className="meta">{money(arr)} al año</span></Link>
         <Link href={qs({ f: "risk" })} className={`today-stat ${risk ? "bad" : ""}`}><span className="label">En riesgo</span><strong>{risk}</strong><span className="meta">salud por debajo de 40</span></Link>
-        <Link href={qs({ f: "renewing" })} className="today-stat warn"><span className="label">Renuevan en 120 días</span><strong>{renewing.length}</strong><span className="meta">{money(renewing.reduce((n, r) => n + r.arr, 0))}</span></Link>
+        <Link href={qs({ f: "renewing" })} className={`today-stat ${renewing.length ? "warn" : ""}`}><span className="label">Renuevan en 120 días</span><strong>{renewing.length}</strong><span className="meta">{money(renewing.reduce((n, r) => n + r.arr, 0))}</span></Link>
         <Link href={qs({ f: "onboarding" })} className="today-stat"><span className="label">En onboarding</span><strong>{all.filter((r) => r.onboarding_deal_id && !r.onboarding_done).length}</strong></Link>
         <div className="today-stat"><span className="label">Expansión abierta</span><strong>{all.reduce((n, r) => n + r.open_expansion, 0)}</strong><span className="meta">oportunidades</span></div>
       </section>

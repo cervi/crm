@@ -87,7 +87,7 @@ await step("un error de validación se muestra y no borra lo escrito", async () 
 
 await step("crear contacto eligiendo su empresa con el buscador", async () => {
   await page.goto(`/persons/new`);
-  await page.getByLabel("Nombre", { exact: true }).fill("Lucía");
+  await page.getByLabel(/^Nombre( \*)?$/).fill("Lucía");
   await page.getByLabel("Apellidos").fill(`Pérez ${stamp}`);
   await page.getByLabel("Email principal").fill(`lucia.${stamp}@pruebaui${stamp}.com`);
   await page.getByRole("combobox", { name: "Empresa" }).fill(`Prueba UI ${stamp}`);
@@ -158,10 +158,10 @@ await step("programar una demo y marcar que no se presentó", async () => {
 
 await step("añadir una nota", async () => {
   await page.getByRole("tab", { name: "Nota", exact: true }).click();
-  await page.getByLabel("Nota", { exact: true }).fill("Interesados en la integración con su ERP.");
+  await page.getByLabel(/^Nota( \*)?$/).fill("Interesados en la integración con su ERP.");
   await submit("Guardar nota");
   await page.locator(".note-body", { hasText: "integración con su ERP" }).waitFor();
-  expect(await page.getByLabel("Nota", { exact: true }).inputValue() === "", "la nota no se ha vaciado tras guardar");
+  expect(await page.getByLabel(/^Nota( \*)?$/).inputValue() === "", "la nota no se ha vaciado tras guardar");
 });
 
 await step("perder el deal con motivo programa el seguimiento", async () => {
@@ -225,7 +225,7 @@ await step("crear un lead a mano y convertirlo en deal", async () => {
   await page.goto("/leads/new");
   await page.getByLabel("Email *").fill(`carlos.${stamp}@leadui${stamp}.com`);
   await page.getByLabel("Nombre").fill("Carlos");
-  await page.getByLabel("Empresa", { exact: true }).fill(`Lead UI ${stamp}`);
+  await page.getByLabel(/^Empresa( \*)?$/).fill(`Lead UI ${stamp}`);
   await page.getByLabel("Origen *").fill("evento");
   await page.getByLabel("Etapa").selectOption({ label: "MOFU" });
   await submit("Crear lead");
@@ -761,7 +761,7 @@ await step("Customer Success: dirección por defecto y responsable por empresa",
   const [r] = await sql`SELECT params FROM automation_rules WHERE key = 'won_handoff_email'`;
   expect(r.params.cs_email === "cs@aikit.example", JSON.stringify(r.params));
   await page.goto("/organizations/60000000-0000-0000-0000-000000000001/edit");
-  await page.getByLabel("Responsable de CS", { exact: true }).fill("Lucía CS");
+  await page.getByLabel(/^Responsable de CS( \*)?$/).fill("Lucía CS");
   await page.getByLabel("Email del responsable de CS").fill("lucia@aikit.example");
   await submit("Guardar cambios");
   await page.waitForURL(/\/organizations\/60000000-0000-0000-0000-000000000001$/);
@@ -776,7 +776,7 @@ await step("ganar un deal deja en la bandeja el correo de traspaso a su responsa
   await submit("Revisar ahora");
   const card = page.locator("article.proposal", { hasText: "Enviar el traspaso de «Paco — ampliación de servicio» a Customer Success" });
   await card.waitFor();
-  expect(await card.getByLabel("Para", { exact: true }).inputValue() === "lucia@aikit.example", "destinatario incorrecto");
+  expect(await card.getByLabel(/^Para( \*)?$/).inputValue() === "lucia@aikit.example", "destinatario incorrecto");
   expect((await card.getByLabel("Texto").inputValue()).startsWith("Hola Lucía CS"), "saludo incorrecto");
   await shot("traspaso-cs");
 });
@@ -832,10 +832,10 @@ await step("lista de deals: filtrar, guardar la vista y cambiar el responsable d
   const inbound = "10000000-0000-0000-0000-000000000001";
   await page.goto(`/pipelines/${inbound}?view=list&status=all`);
   await page.getByLabel("Buscar en la lista").fill("Paco");
-  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await page.waitForURL(/q=Paco/);
   await page.getByText("+ Guardar esta vista").click();
-  await page.getByLabel("Nombre", { exact: true }).fill(`Deals de Paco ${stamp}`);
+  await page.getByLabel(/^Nombre( \*)?$/).fill(`Deals de Paco ${stamp}`);
   await page.getByRole("button", { name: "Guardar vista" }).click();
   await page.getByRole("link", { name: new RegExp(`Deals de Paco ${stamp}`) }).waitFor();
   // Columnas: se añade «Creado».

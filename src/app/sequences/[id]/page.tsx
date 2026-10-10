@@ -91,7 +91,7 @@ export default async function SequencePage({ params }: { params: Promise<{ id: s
         <section className="panel">
           <h2>Ajustes</h2>
           <ActionForm action={updateSequenceAction.bind(null, id)} submitLabel="Guardar" secondary>
-            <label className="field"><span className="label">Nombre</span><input name="name" required maxLength={120} defaultValue={seq.name} /></label>
+            <label className="field"><span className="label">Nombre *</span><input name="name" required maxLength={120} defaultValue={seq.name} /></label>
             <label className="field"><span className="label">Para qué es</span><input name="description" maxLength={1000} defaultValue={seq.description ?? ""} /></label>
             <label className="checkbox"><input type="checkbox" name="is_active" defaultChecked={seq.is_active} />Activa (si no, no se envía nada)</label>
             <label className="checkbox"><input type="checkbox" name="stop_on_reply" defaultChecked={seq.stop_on_reply} />Parar si el contacto responde</label>

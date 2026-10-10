@@ -12,9 +12,9 @@ export const metadata = { title: "Productos" };
 function ProductFields({ p }: { p?: Product }) {
   return (
     <div className="grid-3">
-      <label className="field"><span className="label">Nombre</span><input name="name" required defaultValue={p?.name} /></label>
+      <label className="field"><span className="label">Nombre *</span><input name="name" required defaultValue={p?.name} /></label>
       <label className="field"><span className="label">Código (opcional)</span><input name="code" defaultValue={p?.code ?? ""} /></label>
-      <label className="field"><span className="label">Precio (€)</span><input name="unit_price" type="number" min={0} step="0.01" required defaultValue={p?.unit_price ?? ""} /></label>
+      <label className="field"><span className="label">Precio (€) *</span><input name="unit_price" type="number" min={0} step="0.01" required defaultValue={p?.unit_price ?? ""} /></label>
       <label className="field"><span className="label">Cobro</span>
         <select name="billing" defaultValue={p?.billing ?? "one_off"}>
           {Object.entries(BILLING_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}

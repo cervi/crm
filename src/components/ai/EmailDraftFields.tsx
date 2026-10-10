@@ -12,13 +12,13 @@ export function EmailDraftFields({ to, subject, body, canSend = false }: { to: s
   const mailto = `mailto:${encodeURIComponent(v.to)}?subject=${encodeURIComponent(v.subject)}&body=${encodeURIComponent(v.body)}`;
   return (
     <div className="email-draft">
-      <label className="field"><span className="label">Para</span>
+      <label className="field"><span className="label">Para *</span>
         <input name="to" type="email" required value={v.to} onChange={(e) => setV({ ...v, to: e.target.value })} />
       </label>
-      <label className="field"><span className="label">Asunto</span>
+      <label className="field"><span className="label">Asunto *</span>
         <input name="subject" required value={v.subject} onChange={(e) => setV({ ...v, subject: e.target.value })} />
       </label>
-      <label className="field"><span className="label">Texto</span>
+      <label className="field"><span className="label">Texto *</span>
         <textarea name="body" rows={7} required value={v.body} onChange={(e) => setV({ ...v, body: e.target.value })} />
       </label>
       {canSend ? (

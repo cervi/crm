@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { ExportLink } from "@/components/ExportLink";
 import { leadSources, listLeads } from "@/lib/leads";
 import { Avatar } from "@/components/Avatar";
@@ -36,39 +37,41 @@ export default async function LeadsPage({ searchParams }: {
       </div>
       <form className="toolbar">
         <input name="q" defaultValue={sp.q ?? ""} placeholder="Nombre, email o empresa" aria-label="Buscar" />
-        <select name="status" defaultValue={status} aria-label="Estado">
+        <AutoSubmitSelect name="status" defaultValue={status} aria-label="Estado">
           <option value="open">Abiertos</option>
           <option value="converted">Convertidos</option>
           <option value="archived">Archivados</option>
           <option value="all">Todos</option>
-        </select>
-        <select name="source" defaultValue={sp.source ?? ""} aria-label="Origen">
+        </AutoSubmitSelect>
+        <AutoSubmitSelect name="source" defaultValue={sp.source ?? ""} aria-label="Origen">
           <option value="">Todos los orígenes</option>
           {sources.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select name="funnel" defaultValue={sp.funnel ?? ""} aria-label="Etapa">
+        </AutoSubmitSelect>
+        <AutoSubmitSelect name="funnel" defaultValue={sp.funnel ?? ""} aria-label="Etapa">
           <option value="">Todas las etapas</option>
           {FUNNEL_STAGES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-        </select>
-        <select name="temp" defaultValue={sp.temp ?? ""} aria-label="Puntuación">
+        </AutoSubmitSelect>
+        <AutoSubmitSelect name="temp" defaultValue={sp.temp ?? ""} aria-label="Puntuación">
           <option value="">Cualquier puntuación</option>
           <option value="hot">Calientes (70+)</option>
           <option value="warm">Templados (40–69)</option>
           <option value="cold">Fríos (menos de 40)</option>
-        </select>
-        <select name="fit" defaultValue={sp.fit ?? ""} aria-label="Encaje">
+        </AutoSubmitSelect>
+        <AutoSubmitSelect name="fit" defaultValue={sp.fit ?? ""} aria-label="Encaje">
           <option value="">Cualquier encaje</option>
           <option value="fit">Encajan</option>
           <option value="unknown">Falta saber</option>
           <option value="no_fit">No encajan</option>
-        </select>
-        <select name="sort" defaultValue={sp.sort ?? ""} aria-label="Orden">
+        </AutoSubmitSelect>
+        <AutoSubmitSelect name="sort" defaultValue={sp.sort ?? ""} aria-label="Orden">
           <option value="">Más recientes</option>
           <option value="score">Mejor puntuación</option>
-        </select>
-        <button className="btn secondary">Filtrar</button>
+        </AutoSubmitSelect>
+        <button className="sr-only" tabIndex={-1}>Buscar</button>
       </form>
-      <DataTable id="leads" empty="No hay leads con estos filtros."
+      <DataTable id="leads" empty={sp.q || sp.source || sp.funnel || sp.temp || sp.fit || status !== "open"
+        ? <>No hay leads con estos filtros. <Link href="/leads">Quitar filtros</Link></>
+        : <>Todavía no hay leads abiertos. Llegan solos desde tus formularios o puedes <Link href="/leads/new">crear uno a mano</Link>.</>}
         columns={[
           { key: "contact", label: "Contacto", required: true, pinned: true },
           { key: "score", label: "Puntuación" },

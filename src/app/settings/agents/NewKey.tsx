@@ -22,7 +22,7 @@ export function NewKey({ endpoint }: { endpoint: string }) {
   }
   return (
     <form className="form inline" onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); start(() => action(d)); }}>
-      <label className="field"><span className="label">Nombre del agente</span><input name="name" required placeholder="Grok Bot" /></label>
+      <label className="field"><span className="label">Nombre del agente *</span><input name="name" required placeholder="Grok Bot" /></label>
       <label className="checkbox"><input type="checkbox" name="can_write" defaultChecked />Puede proponer acciones (si no, solo consulta)</label>
       {state?.error && <p className="form-error" role="alert">{state.error}</p>}
       <div className="form-actions"><button type="submit" className="btn" disabled={pending}>{pending ? "Creando…" : "Crear clave"}</button></div>

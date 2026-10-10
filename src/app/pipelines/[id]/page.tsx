@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { ExportLink } from "@/components/ExportLink";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
@@ -140,7 +141,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
                 <details className="save-view">
                   <summary>+ Guardar esta vista</summary>
                   <ActionForm action={saveViewAction.bind(null, "deals", currentQuery, `/pipelines/${id}`)} submitLabel="Guardar vista" secondary className="form inline">
-                    <label className="field"><span className="label">Nombre</span><input name="name" required maxLength={80} placeholder="Mis deals parados" /></label>
+                    <label className="field"><span className="label">Nombre *</span><input name="name" required maxLength={80} placeholder="Mis deals parados" /></label>
                     <label className="checkbox"><input type="checkbox" name="shared" />Compartir con el equipo</label>
                   </ActionForm>
                 </details>
@@ -155,17 +156,17 @@ export default async function PipelinePage({ params, searchParams }: { params: P
               {sp.dir && <input type="hidden" name="dir" value={sp.dir} />}
               {sp.cols && <input type="hidden" name="cols" value={sp.cols} />}
               <input name="q" type="search" defaultValue={filters.q ?? ""} placeholder="Buscar deal, empresa o contacto" aria-label="Buscar en la lista" />
-              <select name="stage" defaultValue={filters.stageId ?? ""} aria-label="Fase">
+              <AutoSubmitSelect name="stage" defaultValue={filters.stageId ?? ""} aria-label="Fase">
                 <option value="">Todas las fases</option>
                 {pipelineStages.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
-              </select>
-              <select name="flag" defaultValue={filters.flag ?? ""} aria-label="Situación">
+              </AutoSubmitSelect>
+              <AutoSubmitSelect name="flag" defaultValue={filters.flag ?? ""} aria-label="Situación">
                 <option value="">Cualquier situación</option>
                 {Object.entries(DEAL_FLAGS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </select>
+              </AutoSubmitSelect>
               <input name="min" type="number" min={0} step="any" defaultValue={sp.min ?? ""} placeholder="Importe desde" aria-label="Importe desde" className="num-input" />
               <input name="max" type="number" min={0} step="any" defaultValue={sp.max ?? ""} placeholder="hasta" aria-label="Importe hasta" className="num-input" />
-              <button type="submit" className="btn secondary small">Filtrar</button>
+              <button type="submit" className="btn secondary small" title="Aplica la búsqueda y los importes">Buscar</button>
               {filtered && <Link href={qs({ q: undefined, stage: undefined, flag: undefined, min: undefined, max: undefined, deal: undefined })} className="meta">Quitar filtros</Link>}
             </form>
 
@@ -176,7 +177,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
               types={types.map((t) => ({ value: t.key, label: t.label }))}
               sequences={seqs.filter((q) => q.is_active && q.steps > 0).map((q) => ({ value: q.id, label: q.name }))} />
 
-            <DataTable id={`deals${sp.cols ? `:${sp.cols}` : ""}`} selectable empty="No hay deals con estos filtros."
+            <DataTable id={`deals${sp.cols ? `:${sp.cols}` : ""}`} selectable empty={filtered ? "No hay deals con estos filtros." : <>Todavía no hay deals en este pipeline. <Link href={`/deals/new?pipeline=${id}`}>Crear el primero</Link></>}
               columns={[
                 { key: "title", label: "Deal", header: sortHeader("title", "Deal", false, true), required: true, pinned: true },
                 ...(Object.entries(DEAL_COLUMNS) as [DealColumn, string][]).map(([col, label]) => ({

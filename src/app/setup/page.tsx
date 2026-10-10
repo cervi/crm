@@ -18,16 +18,16 @@ export default async function SetupPage() {
       <p>Crea el primer usuario administrador. Después podrás dar acceso al resto del equipo desde Ajustes → Usuarios y permisos.</p>
       <ActionForm action={setupAction} submitLabel="Crear administrador y entrar" pendingLabel="Creando…">
         {production && (
-          <label className="field"><span className="label">Código de puesta en marcha</span>
+          <label className="field"><span className="label">Código de puesta en marcha *</span>
             <input name="code" required autoComplete="off" />
             <span className="meta">El valor de SETUP_CODE en el servidor: así nadie más puede adelantarse.</span></label>
         )}
-        <label className="field"><span className="label">Tu nombre</span><input name="name" required autoComplete="name" /></label>
-        <label className="field"><span className="label">Email</span><input name="email" type="email" required autoComplete="username" /></label>
-        <label className="field"><span className="label">Contraseña</span>
+        <label className="field"><span className="label">Tu nombre *</span><input name="name" required autoComplete="name" /></label>
+        <label className="field"><span className="label">Email *</span><input name="email" type="email" required autoComplete="username" /></label>
+        <label className="field"><span className="label">Contraseña *</span>
           <input name="password" type="password" required minLength={10} autoComplete="new-password" />
           <span className="meta">Al menos 10 caracteres.</span></label>
-        <label className="field"><span className="label">Repite la contraseña</span>
+        <label className="field"><span className="label">Repite la contraseña *</span>
           <input name="repeat" type="password" required minLength={10} autoComplete="new-password" /></label>
       </ActionForm>
     </main>

@@ -20,9 +20,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <h1>Entrar</h1>
       <ActionForm action={loginAction} submitLabel="Entrar" pendingLabel="Entrando…">
         <input type="hidden" name="next" value={safeNext(next)} />
-        <label className="field"><span className="label">Email</span>
+        <label className="field"><span className="label">Email *</span>
           <input name="email" type="email" autoComplete="username" required autoFocus /></label>
-        <label className="field"><span className="label">Contraseña</span>
+        <label className="field"><span className="label">Contraseña *</span>
           <input name="password" type="password" autoComplete="current-password" required /></label>
       </ActionForm>
       {demo && <p className="callout good">Demo: entra con <strong>{demo}</strong></p>}

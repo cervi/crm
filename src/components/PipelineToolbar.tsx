@@ -53,7 +53,7 @@ export function PipelineToolbar({ pipelineId, pipelines, users, sorts, view, sum
         <button type="button" aria-pressed={view === "board"} title="Tablero" aria-label="Vista de tablero" onClick={() => setParam("view", null)}><Icon name="board" /></button>
         <button type="button" aria-pressed={view === "list"} title="Lista" aria-label="Vista de lista" onClick={() => setParam("view", "list")}><Icon name="list" /></button>
       </div>
-      <Link href={`/deals/new?pipeline=${pipelineId}`} className="btn"><Icon name="plus" />Deal</Link>
+      <Link href={`/deals/new?pipeline=${pipelineId}`} className="btn"><Icon name="plus" />Nuevo deal</Link>
       <span className="spacer" />
       <span className="board-count">{summary}</span>
       {actions}

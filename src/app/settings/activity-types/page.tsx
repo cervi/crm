@@ -37,7 +37,7 @@ export default async function ActivityTypesPage() {
                 <form action={moveActivityTypeAction.bind(null, t.key, "down")}><button className="icon-btn small down" disabled={i === types.length - 1} aria-label={`Bajar ${t.label}`}><Icon name="up" /></button></form>
               </div>
               <ActionForm action={updateActivityTypeAction.bind(null, t.key)} submitLabel="Guardar" secondary className="form inline">
-                <label className="field"><span className="label">Nombre</span><input name="label" defaultValue={t.label} required /></label>
+                <label className="field"><span className="label">Nombre *</span><input name="label" defaultValue={t.label} required /></label>
                 <label className="checkbox"><input type="checkbox" name="is_session" defaultChecked={t.is_session} />Sesión con el cliente</label>
                 <label className="checkbox"><input type="checkbox" name="is_active" defaultChecked={t.is_active} />Activo</label>
                 <span className="meta">{t.usage > 0 ? `En uso (${t.usage})` : "Sin uso"}{t.is_builtin ? " · de serie" : ""}</span>
@@ -53,7 +53,7 @@ export default async function ActivityTypesPage() {
       <section className="panel">
         <h2>Nuevo tipo</h2>
         <ActionForm action={createActivityTypeAction} submitLabel="Añadir tipo" resetOnSuccess className="form inline">
-          <label className="field"><span className="label">Nombre</span><input name="label" required placeholder="Onboarding, Kick-off, Envío de propuesta…" /></label>
+          <label className="field"><span className="label">Nombre *</span><input name="label" required placeholder="Onboarding, Kick-off, Envío de propuesta…" /></label>
           <label className="checkbox"><input type="checkbox" name="is_session" />Sesión con el cliente</label>
         </ActionForm>
       </section>

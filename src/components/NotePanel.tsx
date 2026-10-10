@@ -14,6 +14,7 @@ export function NotePanel({ notes, refs, back }: { notes: Note[]; refs: Ref; bac
         {Object.entries(refs).map(([k, v]) => v && <input key={k} type="hidden" name={k} value={v} />)}
         <textarea name="content" rows={3} required placeholder="Escribe una nota…" aria-label="Nota" />
       </ActionForm>
+      {notes.length === 0 && <p className="muted" style={{ margin: 0 }}>Sin notas todavía.</p>}
       <ul className="items">
         {notes.map((n) => (
           <li key={n.id} className="item">

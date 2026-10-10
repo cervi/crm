@@ -57,8 +57,8 @@ export function PeriodPicker({ groups, current, label, fromIso, toIso }: { group
           </div>
           <form className="period-custom" onSubmit={(e) => { e.preventDefault(); if (from && to && from <= to) go({ r: "custom", from, to }); }}>
             <span className="period-group">Personalizado</span>
-            <label className="field"><span className="label">Desde</span><input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} required /></label>
-            <label className="field"><span className="label">Hasta</span><input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} required /></label>
+            <label className="field"><span className="label">Desde *</span><input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} required /></label>
+            <label className="field"><span className="label">Hasta *</span><input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} required /></label>
             <button type="submit" className="btn small" disabled={!from || !to || from > to}>Aplicar</button>
           </form>
         </div>
