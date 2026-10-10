@@ -729,8 +729,11 @@ await step("regla personalizada: al hacer el onboarding, la IA crea la tarea sig
   await item.waitFor({ state: "detached" });
   await page.goto("/inbox");
   await submit("Revisar ahora");
-  await page.waitForTimeout(500);
-  const [t] = await sql`SELECT a.subject, a.created_by_id FROM activities a WHERE a.deal_id = ${PACO_OPEN} AND a.subject = 'Enviar el resumen del onboarding a Ana'`;
+  let t;
+  for (let i = 0; i < 20 && !t; i++) {
+    await page.waitForTimeout(300);
+    [t] = await sql`SELECT a.subject, a.created_by_id FROM activities a WHERE a.deal_id = ${PACO_OPEN} AND a.subject = 'Enviar el resumen del onboarding a Ana'`;
+  }
   expect(t?.created_by_id === "00000000-0000-0000-0000-0000000000a1", "la tarea no la creó la IA");
   await page.goto(`/deals/${PACO_OPEN}`);
   await page.locator(".item", { hasText: "Enviar el resumen del onboarding a Ana" }).waitFor();
