@@ -1703,6 +1703,56 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   await sql`DELETE FROM organizations WHERE id = ${XORG}`;
 }
 
+// ------------------------------------------------------------- La IA por fase del funnel (instrucciones en lenguaje natural)
+{
+  const SECRET = process.env.CRON_SECRET ?? "", MOCK = process.env.MOCK_URL;
+  const runA = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
+  const [ai] = await sql`SELECT provider, api_key IS NOT NULL AS key FROM ai_settings`;
+  await sql`UPDATE ai_settings SET monthly_budget = NULL, agent_budgets = '{}'::jsonb, last_error = NULL`;
+  await sql`UPDATE automation_settings SET paused = false`;
+  const [d] = await sql`SELECT d.stage_id, d.pipeline_id, s.position FROM deals d JOIN stages s ON s.id = d.stage_id WHERE d.id = ${DEAL_OPEN}`;
+  const [next] = await sql`SELECT id, name FROM stages WHERE pipeline_id = ${d.pipeline_id} AND position > ${d.position} AND is_active ORDER BY position LIMIT 1`;
+  const [ins] = await sql`INSERT INTO stage_instructions (pipeline_id, stage_id, text, autonomy, summary, compiled_by)
+                          VALUES (${d.pipeline_id}, ${d.stage_id}, 'Escríbele para agendar con mis huecos y muévelo si confirman presupuesto', 'ask', 'prueba', 'ai') RETURNING id`;
+  const mk = (n, trigger, action, autonomy, condition = null) => sql`
+    INSERT INTO automation_rules (key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action, instruction_id, condition, agent)
+    VALUES (${`fase_e2e_${n}`}, ${`E2E ${n}`}, 'prueba', ${autonomy}, ARRAY['off','ask','auto'], '{}'::jsonb, 900 + ${n}, true, ${sql.json(trigger)}, ${sql.json(action)},
+            ${ins.id}, ${condition}, 'ejecutivo') RETURNING id`;
+  const [r1] = await mk(1, { kind: "deal_stage", stage_id: d.stage_id, days: 0, include_existing: true, filter: { pipeline_id: d.pipeline_id } },
+                         { kind: "draft_email", subject: "¿Buscamos un hueco?", body: "", ai_prompt: "Propón una reunión con mis huecos.", use_slots: true }, "ask");
+  const [r2] = await mk(2, { kind: "stage_review", filter: { pipeline_id: d.pipeline_id, stage_id: d.stage_id } },
+                         { kind: "move_stage", stage_id: next.id }, "auto", "ya han confirmado el presupuesto");
+  const [perm] = await sql`SELECT autonomy FROM ai_permissions WHERE actor = 'assistant' AND action_type = 'move_stage'`;
+  await sql`UPDATE ai_permissions SET autonomy = 'auto' WHERE actor = 'assistant' AND action_type = 'move_stage'`;
+  await runA();
+  const [p1] = await sql`SELECT status, payload, reason FROM automation_actions WHERE rule_id = ${r1.id} AND deal_id = ${DEAL_OPEN}`;
+  check(p1?.status === "pending" && /hueco/i.test(p1.payload.subject + p1.payload.body) && p1.reason.includes("Según tu instrucción"),
+        "IA por fase: al estar el deal en la fase, propone escribirle para agendar con un correo redactado para él", JSON.stringify(p1));
+  if (MOCK && ai?.provider !== "none" && ai?.key) {
+    const [c1] = await sql`SELECT result FROM ai_condition_checks WHERE rule_id = ${r2.id} AND deal_id = ${DEAL_OPEN}`;
+    const [s1] = await sql`SELECT stage_id FROM deals WHERE id = ${DEAL_OPEN}`;
+    check(c1?.result === false && s1.stage_id === d.stage_id, "IA por fase: si no se cumple la condición, no lo mueve (y no vuelve a preguntar a la IA sin novedades)", JSON.stringify({ c1, s1 }));
+    const calls = (await (await fetch(`${MOCK}/__state`)).json()).llm.filter((x) => x.task === "check_condition").length;
+    await runA();
+    const calls2 = (await (await fetch(`${MOCK}/__state`)).json()).llm.filter((x) => x.task === "check_condition").length;
+    await sql`INSERT INTO notes (content, deal_id, author_id) VALUES ('Nos confirman: presupuesto aprobado por dirección', ${DEAL_OPEN}, ${ADMIN_ID})`;
+    await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, actor_id, payload) VALUES ('deal', ${DEAL_OPEN}, 'note.created', 'user', ${ADMIN_ID}, '{}')`;
+    await runA();
+    const [s2] = await sql`SELECT stage_id FROM deals WHERE id = ${DEAL_OPEN}`;
+    const [x2] = await sql`SELECT status, mode, reason FROM automation_actions WHERE rule_id = ${r2.id} AND deal_id = ${DEAL_OPEN} ORDER BY created_at DESC LIMIT 1`;
+    check(calls2 >= calls && s2.stage_id === next.id && x2?.status === "done" && x2.mode === "auto" && x2.reason.includes("Se cumple"),
+          "IA por fase: con la novedad que cumple la condición, la IA lo mueve sola de fase y explica por qué", JSON.stringify({ calls, calls2, x2 }));
+    await sql`UPDATE deals SET stage_id = ${d.stage_id}, stage_entered_at = now() WHERE id = ${DEAL_OPEN}`;
+  }
+  const page = await (await get(`/pipelines/${d.pipeline_id}/agentes`)).text();
+  const board = await (await get(`/pipelines/${d.pipeline_id}`)).text();
+  check(page.includes("Escríbele para agendar con mis huecos") && page.includes("Probar con un deal") && page.includes("En todo el pipeline")
+        && board.includes("stage-ai on") && board.includes("IA del pipeline"),
+        "IA por fase: la página del pipeline muestra las instrucciones por fase y el tablero marca las fases con IA");
+  await sql`UPDATE ai_permissions SET autonomy = ${perm?.autonomy ?? "ask"} WHERE actor = 'assistant' AND action_type = 'move_stage'`;
+  await sql`DELETE FROM stage_instructions WHERE id = ${ins.id}`;
+}
+
 // ------------------------------------------------------------- Avisos, importar CSV, duplicados
 {
   // Abrir una propuesta avisa al responsable del deal.
@@ -1856,56 +1906,6 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   const orgs = await (await get(`/organizations?owner=me&sort=recent`)).text();
   check(byTag.includes("Ana García") && byTag.includes("vip-e2e") && !none.includes("Ana García") && orgs.includes("Empresas"),
         "listas: filtro por etiqueta, deals y responsable");
-}
-
-// ------------------------------------------------------------- La IA por fase del funnel (instrucciones en lenguaje natural)
-{
-  const SECRET = process.env.CRON_SECRET ?? "", MOCK = process.env.MOCK_URL;
-  const runA = async () => (await fetch(`${BASE}/api/v1/automations/run`, { method: "POST", headers: { authorization: `Bearer ${SECRET}` } })).json();
-  const [ai] = await sql`SELECT provider, api_key IS NOT NULL AS key FROM ai_settings`;
-  await sql`UPDATE ai_settings SET monthly_budget = NULL, agent_budgets = '{}'::jsonb, last_error = NULL`;
-  await sql`UPDATE automation_settings SET paused = false`;
-  const [d] = await sql`SELECT d.stage_id, d.pipeline_id, s.position FROM deals d JOIN stages s ON s.id = d.stage_id WHERE d.id = ${DEAL_OPEN}`;
-  const [next] = await sql`SELECT id, name FROM stages WHERE pipeline_id = ${d.pipeline_id} AND position > ${d.position} AND is_active ORDER BY position LIMIT 1`;
-  const [ins] = await sql`INSERT INTO stage_instructions (pipeline_id, stage_id, text, autonomy, summary, compiled_by)
-                          VALUES (${d.pipeline_id}, ${d.stage_id}, 'Escríbele para agendar con mis huecos y muévelo si confirman presupuesto', 'ask', 'prueba', 'ai') RETURNING id`;
-  const mk = (n, trigger, action, autonomy, condition = null) => sql`
-    INSERT INTO automation_rules (key, name, description, autonomy, allowed_autonomy, params, position, is_custom, trigger, action, instruction_id, condition, agent)
-    VALUES (${`fase_e2e_${n}`}, ${`E2E ${n}`}, 'prueba', ${autonomy}, ARRAY['off','ask','auto'], '{}'::jsonb, 900 + ${n}, true, ${sql.json(trigger)}, ${sql.json(action)},
-            ${ins.id}, ${condition}, 'ejecutivo') RETURNING id`;
-  const [r1] = await mk(1, { kind: "deal_stage", stage_id: d.stage_id, days: 0, include_existing: true, filter: { pipeline_id: d.pipeline_id } },
-                         { kind: "draft_email", subject: "¿Buscamos un hueco?", body: "", ai_prompt: "Propón una reunión con mis huecos.", use_slots: true }, "ask");
-  const [r2] = await mk(2, { kind: "stage_review", filter: { pipeline_id: d.pipeline_id, stage_id: d.stage_id } },
-                         { kind: "move_stage", stage_id: next.id }, "auto", "ya han confirmado el presupuesto");
-  const [perm] = await sql`SELECT autonomy FROM ai_permissions WHERE actor = 'assistant' AND action_type = 'move_stage'`;
-  await sql`UPDATE ai_permissions SET autonomy = 'auto' WHERE actor = 'assistant' AND action_type = 'move_stage'`;
-  await runA();
-  const [p1] = await sql`SELECT status, payload, reason FROM automation_actions WHERE rule_id = ${r1.id} AND deal_id = ${DEAL_OPEN}`;
-  check(p1?.status === "pending" && /hueco/i.test(p1.payload.subject + p1.payload.body) && p1.reason.includes("Según tu instrucción"),
-        "IA por fase: al estar el deal en la fase, propone escribirle para agendar con un correo redactado para él", JSON.stringify(p1));
-  if (MOCK && ai?.provider !== "none" && ai?.key) {
-    const [c1] = await sql`SELECT result FROM ai_condition_checks WHERE rule_id = ${r2.id} AND deal_id = ${DEAL_OPEN}`;
-    const [s1] = await sql`SELECT stage_id FROM deals WHERE id = ${DEAL_OPEN}`;
-    check(c1?.result === false && s1.stage_id === d.stage_id, "IA por fase: si no se cumple la condición, no lo mueve (y no vuelve a preguntar a la IA sin novedades)", JSON.stringify({ c1, s1 }));
-    const calls = (await (await fetch(`${MOCK}/__state`)).json()).llm.filter((x) => x.task === "check_condition").length;
-    await runA();
-    const calls2 = (await (await fetch(`${MOCK}/__state`)).json()).llm.filter((x) => x.task === "check_condition").length;
-    await sql`INSERT INTO notes (content, deal_id, author_id) VALUES ('Nos confirman: presupuesto aprobado por dirección', ${DEAL_OPEN}, ${ADMIN_ID})`;
-    await sql`INSERT INTO events (entity_type, entity_id, event_type, actor_type, actor_id, payload) VALUES ('deal', ${DEAL_OPEN}, 'note.created', 'user', ${ADMIN_ID}, '{}')`;
-    await runA();
-    const [s2] = await sql`SELECT stage_id FROM deals WHERE id = ${DEAL_OPEN}`;
-    const [x2] = await sql`SELECT status, mode, reason FROM automation_actions WHERE rule_id = ${r2.id} AND deal_id = ${DEAL_OPEN} ORDER BY created_at DESC LIMIT 1`;
-    check(calls2 >= calls && s2.stage_id === next.id && x2?.status === "done" && x2.mode === "auto" && x2.reason.includes("Se cumple"),
-          "IA por fase: con la novedad que cumple la condición, la IA lo mueve sola de fase y explica por qué", JSON.stringify({ calls, calls2, x2 }));
-    await sql`UPDATE deals SET stage_id = ${d.stage_id}, stage_entered_at = now() WHERE id = ${DEAL_OPEN}`;
-  }
-  const page = await (await get(`/pipelines/${d.pipeline_id}/agentes`)).text();
-  const board = await (await get(`/pipelines/${d.pipeline_id}`)).text();
-  check(page.includes("Escríbele para agendar con mis huecos") && page.includes("Probar con un deal") && page.includes("En todo el pipeline")
-        && board.includes("stage-ai on") && board.includes("IA del pipeline"),
-        "IA por fase: la página del pipeline muestra las instrucciones por fase y el tablero marca las fases con IA");
-  await sql`UPDATE ai_permissions SET autonomy = ${perm?.autonomy ?? "ask"} WHERE actor = 'assistant' AND action_type = 'move_stage'`;
-  await sql`DELETE FROM stage_instructions WHERE id = ${ins.id}`;
 }
 
 // ------------------------------------------------------------- Usuarios y permisos
