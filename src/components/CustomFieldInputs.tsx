@@ -1,4 +1,5 @@
 import { inputName, type FieldDefinition } from "@/lib/custom-fields";
+import { ChoiceField } from "./ChoiceField";
 
 type Props = {
   defs: FieldDefinition[];
@@ -10,13 +11,32 @@ type Props = {
 export function CustomFieldInputs({ defs, values = {}, users = [] }: Props) {
   const active = defs.filter((d) => !d.is_archived);
   if (active.length === 0) return null;
+  const filled = (d: FieldDefinition) => {
+    const v = values[d.key];
+    return v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0) && v !== false;
+  };
+  // A la vista: los obligatorios y los que ya tienen valor. El resto, plegado,
+  // para que crear un deal no sea un muro de casillas.
+  const main = active.filter((d) => d.is_required || filled(d));
+  const rest = active.filter((d) => !main.includes(d));
+  const grid = (list: FieldDefinition[]) => (
+    <div className="grid-2 cf-grid">
+      {list.map((def) => <CustomInput key={def.id} def={def} value={values[def.key]} users={users} />)}
+    </div>
+  );
   return (
-    <fieldset className="fieldset">
-      <legend>Campos personalizados</legend>
-      <div className="grid-2">
-        {active.map((def) => <CustomInput key={def.id} def={def} value={values[def.key]} users={users} />)}
-      </div>
-    </fieldset>
+    <div className="cf-block">
+      {main.length > 0 && grid(main)}
+      {rest.length > 0 && (
+        <details className="cf-more" open={main.length === 0 && rest.length <= 6}>
+          <summary>
+            <span>{main.length ? "Más campos" : "Campos personalizados"}</span>
+            <span className="meta">{rest.length} campo{rest.length === 1 ? "" : "s"} · opcionales</span>
+          </summary>
+          {grid(rest)}
+        </details>
+      )}
+    </div>
   );
 }
 
@@ -35,29 +55,10 @@ function CustomInput({ def, value, users }: { def: FieldDefinition; value: unkno
         </label>
       );
     case "single_option":
-      return (
-        <label className="field">{label}
-          <select name={name} defaultValue={str} required={def.is_required}>
-            <option value="">—</option>
-            {(def.options ?? []).map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-          </select>
-        </label>
-      );
-    case "multi_option": {
-      const picked = new Set(Array.isArray(value) ? value.map(String) : []);
-      return (
-        <fieldset className="field">
-          {label}
-          <div className="checks">
-            {(def.options ?? []).map((o) => (
-              <label key={o.key} className="checkbox">
-                <input type="checkbox" name={name} value={o.key} defaultChecked={picked.has(o.key)} /> {o.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      );
-    }
+      return <ChoiceField name={name} label={def.label} options={def.options ?? []} initial={str ? [str] : []} multiple={false} required={def.is_required} />;
+    case "multi_option":
+      return <ChoiceField name={name} label={def.label} options={def.options ?? []} required={def.is_required}
+                          initial={Array.isArray(value) ? value.map(String) : []} multiple />;
     case "user":
       return (
         <label className="field">{label}
