@@ -20,7 +20,7 @@ export default async function EditPersonPage({ params }: { params: Promise<{ id:
   const email = info.emails.find((e) => e.is_primary)?.email ?? info.emails[0]?.email;
   const phone = info.phones.find((p) => p.is_primary)?.phone ?? info.phones[0]?.phone;
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href="/persons">Contactos</Link> / <Link href={`/persons/${id}`}>{person.full_name}</Link></div>
       <div className="page-head"><h1>Editar contacto</h1></div>
       <section className="panel">

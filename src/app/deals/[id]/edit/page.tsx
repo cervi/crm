@@ -19,7 +19,7 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
   ]);
   if (!deal) notFound();
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href={`/pipelines/${deal.pipeline_id}`}>{deal.pipeline_name}</Link> / <Link href={`/deals/${id}`}>{deal.title}</Link></div>
       <div className="page-head"><h1>Editar deal</h1></div>
       <section className="panel">

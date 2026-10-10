@@ -16,7 +16,7 @@ export default async function EditOrganizationPage({ params }: { params: Promise
   const [org, defs, users] = await Promise.all([getOrganization(id), listFieldDefinitions("organization"), listUsers()]);
   if (!org) notFound();
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href="/organizations">Empresas</Link> / <Link href={`/organizations/${id}`}>{org.name}</Link></div>
       <div className="page-head"><h1>Editar empresa</h1></div>
       <section className="panel">

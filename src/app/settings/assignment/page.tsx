@@ -43,7 +43,7 @@ export default async function AssignmentPage() {
   const [settings, rules, users] = await Promise.all([assignmentSettings(), listAssignmentRules(), listUsers()]);
   const humans = users.filter((u) => u.kind === "human");
   return (
-    <main className="page" style={{ maxWidth: 900 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

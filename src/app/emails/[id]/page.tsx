@@ -20,7 +20,7 @@ export default async function SentEmailPage({ params }: { params: Promise<{ id: 
   const days = new Set(human.map((o) => new Date(o.at).toDateString())).size;
 
   return (
-    <main className="page" style={{ maxWidth: 900 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/emails">Correos enviados</Link></div>
       <div className="page-head"><h1>{e.subject || "(sin asunto)"}</h1></div>
       <dl className="dl compact">

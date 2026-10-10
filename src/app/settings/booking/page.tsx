@@ -16,7 +16,7 @@ export default async function BookingSettingsPage() {
   const base = publicBase();
   const url = page && base ? `${base}/book/${page.slug}` : null;
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

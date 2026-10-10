@@ -9,7 +9,7 @@ export const metadata = { title: "Secuencias" };
 export default async function SequencesPage() {
   const sequences = await listSequences();
   return (
-    <main className="page" style={{ maxWidth: 980 }}>
+    <main className="page">
       <div className="page-head">
         <div>
           <h1>Secuencias</h1>

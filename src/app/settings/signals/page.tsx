@@ -11,7 +11,7 @@ export default async function SignalSettingsPage() {
   await requireAdminPage();
   const [s] = await sql<{ open_alerts: "all" | "reopen" | "off"; competitors: string[] }[]>`SELECT open_alerts, competitors FROM app_settings LIMIT 1`;
   return (
-    <main className="page" style={{ maxWidth: 820 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head"><div>
         <h1>Señales y avisos</h1>

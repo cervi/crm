@@ -20,7 +20,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const discounts = me.role === "admin" ? await pendingDiscounts() : [];
 
   return (
-    <main className="page" style={{ maxWidth: 980 }}>
+    <main className="page medium">
       <div className="page-head">
         <div>
           <h1>Bandeja de la IA</h1>

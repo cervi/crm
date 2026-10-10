@@ -22,7 +22,7 @@ export default async function NewDealPage({ searchParams }: {
     isId(sp.person) ? getPerson(sp.person) : null,
   ]);
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href="/pipelines">Deals</Link></div>
       <div className="page-head"><h1>Nuevo deal</h1></div>
       <section className="panel">

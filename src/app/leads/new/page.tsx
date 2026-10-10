@@ -7,7 +7,7 @@ export const metadata = { title: "Nuevo lead" };
 
 export default function NewLeadPage() {
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href="/leads">Leads</Link></div>
       <div className="page-head"><h1>Nuevo lead</h1></div>
       <p className="muted">Si el email ya existe se reutiliza el contacto, y la empresa se busca por dominio, igual que con los formularios.</p>

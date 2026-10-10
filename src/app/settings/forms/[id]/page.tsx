@@ -21,7 +21,7 @@ export default async function FormPage({ params }: { params: Promise<{ id: strin
   const url = formUrl(f);
   const embed = `<iframe src="${url}?embed=1" style="width:100%;max-width:560px;height:620px;border:0" title="${f.title.replace(/"/g, "&quot;")}"></iframe>`;
   return (
-    <main className="page" style={{ maxWidth: 980 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link> → <Link href="/settings/forms">Formularios web</Link></div>
       <div className="page-head"><h1>{f.name}</h1><span className="muted">{f.submissions} recibidos</span></div>
 

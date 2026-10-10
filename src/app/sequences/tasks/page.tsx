@@ -15,7 +15,7 @@ export default async function ManualEmailsPage({ searchParams }: { searchParams:
   const all = (await searchParams).todos === "1";
   const [items, ai] = await Promise.all([listManualEmails(user.id, all), getAiSettings()]);
   return (
-    <main className="page" style={{ maxWidth: 1180 }}>
+    <main className="page">
       <div className="crumbs"><Link href="/sequences">Secuencias</Link></div>
       <div className="page-head">
         <div>

@@ -17,7 +17,7 @@ export default async function FieldsPage({ searchParams }: { searchParams: Promi
   const typeLabel = (t: string) => FIELD_TYPES.find((f) => f.value === t)?.label ?? t;
 
   return (
-    <main className="page" style={{ maxWidth: 1000 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head"><h1>Campos personalizados</h1></div>
       <nav className="tabs">

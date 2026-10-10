@@ -34,7 +34,7 @@ export default async function TemplatesPage() {
   ]);
   const tracking = settings?.email_tracking ?? true;
   return (
-    <main className="page" style={{ maxWidth: 900 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

@@ -16,7 +16,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const { q = "" } = await searchParams;
   const hits = await globalSearch(q, 50);
   return (
-    <main className="page" style={{ maxWidth: 860 }}>
+    <main className="page medium">
       <div className="page-head"><h1>Resultados de «{q}»</h1></div>
       {q.trim().length < 2 && <p className="muted">Escribe al menos dos letras en el buscador.</p>}
       {q.trim().length >= 2 && hits.length === 0 && <p className="muted">No hay deals, contactos, empresas ni leads que coincidan.</p>}

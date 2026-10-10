@@ -59,7 +59,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   ];
 
   return (
-    <main className="page today" style={{ maxWidth: 1180 }}>
+    <main className="page today">
       <div className="page-head">
         <div>
           <h1>{greeting}{d.ownerName ? `, ${d.ownerName}` : ""}</h1>
@@ -149,6 +149,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           </section>
         </div>
 
+        <div className="today-side">
         <div className="today-col">
           <section className="panel" aria-label="Agenda de hoy">
             <h2>Reuniones de hoy</h2>
@@ -163,6 +164,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             <h2>Vencidas <span className="muted">{d.overdue.length}</span></h2>
             <List items={d.overdue} empty="Nada vencido." showDate />
           </section>
+        </div>
+        <div className="today-col">
           <section className="panel" aria-label="Lo que hizo la IA">
             <h2>Lo que hizo la IA <span className="muted">últimas 24 h</span></h2>
             {d.agents.length > 0 && <p className="meta" style={{ marginTop: 0 }}>{d.agents.map((a) => `${a.name}: ${a.done}${a.pending ? ` (+${a.pending} por decidir)` : ""}`).join(" · ")} · <Link href="/agents">Ver agentes</Link></p>}
@@ -174,6 +177,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             <List items={[...d.closed, ...d.leads.items]} empty="Sin leads nuevos ni cierres." />
             {d.leads.count > d.leads.items.length && <Link href="/leads" className="meta">Ver los {d.leads.count} leads</Link>}
           </section>
+        </div>
         </div>
       </div>
     </main>

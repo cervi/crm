@@ -15,7 +15,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
     SELECT created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ${user.id} AND expires_at > now() ORDER BY last_seen_at DESC`;
   const [sig] = await sql<{ email_signature: string | null }[]>`SELECT email_signature FROM users WHERE id = ${user.id}`;
   return (
-    <main className="page" style={{ maxWidth: 720 }}>
+    <main className="page narrow">
       <div className="page-head">
         <div>
           <h1>Mi cuenta</h1>

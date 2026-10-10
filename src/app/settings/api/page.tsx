@@ -25,7 +25,7 @@ export default async function ApiDocsPage() {
   }'`;
 
   return (
-    <main className="page" style={{ maxWidth: 860 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head"><h1>Conectar formularios</h1></div>
 

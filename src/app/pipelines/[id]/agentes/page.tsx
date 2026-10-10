@@ -93,7 +93,7 @@ export default async function PipelineAgentsPage({ params, searchParams }: { par
   const allDeals = deals.map((d) => ({ id: d.id, title: d.title }));
 
   return (
-    <main className="page" style={{ maxWidth: 1080 }}>
+    <main className="page">
       <div className="crumbs"><Link href={`/pipelines/${id}`}>{pipeline.name}</Link></div>
       <div className="page-head">
         <div>

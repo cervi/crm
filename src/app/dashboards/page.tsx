@@ -10,7 +10,7 @@ export default async function DashboardsIndex() {
   const [first] = await listDashboards();
   if (first) redirect(`/dashboards/${first.id}`);
   return (
-    <main className="page" style={{ maxWidth: 560 }}>
+    <main className="page narrow">
       <div className="page-head"><h1>Dashboards</h1></div>
       <section className="panel stack">
         <p className="muted" style={{ margin: 0 }}>Crea tu primer dashboard y añade los widgets con las métricas que quieras seguir.</p>

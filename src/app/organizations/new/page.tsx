@@ -10,7 +10,7 @@ export const metadata = { title: "Nueva empresa" };
 export default async function NewOrganizationPage() {
   const [defs, users] = await Promise.all([listFieldDefinitions("organization"), listUsers()]);
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href="/organizations">Empresas</Link></div>
       <div className="page-head"><h1>Nueva empresa</h1></div>
       <section className="panel">

@@ -29,7 +29,7 @@ export default async function UsersPage() {
   const me = await requireAdminPage();
   const users = await listAllUsers();
   return (
-    <main className="page" style={{ maxWidth: 980 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

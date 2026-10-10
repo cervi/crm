@@ -12,7 +12,7 @@ export default async function NotificationsPage() {
   // Al abrir la lista completa, todo queda leído.
   await markRead(me.id);
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="page-head"><h1>Avisos</h1></div>
       {items.length === 0 && <p className="muted">No tienes avisos. Aquí verás cuándo te mencionan en una nota, te asignan un deal o un cliente responde, reserva o acepta una propuesta.</p>}
       <ul className="items">

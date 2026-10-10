@@ -30,7 +30,7 @@ export default async function ProductsPage() {
   await requireAdminPage();
   const [products, [settings]] = await Promise.all([listProducts(true), sql<{ max: string | null }[]>`SELECT max_discount_pct::text AS max FROM app_settings LIMIT 1`]);
   return (
-    <main className="page" style={{ maxWidth: 980 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

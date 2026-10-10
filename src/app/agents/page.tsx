@@ -37,7 +37,7 @@ export default async function AgentsPage() {
   const used = spend.budget ? Math.min(100, Math.round((spend.month / spend.budget) * 100)) : null;
 
   return (
-    <main className="page agents-page" style={{ maxWidth: 1180 }}>
+    <main className="page agents-page">
       <div className="page-head">
         <div>
           <h1>Agentes</h1>

@@ -15,7 +15,7 @@ export default async function NewPersonPage({ searchParams }: { searchParams: Pr
     listFieldDefinitions("person"), listUsers(), isId(organization) ? getOrganization(organization) : null,
   ]);
   return (
-    <main className="page" style={{ maxWidth: 760 }}>
+    <main className="page narrow">
       <div className="crumbs"><Link href="/persons">Contactos</Link></div>
       <div className="page-head"><h1>Nuevo contacto</h1></div>
       <section className="panel">

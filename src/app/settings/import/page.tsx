@@ -21,7 +21,7 @@ export default async function ImportPage() {
   const [pd, jobs, running, ai] = await Promise.all([getPipedriveSettings(), listImportJobs(5), runningJob(), getSettings()]);
   const last = jobs.find((j) => j.status !== "running");
   return (
-    <main className="page" style={{ maxWidth: 900 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

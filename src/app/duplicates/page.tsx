@@ -13,7 +13,7 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
   const groups = await findDuplicates(kind);
   const path = kind === "person" ? "persons" : "organizations";
   return (
-    <main className="page" style={{ maxWidth: 900 }}>
+    <main className="page medium">
       <div className="page-head">
         <div>
           <h1>Duplicados</h1>

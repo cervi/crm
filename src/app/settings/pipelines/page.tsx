@@ -15,7 +15,7 @@ export default async function PipelinesSettingsPage() {
            (SELECT count(*)::int FROM deals d WHERE d.pipeline_id = p.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_deals
     FROM pipelines p ORDER BY p.position, p.name`;
   return (
-    <main className="page" style={{ maxWidth: 860 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head"><h1>Pipelines</h1></div>
       <div className="stack">

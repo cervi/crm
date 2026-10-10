@@ -40,7 +40,7 @@ export default async function PipelineSettingsPage({ params }: { params: Promise
   if (!pipeline) notFound();
 
   return (
-    <main className="page" style={{ maxWidth: 1000 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link> / <Link href="/settings/pipelines">Pipelines</Link></div>
       <div className="page-head">
         <h1>{pipeline.name}</h1><span className="spacer" />

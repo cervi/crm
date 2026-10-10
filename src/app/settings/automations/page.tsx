@@ -46,7 +46,7 @@ export default async function AutomationsSettingsPage() {
   const levelLabel = (v: string) => AUTONOMY_LEVELS.find((l) => l.value === v)?.label ?? v;
 
   return (
-    <main className="page" style={{ maxWidth: 980 }}>
+    <main className="page">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head"><h1>Automatizaciones e IA</h1></div>
 

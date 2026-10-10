@@ -13,7 +13,7 @@ export default async function ExportSettingsPage() {
   const sep = await getCsvSeparator();
   const full = Object.entries(DATASETS).filter(([, d]) => d.full);
   return (
-    <main className="page" style={{ maxWidth: 860 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

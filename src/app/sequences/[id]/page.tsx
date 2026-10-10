@@ -71,7 +71,7 @@ export default async function SequencePage({ params }: { params: Promise<{ id: s
   const paused = enrollments.filter((e) => e.status === "paused").length;
   let hours = 0;
   return (
-    <main className="page" style={{ maxWidth: 1180 }}>
+    <main className="page">
       <div className="crumbs"><Link href="/sequences">Secuencias</Link></div>
       <div className="page-head">
         <div>

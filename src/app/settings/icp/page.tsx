@@ -16,7 +16,7 @@ export default async function IcpPage() {
            count(*) FILTER (WHERE fit = 'unknown')::int AS unknown FROM leads WHERE status = 'open' AND deleted_at IS NULL`;
   const join = (xs: string[]) => xs.join(", ");
   return (
-    <main className="page" style={{ maxWidth: 860 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head"><div>
         <h1>Perfil de cliente ideal</h1>

@@ -33,7 +33,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const [user, { denied }] = await Promise.all([requireUser(), searchParams]);
   const admin = user.role === "admin";
   return (
-    <main className="page" style={{ maxWidth: 860 }}>
+    <main className="page medium">
       <div className="page-head"><h1>Ajustes</h1></div>
       {denied && <p className="callout" role="alert">Esa sección de ajustes es solo para administradores.</p>}
       {!admin && <p className="muted">Los demás ajustes los gestiona un administrador. Tu contraseña y tu nombre están en <Link href="/account">Mi cuenta</Link>.</p>}

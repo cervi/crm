@@ -10,7 +10,7 @@ export const metadata = { title: "Papelera" };
 export default async function TrashPage() {
   const items = await listTrash();
   return (
-    <main className="page" style={{ maxWidth: 900 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

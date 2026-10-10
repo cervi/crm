@@ -73,7 +73,7 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
   const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
 
   return (
-    <main className="page" style={{ maxWidth: 980 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>

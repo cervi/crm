@@ -11,7 +11,7 @@ export default async function LostReasonsPage() {
   await requireAdminPage();
   const reasons = await listLostReasons(true);
   return (
-    <main className="page" style={{ maxWidth: 860 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head"><h1>Motivos de pérdida</h1></div>
       <p className="muted">Si un motivo tiene días de seguimiento, al perder un deal por ese motivo se crea una tarea para volver a contactar en esa fecha.</p>

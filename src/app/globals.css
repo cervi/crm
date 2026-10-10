@@ -217,7 +217,11 @@ h3 { font-size: 13px; font-weight: 620; color: var(--text-2); margin: 0 0 8px; }
 .search-empty { padding: 12px 10px; color: var(--muted); }
 
 .content { min-width: 0; flex: 1; }
-.page { padding: 24px 28px 48px; max-width: 1240px; }
+.page { padding: 24px 32px 48px; max-width: 1680px; }
+/* Anchos: formularios cortos (narrow) y ajustes o listas de lectura (medium);
+   el resto aprovecha la pantalla. */
+.page.narrow { max-width: 860px; }
+.page.medium { max-width: 1200px; }
 .page-wide { padding: 18px 24px 32px; }
 .page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .page-head .spacer { flex: 1; }
@@ -745,7 +749,13 @@ dl.compact .dl-row { grid-template-columns: 104px 1fr; gap: 8px; }
 .today-focus-text { margin: 10px 0 0; white-space: pre-line; font-size: 14.5px; line-height: 1.55; }
 .today-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 960px) { .today-grid { grid-template-columns: 1fr; } }
-.today-col { display: grid; gap: 16px; }
+.today-col { display: grid; gap: 16px; align-content: start; }
+.today-side { display: grid; gap: 16px; align-items: start; }
+/* Pantalla ancha: tres columnas (atención | agenda y tareas | IA y novedades). */
+@media (min-width: 1440px) {
+  .today-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+  .today-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .today-col h2 .muted { font-weight: 500; font-size: 13px; }
 .today-empty { margin: 0; }
 .today-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }

@@ -9,7 +9,7 @@ export const metadata = { title: "Importar CSV" };
 export default async function ImportPage() {
   await requireUser();
   return (
-    <main className="page" style={{ maxWidth: 980 }}>
+    <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head">
         <div>
