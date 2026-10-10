@@ -102,7 +102,11 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
     sql<{ id: string; name: string; v: number; n: number; target: number | null }[]>`
       SELECT u.id, u.name, coalesce(sum(d.value), 0)::float8 AS v, count(d.id)::int AS n, u.monthly_target::float8 AS target
       FROM users u LEFT JOIN deals d ON d.owner_id = u.id AND d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= date_trunc('month', now())
-      WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name, u.monthly_target ORDER BY v DESC, n DESC, u.name LIMIT 6`,
+      WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name, u.monthly_target ORDER BY v DESC, n DESC, u.name LIMIT 6`
+      .catch(() => sql<{ id: string; name: string; v: number; n: number; target: number | null }[]>`
+        SELECT u.id, u.name, coalesce(sum(d.value), 0)::float8 AS v, count(d.id)::int AS n, NULL::float8 AS target
+        FROM users u LEFT JOIN deals d ON d.owner_id = u.id AND d.status = 'won' AND d.deleted_at IS NULL AND d.won_at >= date_trunc('month', now())
+        WHERE u.is_active AND u.kind = 'human' GROUP BY u.id, u.name ORDER BY v DESC, n DESC, u.name LIMIT 6`),
     sql<{ id: string; title: string; value: number | null; currency: string; owner: string | null; won_at: Date }[]>`
       SELECT d.id, d.title, d.value::float8 AS value, d.currency, u.name AS owner, d.won_at FROM deals d LEFT JOIN users u ON u.id = d.owner_id
       WHERE d.status = 'won' AND d.deleted_at IS NULL AND d.won_at > now() - interval '30 days' AND ${mine("d.owner_id")}
