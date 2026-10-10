@@ -46,7 +46,7 @@ export default async function MeetingNotesPage({ searchParams }: { searchParams:
     sql<{ email: string; notes_error: string | null; user_id: string }[]>`
       SELECT email, notes_error, user_id FROM mailbox_connections
       WHERE provider = 'google' AND status = 'active' AND (${admin} OR user_id = ${me.id})`,
-    sp.hecho ? getMeetingNote(viewer, sp.hecho) : Promise.resolve(null),
+    sp.hecho && /^[0-9a-f-]{36}$/i.test(sp.hecho) ? getMeetingNote(viewer, sp.hecho) : Promise.resolve(null),
   ]);
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host") ?? "localhost:3000"}`;
