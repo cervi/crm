@@ -8,7 +8,7 @@ import { listFieldDefinitions, readCustomValues } from "@/lib/custom-fields";
 import { createOrganization, getOrganization, updateOrganization } from "@/lib/organizations";
 import { changeCompany, createPerson, getPerson, updatePerson } from "@/lib/persons";
 import { createActivity, completeActivity, reopenActivity } from "@/lib/activities";
-import { dealWithoutNext, scheduleNext, type NextPreset } from "@/lib/next-step";
+import { dealWithoutNext, scheduleNext, type NextPreset } from "@/lib/next-activity";
 import { sql } from "@/lib/db";
 import { createNote } from "@/lib/notes";
 import { addActivityToCalendar } from "@/lib/mailbox";
