@@ -12,6 +12,8 @@ import { ask, attribution, revenueMix, forecast, funnel, GOAL_METRICS, goalsProg
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
 import { toUserMessage } from "@/lib/errors";
+import { salesAnalytics, SEGMENTS, type Grain, type Segment } from "@/lib/sales-analytics";
+import { GroupedBars, HBars, Lines, StackedBars } from "@/components/charts/SalesCharts";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Informes" };
@@ -26,16 +28,26 @@ const monthLabel = (m: string | null) => {
 const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n * 100)} %`);
 const fmtGoal = (metric: keyof typeof GOAL_METRICS, n: number) => (GOAL_METRICS[metric].money ? money(n) : Math.round(n).toLocaleString("es-ES"));
 
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ pipeline?: string; owner?: string; q?: string }> }) {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ pipeline?: string; owner?: string; q?: string; g?: string; seg?: string }> }) {
   const [sp, me] = await Promise.all([searchParams, requireUser()]);
   const [pipelines, users, ai, dashboards] = await Promise.all([listPipelines(), listUsers(), getAiSettings(), listDashboards()]);
   const active = pipelines.filter((p) => p.is_active);
   const pipelineId = isId(sp.pipeline) ? sp.pipeline : null;
   const ownerId = isId(sp.owner) ? sp.owner : null;
   const funnelPipeline = pipelineId ?? active[0]?.id ?? null;
-  const [fc, vel, goals, fun, attr, mix] = await Promise.all([
+  const grain: Grain = sp.g === "quarter" ? "quarter" : "month";
+  const segment: Segment = (Object.keys(SEGMENTS) as Segment[]).includes(sp.seg as Segment) ? (sp.seg as Segment) : "none";
+  const [fc, vel, goals, fun, attr, mix, sa] = await Promise.all([
     forecast({ pipelineId, ownerId }), velocity(pipelineId), goalsProgress(), funnelPipeline ? funnel(funnelPipeline) : null, attribution(365), revenueMix(365),
+    salesAnalytics({ grain, segment, pipelineId, ownerId }),
   ]);
+  const link = (patch: Record<string, string | null>) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries({ pipeline: pipelineId, owner: ownerId, g: grain === "month" ? null : grain, seg: segment === "none" ? null : segment, ...patch })) if (v) q.set(k, v);
+    return `/reports${q.size ? `?${q}` : ""}#ventas`;
+  };
+  const range = grain === "month" ? "últimos 12 meses" : "últimos 8 trimestres";
+  const delta = sa.totals.prevWon ? (sa.totals.won - sa.totals.prevWon) / sa.totals.prevWon : null;
   let answer: Answer | null = null, askError: string | null = null;
   if (sp.q) {
     try { answer = await ask(sp.q); } catch (err) { askError = toUserMessage(err); }
@@ -102,6 +114,95 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <span className="meta">cierre {pct(vel.win_rate)} · ciclo {vel.cycle === null ? "—" : `${Math.round(vel.cycle)} días`}</span></div>
       </div>
 
+      <div className="sales-head" id="ventas">
+        <div>
+          <h2>Análisis de ventas</h2>
+          <p className="meta">{range}{pipelineId ? ` · ${active.find((p) => p.id === pipelineId)?.name}` : ""}{ownerId ? ` · ${humans.find((u) => u.id === ownerId)?.name}` : ""}. Pasa el ratón por los gráficos para ver el detalle.</p>
+        </div>
+        <div className="sales-filters">
+          <nav className="seg-links" aria-label="Agrupar por">
+            <Link href={link({ g: null })} aria-current={grain === "month" ? "page" : undefined}>Por mes</Link>
+            <Link href={link({ g: "quarter" })} aria-current={grain === "quarter" ? "page" : undefined}>Por trimestre</Link>
+          </nav>
+          <nav className="seg-links" aria-label="Segmentar por">
+            {(Object.entries(SEGMENTS) as [Segment, string][]).map(([k, l]) => (
+              <Link key={k} href={link({ seg: k === "none" ? null : k })} aria-current={segment === k ? "page" : undefined}>{k === "none" ? "Total" : l}</Link>
+            ))}
+          </nav>
+        </div>
+      </div>
+
+      <div className="kpis sales-kpis">
+        <div className="kpi"><span className="meta">Ganado</span><strong>{money(sa.totals.won)}</strong>
+          <span className="meta">{sa.totals.wonCount} deals{delta !== null && <> · <span className={`delta ${delta >= 0 ? "tone-good" : "tone-bad"}`}>{delta >= 0 ? "▲" : "▼"} {Math.abs(Math.round(delta * 100))} %</span> vs. periodo anterior</>}</span></div>
+        <div className="kpi"><span className="meta">Pipeline creado</span><strong>{money(sa.totals.created)}</strong><span className="meta">importe de los deals nuevos</span></div>
+        <div className="kpi"><span className="meta">Tasa de cierre</span><strong>{pct(sa.totals.winRate)}</strong><span className="meta">ganados ÷ (ganados + perdidos)</span></div>
+        <div className="kpi"><span className="meta">Ticket medio</span><strong>{sa.totals.avgDeal === null ? "—" : money(sa.totals.avgDeal)}</strong><span className="meta">por deal ganado</span></div>
+        <div className="kpi"><span className="meta">Ciclo de venta</span><strong>{sa.totals.cycle === null ? "—" : `${Math.round(sa.totals.cycle)} días`}</strong><span className="meta">de crear a ganar</span></div>
+      </div>
+
+      <div className="charts-grid">
+        <section className="chart-card wide" aria-label="Ingresos ganados">
+          <h3>Ingresos ganados{segment !== "none" && <span className="muted"> · por {SEGMENTS[segment].toLowerCase()}</span>}</h3>
+          <p className="chart-sub">Importe de los deals ganados en cada {grain === "month" ? "mes" : "trimestre"}.</p>
+          <StackedBars periods={sa.periods} series={sa.wonValue} f="money" />
+        </section>
+        <section className="chart-card" aria-label="Nuevo pipeline">
+          <h3>Nuevo pipeline creado{segment !== "none" && <span className="muted"> · por {SEGMENTS[segment].toLowerCase()}</span>}</h3>
+          <p className="chart-sub">Importe de los deals que se crearon en cada periodo.</p>
+          <StackedBars periods={sa.periods} series={sa.createdValue} f="money" />
+        </section>
+        <section className="chart-card" aria-label="Ganados y perdidos">
+          <h3>Ganados y perdidos</h3>
+          <p className="chart-sub">Número de deals cerrados en cada periodo.</p>
+          <GroupedBars periods={sa.periods} f="number" series={[
+            { key: "won", label: "Ganados", values: sa.wonCount, color: "var(--good)" },
+            { key: "lost", label: "Perdidos", values: sa.lostCount, color: "var(--bad)" },
+          ]} />
+        </section>
+        <section className="chart-card" aria-label="Tasa de cierre">
+          <h3>Tasa de cierre</h3>
+          <p className="chart-sub">De los deals cerrados en el periodo, qué parte se ganó.</p>
+          <Lines periods={sa.periods} f="percent" maxValue={1} series={[{ key: "wr", label: "Tasa de cierre", values: sa.winRate }]} />
+        </section>
+        <section className="chart-card" aria-label="Ticket medio">
+          <h3>Ticket medio</h3>
+          <p className="chart-sub">Importe medio de los deals ganados.</p>
+          <Lines periods={sa.periods} f="money" series={[{ key: "avg", label: "Ticket medio", values: sa.avgDeal }]} />
+        </section>
+        <section className="chart-card" aria-label="Ciclo de venta">
+          <h3>Ciclo de venta</h3>
+          <p className="chart-sub">Días medios desde que se crea el deal hasta que se gana.</p>
+          <Lines periods={sa.periods} f="days" series={[{ key: "cycle", label: "Días hasta ganar", values: sa.cycleDays }]} />
+        </section>
+        <section className="chart-card" aria-label="Actividad del equipo">
+          <h3>Actividad hecha</h3>
+          <p className="chart-sub">Llamadas, reuniones, correos… completados en cada periodo.</p>
+          <StackedBars periods={sa.periods} series={sa.activities} f="number" />
+        </section>
+        <section className="chart-card" aria-label="Motivos de pérdida">
+          <h3>Motivos de pérdida</h3>
+          <p className="chart-sub">Deals perdidos en los {range}, por motivo.</p>
+          <div className="hbars-wrap lost"><HBars f="number" rows={sa.lostReasons.map((r) => ({ label: r.label, value: r.n, note: money(r.value) }))} /></div>
+        </section>
+        {segment !== "none" && (
+          <section className="chart-card" aria-label={`Comparativa por ${SEGMENTS[segment].toLowerCase()}`}>
+            <h3>Comparativa por {SEGMENTS[segment].toLowerCase()}</h3>
+            <p className="chart-sub">Ganado en los {range}, tasa de cierre y pipeline abierto hoy.</p>
+            <HBars f="money" rows={sa.bySegment.map((r) => ({ label: r.label, value: r.won, note: `${pct(r.winRate)} cierre` }))} />
+            <div className="table-wrap">
+              <table className="seg-table">
+                <thead><tr><th>{SEGMENTS[segment]}</th><th className="num">Ganado</th><th className="num">Deals</th><th className="num">Cierre</th><th className="num">Abierto</th></tr></thead>
+                <tbody>{sa.bySegment.map((r) => (
+                  <tr key={r.label}><td>{r.label}</td><td className="num">{money(r.won)}</td><td className="num">{r.wonCount}</td><td className="num">{pct(r.winRate)}</td><td className="num">{money(r.open)}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </section>
+        )}
+      </div>
+
+      <h2 className="sales-head" style={{ margin: "36px 0 0" }}>Previsión y objetivos</h2>
       <div className="grid-2 reports-grid">
         <section className="panel">
           <h2>Previsión por mes de cierre</h2>
