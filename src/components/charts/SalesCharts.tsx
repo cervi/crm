@@ -10,19 +10,20 @@ export type Fmt = "money" | "number" | "percent" | "days";
 type Period = { key: string; label: string; short: string };
 type Series = { key: string; label: string; values: (number | null)[]; color?: string };
 
-const eur0 = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const eur0 = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0, useGrouping: "always" } as Intl.NumberFormatOptions);
+const num0 = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0, useGrouping: "always" } as Intl.NumberFormatOptions);
 export function fmt(v: number | null | undefined, f: Fmt): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   if (f === "money") return eur0.format(v);
   if (f === "percent") return `${Math.round(v * 100)} %`;
   if (f === "days") return `${Math.round(v)} d`;
-  return Math.round(v).toLocaleString("es-ES");
+  return num0.format(v);
 }
 function short(v: number, f: Fmt): string {
   if (f === "percent") return `${Math.round(v * 100)} %`;
   if (f === "days") return `${Math.round(v)}`;
   const a = Math.abs(v);
-  const s = a >= 1e6 ? `${(v / 1e6).toLocaleString("es-ES", { maximumFractionDigits: 1 })} M` : a >= 1e3 ? `${(v / 1e3).toLocaleString("es-ES", { maximumFractionDigits: 0 })} k` : Math.round(v).toLocaleString("es-ES");
+  const s = a >= 1e6 ? `${(v / 1e6).toLocaleString("es-ES", { maximumFractionDigits: 1 })} M` : a >= 1e3 ? `${(v / 1e3).toLocaleString("es-ES", { maximumFractionDigits: a < 1e4 ? 1 : 0 })} k` : Math.round(v).toLocaleString("es-ES");
   return f === "money" ? `${s} €` : s;
 }
 function niceMax(v: number) {

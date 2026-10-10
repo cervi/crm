@@ -148,7 +148,8 @@ export async function salesAnalytics(opts: { grain: Grain; segment: Segment; pip
   ]);
 
   // Segmentos: los de más importe (ganado + abierto) y el resto en «Otros».
-  const ranked = [...segTotals].sort((a, b) => (b.won + b.open) - (a.won + a.open));
+  const ranked = [...segTotals].filter((r) => r.won || r.open || r.won_n || r.lost_n || segment === "none")
+    .sort((a, b) => (b.won + b.open) - (a.won + a.open));
   const keep = new Set(ranked.slice(0, segment === "none" ? 1 : MAX_SEGMENTS).map((r) => r.seg));
   const bucket = (raw: string) => (keep.has(raw) ? raw : "__otros");
   const segKeys = [...ranked.filter((r) => keep.has(r.seg)).map((r) => r.seg), ...(ranked.length > keep.size ? ["__otros"] : [])];
