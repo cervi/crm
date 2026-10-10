@@ -293,7 +293,7 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
 .form { display: grid; gap: 14px; }
 .form.inline { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
 .form.inline .form-actions { margin: 0; }
-.field { display: grid; gap: 5px; min-width: 0; }
+.field { display: grid; gap: 5px; min-width: 0; align-content: start; }
 .field .label, .field > span:first-child { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
 .field.checkbox, label.checkbox { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-2); }
 .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
@@ -1611,3 +1611,19 @@ main.reports > .sales-head { margin-top: 18px !important; }
 .hbar-value { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .seg-table td, .seg-table th { padding: 8px 10px; }
 .hbars-wrap.lost .hbar-track i { background: var(--series-8); }
+
+/* ---------------------------------------------------------------- Ajustes de IA: elegir modelo */
+.ai-fields { align-items: start; }
+.model-picker { position: relative; display: flex; gap: 8px; }
+.model-picker input { flex: 1; }
+.model-picker .btn { flex-shrink: 0; height: auto; }
+.model-list {
+  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0; list-style: none; margin: 0; padding: 6px;
+  max-height: 300px; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-pop);
+}
+.model-list li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; }
+.model-list li:hover, .model-list li[aria-selected="true"] { background: var(--accent-soft); }
+.model-list li strong { font-size: 13.5px; }
+.model-list li code { grid-column: 1; font-size: 12px; color: var(--muted); background: none; padding: 0; }
+.model-list li .meta { grid-column: 1 / -1; }
+.model-list li .meta + .meta { grid-column: 2; grid-row: 1; }

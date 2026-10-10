@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { AI_PROVIDERS, AI_TASKS, aiReady, DEFAULT_PROMPTS, getAiSettings, promptFor } from "@/lib/ai";
+import { AI_PROVIDERS, AI_TASKS, aiReady, DEFAULT_PROMPTS, getAiSettings, KNOWN_MODELS, promptFor } from "@/lib/ai";
 import { encryptionConfigured } from "@/lib/crypto";
 import { dateTime } from "@/lib/format";
 import { saveAiSettingsAction, testAiAction } from "@/app/actions/ai";
+import { AiProviderFields } from "@/components/ai/AiProviderFields";
 import { ActionForm } from "@/components/ActionForm";
 import { requireAdminPage } from "@/lib/auth";
 
@@ -39,24 +40,9 @@ export default async function AiSettingsPage() {
 
       <section className="panel">
         <ActionForm action={saveAiSettingsAction} submitLabel="Guardar">
-          <div className="grid-2">
-            <label className="field"><span className="label">Proveedor</span>
-              <select name="provider" defaultValue={s.provider}>
-                {AI_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-              </select>
-            </label>
-            <label className="field"><span className="label">Modelo</span>
-              <input name="model" defaultValue={s.model ?? ""} placeholder="Nombre exacto del modelo en el proveedor" />
-            </label>
-            <label className="field"><span className="label">Clave de API</span>
-              <input name="api_key" type="password" autoComplete="off" placeholder={s.has_key ? "Guardada (escribe otra para cambiarla)" : "Pega aquí la clave"} />
-              {!encryptionConfigured() && <span className="meta tone-bad">Falta TOKEN_ENCRYPTION_KEY en el servidor para guardar la clave cifrada.</span>}
-            </label>
-            <label className="field"><span className="label">Dirección de la API (opcional)</span>
-              <input name="base_url" defaultValue={s.base_url ?? ""} placeholder="Por defecto, la del proveedor" />
-              <span className="meta">Solo para «Otro compatible» o si usáis un proxy.</span>
-            </label>
-          </div>
+          <AiProviderFields providers={AI_PROVIDERS} known={KNOWN_MODELS as Record<string, { id: string; note: string }[]>} hasKey={s.has_key}
+                            initial={{ provider: s.provider, model: s.model ?? "", baseUrl: s.base_url ?? "" }}
+                            keyWarning={encryptionConfigured() ? null : "Falta TOKEN_ENCRYPTION_KEY en el servidor para guardar la clave cifrada."} />
           {s.has_key && <label className="checkbox"><input type="checkbox" name="clear_key" />Borrar la clave guardada</label>}
 
           <fieldset className="fieldset">

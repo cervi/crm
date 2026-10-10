@@ -269,3 +269,38 @@ export async function testAi(): Promise<string> {
   if (!reply) throw new UserError(`No ha funcionado: ${(await getAiSettings()).last_error ?? "sin respuesta"}`);
   return reply;
 }
+
+/** Modelos conocidos para sugerir antes de tener la lista del proveedor. */
+export const KNOWN_MODELS: Partial<Record<AiProvider, { id: string; note: string }[]>> = {
+  anthropic: [
+    { id: "claude-sonnet-5-5", note: "Equilibrado: el recomendado para el día a día" },
+    { id: "claude-opus-5-5", note: "El más capaz, más caro" },
+    { id: "claude-haiku-4-5-20251001", note: "El más rápido y barato" },
+  ],
+};
+
+/**
+ * Pregunta al proveedor qué modelos hay disponibles con esta clave. Usa la clave
+ * escrita en el formulario o, si no hay, la guardada.
+ */
+export async function listProviderModels(provider: AiProvider, typedKey: string | null, baseUrl: string | null): Promise<{ id: string; name: string; created: string | null }[]> {
+  const p = preset(provider);
+  if (provider === "none") return [];
+  let key = typedKey?.trim() || null;
+  if (!key) {
+    const [row] = await sql<{ api_key: string | null; provider: AiProvider }[]>`SELECT api_key, provider FROM ai_settings`;
+    if (row?.api_key && row.provider === provider) key = decrypt(row.api_key);
+  }
+  if (!key) throw new UserError("Pega la clave de API para ver los modelos de tu cuenta.");
+  const base = (baseUrl?.trim() || p.baseUrl).replace(/\/$/, "");
+  if (!base) throw new UserError("Indica la dirección de la API.");
+  const res = p.kind === "anthropic"
+    ? await fetch(`${base}/v1/models?limit=100`, { signal: AbortSignal.timeout(15_000), headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } })
+    : await fetch(`${base}/models`, { signal: AbortSignal.timeout(15_000), headers: { authorization: `Bearer ${key}` } });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new UserError(`El proveedor no ha dado la lista: ${j?.error?.message ?? `HTTP ${res.status}`}`);
+  const rows = (Array.isArray(j.data) ? j.data : []) as { id: string; display_name?: string; created_at?: string; created?: number }[];
+  return rows
+    .map((m) => ({ id: m.id, name: m.display_name ?? m.id, created: m.created_at ?? (m.created ? new Date(m.created * 1000).toISOString() : null) }))
+    .sort((a, b) => (b.created ?? "").localeCompare(a.created ?? ""));
+}

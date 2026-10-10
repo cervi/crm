@@ -2,8 +2,8 @@
 
 import { guard } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { attempt, UserError, type ActionState } from "@/lib/errors";
-import { saveAiSettings, testAi } from "@/lib/ai";
+import { attempt, toUserMessage, UserError, type ActionState } from "@/lib/errors";
+import { listProviderModels, saveAiSettings, testAi, type AiProvider } from "@/lib/ai";
 import { refreshDealBrief } from "@/lib/briefs";
 import { refreshDigestFocus, saveDigestSettings, sendDigestNow } from "@/lib/digest";
 import { isId } from "@/lib/validation";
@@ -58,4 +58,15 @@ export async function sendDigestNowAction(userId: string, _: ActionState): Promi
   const res = await attempt(() => sendDigestNow(userId));
   revalidatePath("/");
   return res;
+}
+
+/** Lista de modelos del proveedor (para elegir en Ajustes → IA). */
+export async function listAiModelsAction(provider: string, key: string, baseUrl: string): Promise<{ models?: { id: string; name: string; created: string | null }[]; error?: string }> {
+  const g = await guard("admin");
+  if ("error" in g) return g;
+  try {
+    return { models: await listProviderModels(provider as AiProvider, key || null, baseUrl || null) };
+  } catch (err) {
+    return { error: toUserMessage(err) };
+  }
 }
