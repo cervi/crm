@@ -258,7 +258,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
             </ul>
             <details>
               <summary className="meta">+ Añadir contacto</summary>
-              <ActionForm action={addParticipantAction.bind(null, dealId)} submitLabel="Añadir" resetOnSuccess>
+              <ActionForm action={addParticipantAction.bind(null, dealId)} submitLabel="Añadir contacto" secondary resetOnSuccess>
                 <EntityPicker name="person_id" type="persons" label="Contacto" required />
                 <label className="field"><span className="label">Rol</span><input name="role" placeholder="decisor, usuario…" /></label>
               </ActionForm>
@@ -762,7 +762,7 @@ export async function DealDetail({ dealId, back, panel }: { dealId: string; back
                   )}
                   <details>
                     <summary className="meta">Marcar como hecha</summary>
-                    <ActionForm action={completeActivityAction.bind(null, a.id, back)} submitLabel="Guardar" className="form inline">
+                    <ActionForm action={completeActivityAction.bind(null, a.id, back)} submitLabel="Guardar resultado" secondary className="form inline">
                       <label className="field"><span className="label">Resultado</span>
                         <select name="outcome" defaultValue="">
                           <option value="">—</option>

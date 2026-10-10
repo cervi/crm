@@ -10,7 +10,7 @@ export function NotePanel({ notes, refs, back }: { notes: Note[]; refs: Ref; bac
   return (
     <section className="panel stack">
       <h2>Notas</h2>
-      <ActionForm action={createNoteAction.bind(null, back)} submitLabel="Añadir nota" resetOnSuccess>
+      <ActionForm action={createNoteAction.bind(null, back)} submitLabel="Añadir nota" secondary resetOnSuccess>
         {Object.entries(refs).map(([k, v]) => v && <input key={k} type="hidden" name={k} value={v} />)}
         <textarea name="content" rows={3} required placeholder="Escribe una nota…" aria-label="Nota" />
       </ActionForm>

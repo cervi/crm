@@ -173,7 +173,7 @@ export default async function SequencePage({ params }: { params: Promise<{ id: s
                 <details className="ee-variant">
                   <summary className="meta">+ Prueba A/B: añadir una variante</summary>
                   <p className="meta">Cada contacto recibe una de las variantes activas, a partes iguales. Cambia el asunto o el texto y compara aperturas y respuestas.</p>
-                  <ActionForm action={saveVariantAction.bind(null, id, st.id, null)} submitLabel="Añadir variante">
+                  <ActionForm action={saveVariantAction.bind(null, id, st.id, null)} submitLabel="Añadir variante" secondary>
                     <EmailEditor initialSubject={st.subject} initialBody={st.body} initialFormat={st.format} formatLocked
                                  threadReply={st.thread_reply} firstStep={i === 0} label={`paso ${st.position} nueva variante`} {...editor} />
                   </ActionForm>
@@ -208,7 +208,7 @@ export default async function SequencePage({ params }: { params: Promise<{ id: s
                     : e.status === "active" && e.next_run_at ? dateTime(e.next_run_at) : "—"}</td>
                   <td className="ee-row">
                     {e.status === "paused" && (
-                      <form action={resumeEnrollmentAction.bind(null, e.id, `/sequences/${id}`)}><button type="submit" className="btn small">Reanudar</button></form>
+                      <form action={resumeEnrollmentAction.bind(null, e.id, `/sequences/${id}`)}><button type="submit" className="btn secondary small">Reanudar</button></form>
                     )}
                     {(e.status === "active" || e.status === "paused") && (
                       <form action={stopEnrollmentAction.bind(null, e.id, `/sequences/${id}`)}><button type="submit" className="btn secondary small">Parar</button></form>

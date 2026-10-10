@@ -427,7 +427,7 @@ function CondPanel({ groups, onPick }: { groups: [string, { key: string; label: 
       <input aria-label="Texto si no se cumple" placeholder="Texto si no (opcional)" value={no} onChange={(e) => setNo(e.target.value)} />
       <div className="ee-row">
         <code className="ee-code">{text}</code>
-        <button type="button" className="btn small" onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(text)}>Insertar</button>
+        <button type="button" className="btn secondary small" onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(text)}>Insertar</button>
       </div>
     </div>
   );
@@ -439,7 +439,7 @@ function LinkPanel({ onPick }: { onPick: (url: string) => void }) {
   return (
     <div className="ee-panel ee-row" aria-label="Enlace">
       <input aria-label="Dirección del enlace" value={url} onChange={(e) => setUrl(e.target.value)} />
-      <button type="button" className="btn small" disabled={!ok} onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(url.trim())}>Enlazar el texto seleccionado</button>
+      <button type="button" className="btn secondary small" disabled={!ok} onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(url.trim())}>Enlazar el texto seleccionado</button>
       <button type="button" className="btn secondary small" onMouseDown={(e) => e.preventDefault()} onClick={() => onPick("{{enlace_reserva}}")}>Enlace de reserva</button>
     </div>
   );
@@ -473,7 +473,7 @@ function AiPanel({ ready, pending, onRun }: { ready: boolean; pending: boolean; 
       <textarea aria-label="Instrucciones para la IA" rows={2} value={instructions} onChange={(e) => setInstructions(e.target.value)}
                 placeholder="p. ej. Primer correo para directores comerciales de logística: les ayudamos a no perder seguimientos. Pide una llamada de 15 min." />
       <div className="ee-row">
-        <button type="button" className="btn small" disabled={pending || !instructions.trim()} onClick={() => onRun("escribir", { instructions })}>{pending ? "Escribiendo…" : "Escribir"}</button>
+        <button type="button" className="btn secondary small" disabled={pending || !instructions.trim()} onClick={() => onRun("escribir", { instructions })}>{pending ? "Escribiendo…" : "Escribir"}</button>
         <button type="button" className="btn secondary small" disabled={pending} onClick={() => onRun("mejorar", { instructions })}>Mejorar</button>
         <button type="button" className="btn secondary small" disabled={pending} onClick={() => onRun("acortar")}>Acortar</button>
         <button type="button" className="btn secondary small" disabled={pending} onClick={() => onRun("asuntos")}>Otro asunto</button>

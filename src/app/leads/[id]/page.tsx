@@ -123,7 +123,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
           <section className="panel">
             <h2>Etapa y responsable</h2>
-            <ActionForm action={updateLeadAction.bind(null, id)} submitLabel="Guardar" className="form inline">
+            <ActionForm action={updateLeadAction.bind(null, id)} submitLabel="Guardar" secondary className="form inline">
               <label className="field"><span className="label">Etapa</span>
                 <select name="funnel_stage" defaultValue={lead.funnel_stage ?? ""}>
                   <option value="">—</option>

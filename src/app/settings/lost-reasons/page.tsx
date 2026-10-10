@@ -19,7 +19,7 @@ export default async function LostReasonsPage() {
         <ul className="items">
           {reasons.map((r) => (
             <li key={r.id} className={r.is_active ? "item" : "item done"}>
-              <ActionForm action={updateLostReasonAction.bind(null, r.id)} submitLabel="Guardar" className="form inline">
+              <ActionForm action={updateLostReasonAction.bind(null, r.id)} submitLabel="Guardar" secondary className="form inline">
                 <label className="field" style={{ flex: 1 }}><span className="label">Motivo</span><input name="label" required defaultValue={r.label} /></label>
                 <label className="field" style={{ width: 160 }}><span className="label">Seguimiento (días)</span>
                   <input type="number" name="followup_days" min={1} defaultValue={r.followup_days ?? ""} /></label>

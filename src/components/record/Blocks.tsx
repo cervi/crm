@@ -34,7 +34,7 @@ export function FollowersBlock({ type, id, followers, me, users, back }: {
       <div className="side-head">
         <h3 title="Quien sigue recibe avisos de lo importante: respuestas, cambios, notas, archivos…">Seguidores <span className="muted">{followers.length}</span></h3>
         <form action={followAction.bind(null, type, id, !following, back)}>
-          <button type="submit" className={following ? "btn secondary small" : "btn small"}>{following ? "Dejar de seguir" : "Seguir"}</button>
+          <button type="submit" className="btn secondary small">{following ? "Dejar de seguir" : "Seguir"}</button>
         </form>
       </div>
       {followers.length > 0 && (

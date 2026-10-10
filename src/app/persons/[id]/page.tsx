@@ -168,7 +168,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
             <details>
               <summary className="meta">Cambio de empresa</summary>
               <p className="meta">La relación actual pasa a «antigua» y se conserva todo su historial.</p>
-              <ActionForm action={changeCompanyAction.bind(null, id)} submitLabel="Guardar" resetOnSuccess>
+              <ActionForm action={changeCompanyAction.bind(null, id)} submitLabel="Cambiar de empresa" secondary resetOnSuccess>
                 <EntityPicker name="organization_id" type="organizations" label="Nueva empresa" />
                 <label className="field"><span className="label">Cargo</span><input name="job_title" /></label>
                 <label className="checkbox"><input type="checkbox" name="left_previous" defaultChecked /> Ha dejado su empresa actual</label>

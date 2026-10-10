@@ -54,7 +54,7 @@ export async function ActivityPanel({ activities, refs, back, users }: {
             {a.note && <p className="note-body">{a.note}</p>}
             <details>
               <summary>Marcar como hecha</summary>
-              <ActionForm action={completeActivityAction.bind(null, a.id, back)} submitLabel="Guardar" className="form inline">
+              <ActionForm action={completeActivityAction.bind(null, a.id, back)} submitLabel="Guardar resultado" secondary className="form inline">
                 <label className="field"><span className="label">Resultado</span>
                   <select name="outcome" defaultValue="">
                     <option value="">—</option>

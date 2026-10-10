@@ -139,7 +139,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
               {currentQuery !== "" && !views.some((v) => v.query === currentQuery) && (
                 <details className="save-view">
                   <summary>+ Guardar esta vista</summary>
-                  <ActionForm action={saveViewAction.bind(null, "deals", currentQuery, `/pipelines/${id}`)} submitLabel="Guardar vista" className="form inline">
+                  <ActionForm action={saveViewAction.bind(null, "deals", currentQuery, `/pipelines/${id}`)} submitLabel="Guardar vista" secondary className="form inline">
                     <label className="field"><span className="label">Nombre</span><input name="name" required maxLength={80} placeholder="Mis deals parados" /></label>
                     <label className="checkbox"><input type="checkbox" name="shared" />Compartir con el equipo</label>
                   </ActionForm>

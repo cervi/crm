@@ -50,7 +50,7 @@ export default async function PipelineSettingsPage({ params }: { params: Promise
       <div className="stack">
         <section className="panel">
           <h2>Datos del pipeline</h2>
-          <ActionForm action={updatePipelineAction.bind(null, id)} submitLabel="Guardar" className="form inline">
+          <ActionForm action={updatePipelineAction.bind(null, id)} submitLabel="Guardar" secondary className="form inline">
             <label className="field" style={{ flex: 1 }}><span className="label">Nombre</span><input name="name" required defaultValue={pipeline.name} /></label>
             <label className="field" style={{ flex: 2 }}><span className="label">Descripción</span><input name="description" defaultValue={pipeline.description ?? ""} /></label>
             <label className="field"><span className="label">Tipo</span>
@@ -75,7 +75,7 @@ export default async function PipelineSettingsPage({ params }: { params: Promise
                   <form action={moveStageAction.bind(null, s.id, "up")}><button className="link" disabled={i === 0} aria-label={`Subir ${s.name}`}>↑ Subir</button></form>
                   <form action={moveStageAction.bind(null, s.id, "down")}><button className="link" disabled={i === stages.length - 1} aria-label={`Bajar ${s.name}`}>↓ Bajar</button></form>
                 </div>
-                <ActionForm action={updateStageAction.bind(null, s.id)} submitLabel="Guardar" className="form inline">
+                <ActionForm action={updateStageAction.bind(null, s.id)} submitLabel="Guardar" secondary className="form inline">
                   <StageFields s={s} />
                 </ActionForm>
                 <details style={{ marginTop: 6 }}>
