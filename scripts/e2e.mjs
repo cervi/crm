@@ -1045,8 +1045,8 @@ if (process.env.MOCK_URL && process.env.TOKEN_ENCRYPTION_KEY) {
   const acts = await sql`SELECT pipedrive_id::int AS pd, type, done, note, due_at, lead_id FROM activities WHERE pipedrive_id IS NOT NULL ORDER BY pipedrive_id`;
   const a501 = acts.find((a) => a.pd === 501), a502 = acts.find((a) => a.pd === 502), a503 = acts.find((a) => a.pd === 503), a505 = acts.find((a) => a.pd === 505);
   check(acts.length === 4 && a501?.done && a501.note === "Interesados en 40 licencias" && new Date(a501.due_at).toISOString() === "2026-06-02T09:30:00.000Z"
-        && a502?.type === "kickoff_call" && a503?.type === "meeting" && a505?.lead_id,
-        "Pipedrive: actividades (tipos propios, sin hora, de leads; las sueltas se omiten)", JSON.stringify(acts.map((a) => [a.pd, a.type])));
+        && a502?.type === "kickoff_call" && a503?.type === "meeting" && a505?.lead_id && a505.type === "demo",
+        "Pipedrive: actividades (tipos propios, el mismo nombre con otra clave no se duplica, sin hora, de leads; las sueltas se omiten)", JSON.stringify(acts.map((a) => [a.pd, a.type])));
   const notesPd = await sql`SELECT pipedrive_id::int AS pd, content FROM notes WHERE pipedrive_id IS NOT NULL ORDER BY pipedrive_id`;
   check(notesPd.length === 2 && notesPd[0].content === "Primera reunión: buena sintonía.\nPiden descuento & plazos", "Pipedrive: notas pasadas a texto", JSON.stringify(notesPd));
   const [doc] = await sql`SELECT title, url FROM deal_documents WHERE external_id = 'pd:701'`;

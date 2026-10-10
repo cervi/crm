@@ -301,18 +301,41 @@ const users: Runner = async (t, job) => {
 
 const typeKey = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
 
+const labelKey = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+/** Tipo de actividad del CRM para cada tipo de Pipedrive (por clave o, si no, por nombre). */
+async function typeMap(t: string): Promise<Map<string, string>> {
+  const ours = await activityTypes(true);
+  const byLabel = new Map(ours.map((x) => [labelKey(x.label), x.key]));
+  const keys = new Set(ours.map((x) => x.key));
+  const out = new Map<string, string>();
+  const body = await call(t, "/v1/activityTypes").catch(() => ({ data: [] }) as Json);
+  for (const a of (body.data as Json[]) ?? []) {
+    const raw = typeKey(String(a.key_string ?? a.name ?? ""));
+    const key = raw === "lunch" ? "meeting" : raw;
+    const mapped = keys.has(key) ? key : byLabel.get(labelKey(str(a.name) ?? ""));
+    if (mapped) out.set(raw, mapped);
+  }
+  return out;
+}
+
 const activityTypesStep: Runner = async (t, job) => {
   const body = await call(t, "/v1/activityTypes");
-  const existing = new Set((await activityTypes(true)).map((x) => x.key));
+  const current = await activityTypes(true);
+  const existing = new Set(current.map((x) => x.key));
+  const labels = new Set(current.map((x) => labelKey(x.label)));
   for (const a of (body.data as Json[]) ?? []) {
     let key = typeKey(String(a.key_string ?? a.name ?? ""));
     if (key.length < 2) continue;
     if (key === "lunch") key = "meeting"; // «Comida» se trata como reunión
-    if (existing.has(key)) { bump(job, "activity_types", "skipped"); continue; }
+    const label = str(a.name) ?? key;
+    // Ya existe (por clave o con el mismo nombre, p. ej. «Llamada»): se usa ese tipo.
+    if (existing.has(key) || labels.has(labelKey(label))) { bump(job, "activity_types", "skipped"); continue; }
     await sql`INSERT INTO activity_types (key, label, is_session, is_active, position)
-              VALUES (${key}, ${str(a.name) ?? key}, false, ${a.active_flag !== false}, 100)
-              ON CONFLICT (key) DO NOTHING`;
+              VALUES (${key}, ${label}, false, ${a.active_flag !== false}, 100)
+              ON CONFLICT DO NOTHING`;
     existing.add(key);
+    labels.add(labelKey(label));
     bump(job, "activity_types", "created");
   }
   await activityTypes(true);
@@ -607,13 +630,14 @@ const activities: Runner = async (t, job) => {
     idMap("leads", items.map((a) => str(a.lead_id))),
   ]);
   const types = new Set((await activityTypes()).map((x) => x.key));
+  const tmap = await typeMap(t);
   for (const a of items) {
     if (a.is_deleted) { await sql`DELETE FROM activities WHERE pipedrive_id = ${idOf(a.id)}`; continue; }
     const dealId = look(dls, idOf(a.deal_id)), leadId = look(lds, str(a.lead_id));
     const personId = look(people, idOf(a.person_id)), orgId = look(orgs, idOf(a.org_id));
     if (!dealId && !leadId && !personId && !orgId) { bump(job, "activities", "skipped"); continue; }
     let type = typeKey(String(a.type ?? "task"));
-    if (type === "lunch") type = "meeting";
+    type = tmap.get(type) ?? (type === "lunch" ? "meeting" : type);
     if (!types.has(type)) type = "task";
     // Con hora: en UTC. Sin hora: al final de ese día (hora local), para que no salga vencida todo el día.
     const day = dateOnly(a.due_date);

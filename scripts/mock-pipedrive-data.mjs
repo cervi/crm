@@ -15,6 +15,7 @@ export function pipedriveData() {
       { key_string: "call", name: "Llamada", active_flag: true }, { key_string: "meeting", name: "Reunión", active_flag: true },
       { key_string: "task", name: "Tarea", active_flag: true }, { key_string: "lunch", name: "Comida", active_flag: true },
       { key_string: "kickoff_call", name: "Kick-off PD", active_flag: true },
+      { key_string: "demo_ventas", name: "Demo", active_flag: true }, // mismo nombre que un tipo del CRM con otra clave
     ],
     pipelines: [{ id: 10, name: "Ventas PD", order_nr: 1, is_deleted: false }],
     stages: [
@@ -57,7 +58,7 @@ export function pipedriveData() {
       { id: 502, subject: "Kick-off", type: "kickoff_call", owner_id: 2, deal_id: 402, person_id: 302, due_date: "2026-05-02", due_time: "", done: true, add_time: "2026-05-01T10:00:00Z", update_time: OLD },
       { id: 503, subject: "Comida con Pedro", type: "lunch", owner_id: 1, deal_id: 401, person_id: 301, due_date: "2030-01-15", due_time: "12:00:00", done: false, add_time: "2026-06-01T10:00:00Z", update_time: OLD },
       { id: 504, subject: "Sin nada", type: "task", owner_id: 1, done: false, due_date: "2026-06-01", add_time: "2026-06-01T10:00:00Z", update_time: OLD },
-      { id: 505, subject: "Llamar a Luis", type: "call", owner_id: 1, lead_id: "aaaaaaaa-0000-4000-8000-000000000001", due_date: "2030-02-01", due_time: "08:00:00", done: false, add_time: "2026-06-01T10:00:00Z", update_time: OLD },
+      { id: 505, subject: "Llamar a Luis", type: "demo_ventas", owner_id: 1, lead_id: "aaaaaaaa-0000-4000-8000-000000000001", due_date: "2030-02-01", due_time: "08:00:00", done: false, add_time: "2026-06-01T10:00:00Z", update_time: OLD },
     ],
     notes: [
       { id: 601, content: "<p>Primera reunión: buena sintonía.<br>Piden <i>descuento</i> &amp; plazos</p>", deal_id: 401, person_id: 301, org_id: 201, user_id: 1, add_time: "2026-06-03 10:00:00" },
