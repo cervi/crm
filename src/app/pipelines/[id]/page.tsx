@@ -106,7 +106,7 @@ export default async function PipelinePage({ params, searchParams }: { params: P
           pipelines={pipelines.map((p) => ({ value: p.id, label: p.name }))}
           users={users.filter((u) => u.kind === "human").map((u) => ({ value: u.id, label: u.name }))}
           sorts={Object.entries(BOARD_SORTS).map(([value, label]) => ({ value, label }))}
-          actions={<><Link href={`/pipelines/${id}/agentes`} className="btn secondary small ai-link"><Icon name="spark" />IA del pipeline{agentCounts.pipeline + Object.values(agentCounts.byStage).reduce((a, b) => a + b, 0) ? ` · ${agentCounts.pipeline + Object.values(agentCounts.byStage).reduce((a, b) => a + b, 0)}` : ""}</Link><ExportLink dataset="deals" label="Exportar" params={view === "board"
+          actions={<><Link href={`/pipelines/${id}/agentes`} className="btn secondary ai-link"><Icon name="spark" />IA del pipeline{agentCounts.pipeline + Object.values(agentCounts.byStage).reduce((a, b) => a + b, 0) ? ` · ${agentCounts.pipeline + Object.values(agentCounts.byStage).reduce((a, b) => a + b, 0)}` : ""}</Link><ExportLink dataset="deals" label="Exportar" params={view === "board"
             ? { pipeline: id, owner: ownerId, status: "open" }
             : { pipeline: id, owner: ownerId, status, q: filters.q, stage: filters.stageId, flag: filters.flag, min: sp.min, max: sp.max }} /></>}
           summary={

@@ -42,7 +42,7 @@ export type IconName = keyof typeof PATHS;
 
 export function Icon({ name, title }: { name: IconName; title?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+    <svg viewBox="0 0 24 24" width="1.15em" height="1.15em" stroke="currentColor" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
          aria-hidden={title ? undefined : true} role={title ? "img" : undefined}>
       {title && <title>{title}</title>}
       <path d={PATHS[name]} />
