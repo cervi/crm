@@ -232,7 +232,7 @@ export function EmailEditor(props: Props) {
           <label className="field"><span className="label">Asunto{threadReply ? " (si respondes en el hilo, se usa «Re: » del anterior)" : ""}</span>
             <input ref={subjectRef} aria-label={`Asunto del ${label}`} value={subject} maxLength={300}
                    onFocus={() => { lastFocus.current = "subject"; }} onChange={(e) => setSubject(e.target.value)}
-                   placeholder={threadReply ? "(opcional)" : "p. ej. {{empresa}} + aikit"} />
+                   placeholder={threadReply ? "(opcional)" : "p. ej. Propuesta para {{empresa}}"} />
           </label>
         )}
 

@@ -33,7 +33,7 @@ export default async function BookingSettingsPage() {
       {url && page?.is_active && (
         <p className="callout good">Tu página: <a href={url} target="_blank" rel="noreferrer">{url}</a></p>
       )}
-      {!base && <p className="callout">Falta <code>APP_URL</code> (la dirección pública del CRM) para que la página se pueda compartir.</p>}
+      {!base && <p className="callout">Todavía no se puede compartir la página: falta configurar la dirección pública del CRM en el servidor{me.role === "admin" ? <> (<code>APP_URL</code>)</> : ". Avisa a quien lo administra"}.</p>}
 
       <section className="panel">
         <h2>{page ? "Tu página" : "Crear tu página"}</h2>

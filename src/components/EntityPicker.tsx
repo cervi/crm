@@ -44,7 +44,7 @@ export function EntityPicker({ name, type, label, initial, required, placeholder
 
   return (
     <div className="field picker">
-      <span className="label">{label}</span>
+      <span className="label">{label}{required && !label.endsWith("*") ? " *" : ""}</span>
       <input type="hidden" name={name} value={selected?.id ?? ""} />
       {selected && !open ? (
         <div className="picker-selected">

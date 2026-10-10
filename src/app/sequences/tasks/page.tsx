@@ -50,7 +50,7 @@ export default async function ManualEmailsPage({ searchParams }: { searchParams:
               </form>
             </div>
             {m.note?.includes("Faltan datos") && <p className="ee-warn">{m.note.split("\n").find((l) => l.startsWith("Faltan datos"))} Complétalo en el texto antes de enviarlo.</p>}
-            <ActionForm action={sendManualEmailAction.bind(null, m.activity_id)} submitLabel="Enviar" pendingLabel="Enviando…">
+            <ActionForm action={sendManualEmailAction.bind(null, m.activity_id)} submitLabel={`Enviar a ${m.person_name}`} pendingLabel="Enviando…">
               <EmailEditor initialSubject={m.subject} initialBody={m.html} initialFormat="html" formatLocked aiReady={aiReady(ai)}
                            contacts={[{ id: m.person_id, label: m.person_name }]} label={`correo a ${m.person_name}`} />
             </ActionForm>

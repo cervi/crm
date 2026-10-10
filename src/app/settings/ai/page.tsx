@@ -46,7 +46,7 @@ export default async function AiSettingsPage() {
           {s.has_key && <label className="checkbox"><input type="checkbox" name="clear_key" />Borrar la clave guardada</label>}
 
           <fieldset className="fieldset">
-            <legend>Prompts</legend>
+            <legend>Instrucciones de cada tarea</legend>
             <p className="meta" style={{ marginTop: 0 }}>
               Las instrucciones de cada resumen. El modelo recibe además los datos del CRM en JSON. Deja el texto de serie si no quieres cambiarlo.
             </p>

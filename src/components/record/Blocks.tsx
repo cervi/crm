@@ -72,11 +72,11 @@ export function TagsBlock({ entity, id, tags, all, back }: { entity: TagEntity; 
       <details className="tags-edit">
         <summary className="meta">{tags.length ? "Editar etiquetas" : "+ Etiqueta"}</summary>
         <ActionForm action={setTagsAction.bind(null, entity, id, back)} submitLabel="Guardar" secondary className="form inline">
-          <input name="tags" list={listId} defaultValue={tags.map((t) => t.name).join(", ")} placeholder="cliente vip, evento 2026" aria-label="Etiquetas (separadas por comas)" style={{ minWidth: 240 }} />
+          <label className="field"><span className="label">Etiquetas (separadas por comas)</span><input name="tags" list={listId} defaultValue={tags.map((t) => t.name).join(", ")} placeholder="cliente vip, evento 2026" style={{ minWidth: 240 }} /></label>
           <datalist id={listId}>{all.map((t) => <option key={t.id} value={t.name} />)}</datalist>
-          <select name="color" aria-label="Color de las nuevas" defaultValue="blue">
+          <label className="field"><span className="label">Color para etiquetas nuevas</span><select name="color" defaultValue="blue">
             {[["blue", "Azul"], ["green", "Verde"], ["orange", "Naranja"], ["red", "Rojo"], ["purple", "Morado"], ["gray", "Gris"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          </select></label>
         </ActionForm>
       </details>
     </div>
@@ -105,7 +105,7 @@ export function CallForm({ refs, back, phone }: { refs: Refs; back: string; phon
           </select>
         </label>
       </div>
-      <textarea name="note" rows={3} placeholder="Qué se habló, próximos pasos…" aria-label="Notas de la llamada" />
+      <label className="field"><span className="label">Notas de la llamada</span><textarea name="note" rows={3} placeholder="Qué se habló, próximos pasos…" /></label>
     </ActionForm>
   );
 }

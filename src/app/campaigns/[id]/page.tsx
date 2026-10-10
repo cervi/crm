@@ -21,7 +21,7 @@ export const metadata = { title: "Campaña" };
 const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)} %` : "—");
 
 export default async function CampaignPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!isId(id)) notFound();
   const c = await getCampaign(id);
@@ -109,7 +109,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
               </div>
             </ActionForm>
           </details>
-          <p className="meta">También por la API (<code>POST /api/v1/campaigns/{id}/contacts</code>) o pidiéndoselo a un agente conectado por MCP.</p>
+          {me.role === "admin" && <p className="meta">También se pueden añadir desde otras herramientas (API: <code>POST /api/v1/campaigns/{id}/contacts</code>) o pidiéndoselo a un agente externo.</p>}
         </section>
         <section className="panel" aria-label="Ajustes de la campaña">
           <details>

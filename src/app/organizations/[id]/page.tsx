@@ -204,7 +204,7 @@ export default async function OrganizationPage({ params, searchParams }: { param
             {
               key: "email", label: "Correo", content: reachable.length === 0 ? <p className="muted">Ningún contacto actual tiene email.</p>
                 : !sendingConn ? <p className="muted">Conecta tu correo en <Link href="/settings/mailbox">Ajustes → Correo</Link> para escribir desde aquí.</p> : (
-                  <ActionForm action={sendContactEmailAction.bind(null, null, back)} submitLabel="Enviar" pendingLabel="Enviando…" resetOnSuccess>
+                  <ActionForm action={sendContactEmailAction.bind(null, null, back)} submitLabel="Enviar correo" pendingLabel="Enviando…" resetOnSuccess>
                     <div className="grid-2">
                       <label className="field"><span className="label">Para</span>
                         <select name="person_id">{reachable.map((c) => <option key={c.person_id} value={c.person_id}>{c.full_name} · {c.email}</option>)}</select>

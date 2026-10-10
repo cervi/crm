@@ -8,6 +8,7 @@ import { ScoreBadge } from "@/components/ScoreBadge";
 import { FitBadge } from "@/components/FitBadge";
 import { date, FUNNEL_STAGES, STATUS_LABELS } from "@/lib/format";
 import { DataTable } from "@/components/DataTable";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Leads" };
@@ -16,6 +17,7 @@ export default async function LeadsPage({ searchParams }: {
   searchParams: Promise<{ q?: string; status?: string; source?: string; funnel?: string; sort?: string; temp?: string; fit?: string }>;
 }) {
   const sp = await searchParams;
+  const me = await requireUser();
   const status = ["open", "converted", "archived", "all"].includes(sp.status ?? "") ? sp.status! : "open";
   const [rows, sources] = await Promise.all([
     listLeads({ q: sp.q, status, source: sp.source, funnel: sp.funnel, sort: sp.sort, temp: sp.temp,
@@ -32,7 +34,7 @@ export default async function LeadsPage({ searchParams }: {
         </span>
         <span className="spacer" />
         <ExportLink dataset="leads" params={{ q: sp.q, status, source: sp.source, funnel: sp.funnel }} />
-        <Link href="/settings/api" className="btn secondary"><Icon name="plug" />Conectar formularios</Link>
+        {me.role === "admin" && <Link href="/settings/api" className="btn secondary"><Icon name="plug" />Conectar formularios</Link>}
         <Link href="/leads/new" className="btn"><Icon name="plus" />Nuevo lead</Link>
       </div>
       <form className="toolbar">
@@ -78,7 +80,7 @@ export default async function LeadsPage({ searchParams }: {
           { key: "fit", label: "Encaje" },
           { key: "org", label: "Empresa" },
           { key: "source", label: "Origen" },
-          { key: "utm", label: "Campaña (UTM)", hidden: true },
+          { key: "utm", label: "Campaña", hidden: true },
           { key: "funnel", label: "Etapa" },
           { key: "tags", label: "Etiquetas" },
           { key: "status", label: "Estado" },

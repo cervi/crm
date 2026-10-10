@@ -136,8 +136,8 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       <div className="page-head">
         <h1>Actividades</h1>
         <div className="segmented" role="group" aria-label="Vista">
-          <Link href={link({ view: null, week: null })} aria-pressed={!calendar} title="Lista"><Icon name="list" /></Link>
-          <Link href={link({ view: "week" })} aria-pressed={calendar} title="Semana"><Icon name="activities" /></Link>
+          <Link href={link({ view: null, week: null })} aria-pressed={!calendar} title="Lista" aria-label="Vista de lista"><Icon name="list" /></Link>
+          <Link href={link({ view: "week" })} aria-pressed={calendar} title="Semana" aria-label="Vista semanal"><Icon name="activities" /></Link>
         </div>
         <span className="spacer" />
         {!calendar && <span className="board-count"><strong>{board!.items.length}</strong> actividad{board!.items.length === 1 ? "" : "es"}</span>}
