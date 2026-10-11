@@ -56,6 +56,22 @@ npm run demo -- --ia-simulada # con una IA simulada ya configurada
 
 Arranca la base de datos con datos de ejemplo, Microsoft 365 y Google simulados (se puede pulsar «Conectar» y enviar sin tocar cuentas reales) y la aplicación. Los datos se guardan en `.demo-data/`. Para resúmenes de verdad, pon tu clave en Ajustes → Modelo de IA.
 
+### Probar con tu correo (Gmail de verdad)
+
+Con `npm run probar` el correo y el calendario están simulados. Para que el CRM lea tus correos y reuniones de verdad (y la «última interacción» de cada deal esté al día):
+
+1. En [Google Cloud Console](https://console.cloud.google.com/) crea un proyecto (o usa uno) y activa **Gmail API**, **Google Calendar API** y **Google Drive API** (APIs y servicios → Biblioteca).
+2. **Pantalla de consentimiento de OAuth**: tipo *Interno* si tu cuenta es de Google Workspace (así no hace falta verificación); si no, *Externo* en modo *Prueba* y añade tu correo como usuario de prueba.
+3. **Credenciales → Crear credenciales → ID de cliente de OAuth** → *Aplicación web*. En «URI de redirección autorizados» pon `http://localhost:3000/api/integrations/google/callback`.
+4. En la carpeta del proyecto crea `.env.local` con:
+   ```
+   GOOGLE_CLIENT_ID=…apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=…
+   ```
+5. `npm run probar` y en el CRM: Ajustes → Correo, calendario y documentos → «Conectar Google». Lee los últimos 30 días y después sigue al día solo.
+
+Ojo: con el correo de verdad, lo que envíes desde el CRM (y las secuencias que actives) sale de verdad. Con Microsoft 365 es igual, con `MS_CLIENT_ID`, `MS_CLIENT_SECRET` y `MS_TENANT_ID` (redirección `http://localhost:3000/api/integrations/microsoft/callback`).
+
 ## Arrancar en local (desarrollo)
 
 Requisito: Node.js 22 o superior. No hace falta Docker ni instalar PostgreSQL.
