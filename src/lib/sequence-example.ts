@@ -148,11 +148,13 @@ export async function createExample(actor: Actor): Promise<string> {
       await tx`INSERT INTO person_organizations (person_id, organization_id, job_title) VALUES (${p.id}, ${o.id}, ${c.title})`;
 
       const e = c.end;
+      // Dónde se quedó quien ya salió: el paso siguiente al último que se hizo.
+      const reached = Math.max(0, ...c.events.map((ev) => ("email" in ev ? ev.email + 1 : "task" in ev ? ev.task + 1 : 0)));
       const [en] = await tx<{ id: string }[]>`
         INSERT INTO sequence_enrollments (sequence_id, person_id, user_id, status, next_step, next_run_at, stopped_reason, enrolled_by, created_at, finished_at,
                                           paused_reason, resume_at, timezone)
         VALUES (${seq.id}, ${p.id}, ${actor.id}, ${e.status},
-                ${e.status === "active" || e.status === "paused" ? e.next : e.status === "completed" ? STEPS.length : 0},
+                ${e.status === "active" || e.status === "paused" ? e.next : e.status === "completed" ? STEPS.length : reached},
                 ${e.status === "active" && !e.waitingTask ? when(-(e.at ?? 1), 9, 15) : null},
                 ${e.status === "stopped" ? e.reason : null}, ${actor.id}, ${when(c.enrolledAgo, 9, 0)},
                 ${e.status === "stopped" || e.status === "completed" ? when(e.ago, 12) : null},

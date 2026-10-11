@@ -111,7 +111,8 @@ export default async function SequencePage({ params, searchParams }: {
         <div>
           <h1>{seq.name}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            <span className={`badge ${seq.archived_at ? "" : seq.is_active ? "won" : "warn"}`}>{seq.archived_at ? "Archivada" : seq.is_active ? "Activa" : "En pausa"}</span>{" "}
+            {example ? <span className="badge">Ejemplo · no envía</span>
+              : <span className={`badge ${seq.archived_at ? "" : seq.is_active ? "won" : "warn"}`}>{seq.archived_at ? "Archivada" : seq.is_active ? "Activa" : "En pausa"}</span>}{" "}
             {seq.steps.length} paso{seq.steps.length === 1 ? "" : "s"} · {describeSchedule(schedule)}
           </p>
         </div>
