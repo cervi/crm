@@ -2571,7 +2571,8 @@ fieldset.readonly-fields input, fieldset.readonly-fields select, fieldset.readon
 .task-outcomes legend { margin-bottom: 6px; padding: 0; }
 .task-outcomes label { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; cursor: pointer; }
 .task-outcomes label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
-.task-outcomes input { margin: 0; accent-color: var(--accent); }
+.task-outcomes input { margin: 0; width: auto; height: auto; flex: none; accent-color: var(--accent); }
+.task-outcomes label { white-space: nowrap; width: auto; }
 @media (max-width: 900px) {
   .task-card { grid-template-columns: 1fr; }
   .task-card-act { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 14px; }
