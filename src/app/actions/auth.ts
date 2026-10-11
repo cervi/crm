@@ -152,7 +152,7 @@ export async function endSessionAction(sessionId: string, _: ActionState): Promi
 
 // --- Ciclo de vida: invitar, enlaces de contraseña, baja, reactivar, borrar datos
 
-export async function inviteUserAction(_: LinkState, form: FormData): Promise<LinkState> {
+export async function inviteUserAction(_: ActionState, form: FormData): Promise<LinkState> {
   try {
     const me = await adminOnly();
     const r = await inviteUser(me.id!, Object.fromEntries(form), await origin());
@@ -162,7 +162,7 @@ export async function inviteUserAction(_: LinkState, form: FormData): Promise<Li
   } catch (err) { return { error: toUserMessage(err) }; }
 }
 
-export async function resendInviteAction(userId: string, _: LinkState): Promise<LinkState> {
+export async function resendInviteAction(userId: string, _: ActionState): Promise<LinkState> {
   try {
     const me = await adminOnly();
     const r = await resendInvite(me.id!, userId, await origin());
@@ -178,7 +178,7 @@ export async function cancelInviteAction(userId: string, _: ActionState): Promis
   return res;
 }
 
-export async function sendResetLinkAction(userId: string, _: LinkState): Promise<LinkState> {
+export async function sendResetLinkAction(userId: string, _: ActionState): Promise<LinkState> {
   try {
     const me = await adminOnly();
     const r = await sendResetLink(me.id!, userId, await origin());
