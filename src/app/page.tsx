@@ -64,7 +64,7 @@ function Delta({ now, before, suffix = "que el mes pasado" }: { now: number; bef
 
 const initials = (n: string) => n.split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase();
 
-export default async function TodayPage({ searchParams }: { searchParams: Promise<{ owner?: string }> }) {
+export default async function TodayPage({ searchParams }: { searchParams: Promise<{ owner?: string; hecho?: string }> }) {
   const [sp, me] = await Promise.all([searchParams, requireUser()]);
   const ownerId = isId(sp.owner) ? sp.owner : null;
   const mine = (col: string) => (ownerId ? sql`${sql.unsafe(col)} = ${ownerId}` : sql`true`);
@@ -175,6 +175,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
   return (
     <main className="page b-home">
+      {sp.hecho === "bienvenida" && <p className="callout good" role="status">Ya tienes acceso, {me.name.split(" ")[0]}. Tu contraseña está guardada; la próxima vez entra con tu correo y ella.</p>}
+      {sp.hecho === "contrasena" && <p className="callout good" role="status">Contraseña cambiada. Hemos cerrado tus sesiones en otros dispositivos.</p>}
       {/* Cabecera */}
       <section className="b-hero">
         <div className="b-hero-text">

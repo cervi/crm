@@ -95,7 +95,7 @@ export async function checkCredentials(emailInput: string, password: string): Pr
   const valid = await verifyPassword(password, u?.password_hash ?? null);
   const generic = { error: "Email o contraseña incorrectos." };
   if (!u) return generic;
-  if (u.locked) return { error: `Demasiados intentos fallidos: espera ${LOCK_MINUTES} minutos o pide a un administrador que te cambie la contraseña.` };
+  if (u.locked) return { error: `Demasiados intentos fallidos: espera ${LOCK_MINUTES} minutos o usa «¿Has olvidado tu contraseña?» para poner una nueva ahora.` };
   if (!valid) {
     await sql`
       UPDATE users SET failed_logins = failed_logins + 1,

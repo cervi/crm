@@ -2290,3 +2290,6 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .forgot-link { justify-self: end; margin-top: -6px; }
 .drawer-section.danger-zone { border-color: color-mix(in srgb, var(--bad) 35%, var(--border)); }
 .drawer-section .plain-list { margin: 0; }
+.users-table td.row-actions { white-space: nowrap; }
+.users-table td.row-actions > *, .users-table td.row-actions form { display: inline-flex; vertical-align: middle; }
+.users-table td.row-actions .form-actions { margin: 0; }

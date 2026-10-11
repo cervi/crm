@@ -21,20 +21,26 @@ export default async function AccessPage({ params }: { params: Promise<{ token: 
   const { token } = await params;
   const info = await tokenInfo(token);
   if (!info.ok) {
-    const r = REASON[info.reason];
+    // Una invitación caducada no se arregla con «¿Has olvidado tu contraseña?»: la reenvía quien invitó.
+    const invite = info.purpose === "invite" && !info.has_password;
+    const r = invite && info.reason === "expired"
+      ? { title: "Tu invitación ha caducado", text: `Pide a ${info.inviter ?? "un administrador"} que te la reenvíe: te llegará un enlace nuevo.` }
+      : REASON[info.reason];
     return (
       <main className="auth-card">
         <div className="auth-brand"><Icon name="deals" />CRM</div>
         <h1>{r.title}</h1>
         <p>{r.text}</p>
         <div className="form-actions">
-          {info.reason !== "inactive" && <Link className="btn" href="/login/recuperar">Pedir un enlace nuevo</Link>}
-          <Link className="btn secondary" href="/login">Ir a entrar</Link>
+          {info.reason === "used" || info.reason === "inactive" || invite
+            ? <Link className="btn" href="/login">Ir a entrar</Link>
+            : <><Link className="btn" href="/login/recuperar">Pedir un enlace nuevo</Link><Link className="btn secondary" href="/login">Ir a entrar</Link></>}
         </div>
       </main>
     );
   }
-  const invite = info.purpose === "invite";
+  // Sin contraseña todavía (invitación, o la pidió antes de crearla): textos de «crear», no de «cambiar».
+  const invite = info.purpose === "invite" || !info.has_password;
   const providers = encryptionConfigured() ? (["google", "microsoft"] as const).filter((k) => PROVIDERS[k].configured()) : [];
   return (
     <main className="auth-card">
@@ -42,7 +48,7 @@ export default async function AccessPage({ params }: { params: Promise<{ token: 
       <div>
         <h1>{invite ? `Hola, ${info.name.split(" ")[0]}` : "Pon una contraseña nueva"}</h1>
         <p className="meta" style={{ margin: 0 }}>
-          {invite ? <>{info.inviter ? `${info.inviter} te ha dado acceso.` : "Ya tienes acceso."} Crea tu contraseña para entrar.</> : <>Para {info.email}.</>}
+          {invite ? <>{info.inviter ? `${info.inviter} te ha dado acceso.` : "Ya tienes acceso."} Crea tu contraseña para entrar ({info.email}).</> : <>Para {info.email}.</>}
         </p>
       </div>
       {invite && info.sso && providers.length > 0 && (

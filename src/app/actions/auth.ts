@@ -13,7 +13,7 @@ import {
   changeOwnPassword, createFirstAdmin, createUser, resetPassword, signOutEverywhere, updateOwnName, updateUser,
 } from "@/lib/users";
 import {
-  anonymizeUser, audit, cancelInvite, completeToken, inviteUser, offboardUser, reactivateUser, requestPasswordReset, resendInvite, sendResetLink,
+  anonymizeUser, audit, cancelInvite, completeToken, tokenInfo, inviteUser, offboardUser, reactivateUser, requestPasswordReset, resendInvite, sendResetLink,
 } from "@/lib/user-lifecycle";
 
 /** Origen del navegador (para el enlace que se copia si no hay APP_URL). */
@@ -104,12 +104,12 @@ export async function createUserAction(_: ActionState, form: FormData): Promise<
 }
 
 export async function updateUserAction(userId: string, _: ActionState, form: FormData): Promise<ActionState> {
-  const res = await attempt(async () => {
+  try {
     const me = await adminOnly();
-    await updateUser(me.id!, userId, Object.fromEntries(form));
-  });
-  revalidatePath("/settings/users");
-  return res;
+    const r = await updateUser(me.id!, userId, Object.fromEntries(form));
+    revalidatePath("/settings/users");
+    return r.inviteVoided ? { ok: true, message: "Guardado. La invitación enviada al correo anterior ya no sirve: reenvíala al nuevo." } : { ok: true };
+  } catch (err) { return { error: toUserMessage(err) }; }
 }
 
 export async function resetPasswordAction(userId: string, _: ActionState, form: FormData): Promise<ActionState> {
@@ -155,9 +155,15 @@ export async function endSessionAction(sessionId: string, _: ActionState): Promi
 export async function inviteUserAction(_: ActionState, form: FormData): Promise<LinkState> {
   try {
     const me = await adminOnly();
+    // Con contraseña inicial (alternativa a la invitación por correo).
+    if (str(form, "password").trim()) {
+      await createUser(Object.fromEntries(form), me.id);
+      revalidatePath("/settings/users");
+      return { ok: true, message: `${str(form, "name")} ya puede entrar con esa contraseña. Pásasela por un canal seguro: tendrá que cambiarla al entrar.` };
+    }
     const r = await inviteUser(me.id!, Object.fromEntries(form), await origin());
     revalidatePath("/settings/users");
-    return { ok: true, link: r.link, sentFrom: r.sentFrom,
+    return { ok: true, link: r.sentFrom ? undefined : r.link, sentFrom: r.sentFrom,
       message: r.sentFrom ? `Invitación enviada a ${r.email} desde ${r.sentFrom}.` : `${r.name} ya está dado de alta. No hay ningún buzón conectado para enviar el correo: cópiale el enlace.` };
   } catch (err) { return { error: toUserMessage(err) }; }
 }
@@ -167,7 +173,7 @@ export async function resendInviteAction(userId: string, _: ActionState): Promis
     const me = await adminOnly();
     const r = await resendInvite(me.id!, userId, await origin());
     revalidatePath("/settings/users");
-    return { ok: true, link: r.link, sentFrom: r.sentFrom,
+    return { ok: true, link: r.sentFrom ? undefined : r.link, sentFrom: r.sentFrom,
       message: r.sentFrom ? `Invitación reenviada a ${r.email}. El enlace anterior ya no sirve.` : "Enlace nuevo creado (el anterior ya no sirve). Cópialo y envíaselo." };
   } catch (err) { return { error: toUserMessage(err) }; }
 }
@@ -183,7 +189,7 @@ export async function sendResetLinkAction(userId: string, _: ActionState): Promi
     const me = await adminOnly();
     const r = await sendResetLink(me.id!, userId, await origin());
     revalidatePath("/settings/users");
-    return { ok: true, link: r.link, sentFrom: r.sentFrom,
+    return { ok: true, link: r.sentFrom ? undefined : r.link, sentFrom: r.sentFrom,
       message: r.sentFrom ? `Enlace enviado a ${r.email}. Caduca en 24 horas.` : "No hay ningún buzón conectado para enviarlo: cópiale el enlace (caduca en 24 horas)." };
   } catch (err) { return { error: toUserMessage(err) }; }
 }
@@ -193,7 +199,10 @@ export async function offboardUserAction(userId: string, _: ActionState, form: F
     const me = await adminOnly();
     const r = await offboardUser(me.id!, userId, Object.fromEntries(form));
     revalidatePath("/settings/users");
-    return { ok: true, message: `${r.name} ya no puede entrar.${r.toName ? ` Lo que llevaba es ahora de ${r.toName}.` : ""}` };
+    const p = r.preview;
+    const moved = [[p.deals, "deals"], [p.leads, "leads"], [p.activities, "actividades"], [p.persons, "contactos"], [p.organizations, "empresas"]]
+      .filter(([n]) => Number(n) > 0).map(([n, w]) => `${n} ${w}`).join(", ");
+    return { ok: true, message: `${r.name} ya no puede entrar.${r.toName && moved ? ` ${moved} son ahora de ${r.toName}.` : ""}` };
   } catch (err) { return { error: toUserMessage(err) }; }
 }
 
@@ -220,13 +229,15 @@ export async function forgotPasswordAction(_: ActionState, form: FormData): Prom
 
 /** Crear la contraseña desde una invitación o cambiarla desde el enlace; abre la sesión. */
 export async function completeTokenAction(token: string, _: ActionState, form: FormData): Promise<ActionState> {
-  let userId = "";
+  let userId = "", first = false;
   try {
     const c = await client();
+    const info = await tokenInfo(token);
+    first = info.ok && !info.has_password;
     userId = await completeToken(token, str(form, "password"), str(form, "repeat"), c.ip, c.ua);
   } catch (err) { return { error: toUserMessage(err) }; }
   await startSession(userId);
-  redirect("/?bienvenida=1");
+  redirect(first ? "/?hecho=bienvenida" : "/?hecho=contrasena");
 }
 
 export async function saveSystemMailAction(_: ActionState, form: FormData): Promise<ActionState> {

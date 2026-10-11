@@ -8,6 +8,7 @@ import { dateTime } from "@/lib/format";
 import { PROVIDERS } from "@/lib/integrations";
 import { listLoginEvents, METHOD_LABEL } from "@/lib/login-log";
 import { getSsoSettings } from "@/lib/sso";
+import { systemSender } from "@/lib/user-lifecycle";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Accesos y seguridad" };
@@ -34,11 +35,12 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
       FROM login_events WHERE at > now() - interval '7 days'`,
   ]);
   const providers = (["google", "microsoft"] as const).filter((k) => PROVIDERS[k].configured());
-  const [mailboxes, [mailSetting]] = await Promise.all([
+  const [mailboxes, [mailSetting], autoSender] = await Promise.all([
     sql<{ user_id: string; email: string; name: string }[]>`
       SELECT m.user_id, m.email, u.name FROM mailbox_connections m JOIN users u ON u.id = m.user_id
       WHERE m.purpose = 'main' AND m.status = 'active' AND u.role = 'admin' AND u.is_active ORDER BY u.name`,
     sql<{ system_mail_user_id: string | null }[]>`SELECT system_mail_user_id FROM app_settings LIMIT 1`,
+    systemSender(null),
   ]);
   return (
     <main className="page medium">
@@ -87,16 +89,16 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
       <section className="panel" aria-label="Correos de acceso">
         <h2>Correos de invitación y de contraseña</h2>
         <p className="meta" style={{ marginTop: 0 }}>
-          Quien pide cambiar su contraseña la recibe desde su propio buzón, si lo tiene conectado. Si no, y para las invitaciones que no envía un administrador con buzón, sale desde este.
+          Las invitaciones salen del buzón del administrador que invita. Los enlaces de «¿Has olvidado tu contraseña?» y los avisos de seguridad salen de este buzón.
         </p>
         {mailboxes.length === 0 ? (
-          <p className="callout">Ningún administrador tiene su correo conectado: los enlaces de invitación y de contraseña habrá que copiarlos y enviarlos a mano.
+          <p className="callout">Ningún administrador tiene su correo conectado: los enlaces de invitación y de contraseña habrá que copiarlos y enviarlos a mano, y «¿Has olvidado tu contraseña?» no podrá enviar nada.
             Conéctalo en <Link href="/settings/mailbox">Correo, calendario y documentos</Link>.</p>
         ) : (
           <ActionForm action={saveSystemMailAction} submitLabel="Guardar">
             <label className="field"><span className="label">Enviar desde</span>
               <select name="user_id" defaultValue={mailSetting?.system_mail_user_id ?? ""}>
-                <option value="">El primer administrador con correo conectado</option>
+                <option value="">Automático ({autoSender?.email ?? mailboxes[0].email})</option>
                 {mailboxes.map((m) => <option key={m.user_id} value={m.user_id}>{m.email} ({m.name})</option>)}
               </select>
               <span className="meta">Solo buzones de administradores: los enlaces quedan en su carpeta de enviados.</span></label>

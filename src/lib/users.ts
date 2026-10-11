@@ -56,7 +56,7 @@ export async function createUser(input: Record<string, unknown>, actorId: string
   // Si ya existía sin acceso (p. ej. traído de Pipedrive), se le da acceso.
   const [existing] = await sql<{ id: string; password_hash: string | null }[]>`
     SELECT id, password_hash FROM users WHERE lower(email) = ${v.email} AND kind = 'human'`;
-  if (existing?.password_hash) throw new UserError("Ya hay un usuario con ese email.");
+  if (existing?.password_hash) throw new UserError("Ya hay un usuario con ese email. Si está dado de baja, reactívalo desde su ficha.");
   if (existing) {
     await sql`
       UPDATE users SET name = ${v.name}, role = ${v.role}, is_active = true, password_hash = ${hash},
@@ -80,7 +80,7 @@ async function adminsLeft(exceptId: string): Promise<number> {
 }
 
 /** Nombre, correo y rol. Las bajas y reactivaciones tienen su propio flujo (user-lifecycle). */
-export async function updateUser(byId: string, userId: string, input: Record<string, unknown>) {
+export async function updateUser(byId: string, userId: string, input: Record<string, unknown>): Promise<{ inviteVoided: boolean }> {
   const v = parse(z.object({ name: NAME, email: EMAIL, role: ROLE }), input);
   const [cur] = await sql<{ role: Role; is_active: boolean; name: string; email: string | null }[]>`
     SELECT role, is_active, name, email FROM users WHERE id = ${userId} AND kind = 'human'`;
@@ -91,10 +91,17 @@ export async function updateUser(byId: string, userId: string, input: Record<str
   const [dup] = await sql`SELECT 1 FROM users WHERE lower(email) = ${v.email} AND id <> ${userId} AND kind = 'human'`;
   if (dup) throw new UserError("Ya hay otra persona con ese correo.");
   await sql`UPDATE users SET name = ${v.name}, email = ${v.email}, role = ${v.role}, updated_at = now() WHERE id = ${userId}`;
+  // Si cambia el correo, los enlaces enviados a la dirección anterior dejan de servir.
+  let inviteVoided = false;
+  if ((cur.email ?? "") !== v.email) {
+    const voided = await sql`UPDATE user_tokens SET used_at = now() WHERE user_id = ${userId} AND used_at IS NULL RETURNING purpose`;
+    inviteVoided = voided.some((t) => t.purpose === "invite");
+  }
   if (cur.role !== v.role) await audit(byId, userId, "role_changed", { from: cur.role, to: v.role });
   if (cur.name !== v.name || (cur.email ?? "") !== v.email) await audit(byId, userId, "data_changed", { email_changed: (cur.email ?? "") !== v.email });
   // Si baja de administrador, que vuelva a entrar con sus permisos nuevos.
   if (cur.role === "admin" && v.role !== "admin") await sql`DELETE FROM sessions WHERE user_id = ${userId}`;
+  return { inviteVoided };
 }
 
 /** Un administrador pone una contraseña nueva (temporal) y desbloquea la cuenta. */

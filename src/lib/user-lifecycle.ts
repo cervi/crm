@@ -70,7 +70,10 @@ async function sendSystemEmail(to: { email: string; name?: string | null }, subj
   return conn.email;
 }
 
-const appName = () => process.env.APP_NAME?.trim() || "el CRM";
+const appName = () => process.env.APP_NAME?.trim() || null;
+/** «del CRM» / «de Aikit», «al CRM» / «a Aikit»: sin artículos raros en asuntos y textos. */
+const appDel = () => (appName() ? `de ${appName()}` : "del CRM");
+const appAl = () => (appName() ? `a ${appName()}` : "al CRM");
 
 /** Enlace público de un token. Sin APP_URL, el del navegador del administrador (para copiarlo). */
 export function accessLink(token: string, origin?: string | null) {
@@ -133,9 +136,9 @@ async function sendInvite(actorId: string, userId: string, origin?: string | nul
   let sentFrom: string | null = null;
   if (link.startsWith("http")) {
     const first = u.name.split(" ")[0];
-    const text = `Hola, ${first}:\n\n${inviter?.name ?? "Tu equipo"} te ha dado acceso a ${appName()} como ${ROLE_NAME[u.role].toLowerCase()}.`
+    const text = `Hola, ${first}:\n\n${inviter?.name ?? "Tu equipo"} te ha dado acceso ${appAl()} como ${ROLE_NAME[u.role].toLowerCase()}.`
       + `\n\nCrea tu contraseña con este botón${u.sso_enabled ? " o entra directamente con tu cuenta de Google o Microsoft" : ""}.`;
-    sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, `${inviter?.name ?? "Tu equipo"} te invita a ${appName()}`, text,
+    sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, `${inviter?.name ?? "Tu equipo"} te invita ${appAl()}`, text,
       { label: "Crear mi contraseña", url: link }, `El enlace caduca en ${INVITE_DAYS} días y solo sirve una vez. Si no esperabas este correo, ignóralo.`, actorId)
       .catch((err) => { console.error("[invitación]", err); return null; });
     await markSent(token, sentFrom);
@@ -165,16 +168,18 @@ export async function cancelInvite(actorId: string, userId: string) {
 
 /** Lo envía un administrador (por ejemplo, si se ha bloqueado). Devuelve el enlace por si hay que copiarlo. */
 export async function sendResetLink(actorId: string, userId: string, origin?: string | null) {
-  const [u] = await sql<{ name: string; email: string | null; is_active: boolean }[]>`SELECT name, email, is_active FROM users WHERE id = ${userId} AND kind = 'human'`;
+  const [u] = await sql<{ name: string; email: string | null; is_active: boolean; has_password: boolean }[]>`
+    SELECT name, email, is_active, password_hash IS NOT NULL AS has_password FROM users WHERE id = ${userId} AND kind = 'human'`;
+  const [admin] = await sql<{ name: string }[]>`SELECT name FROM users WHERE id = ${actorId}`;
   if (!u?.email) throw new UserError("Esa persona no tiene correo.");
   if (!u.is_active) throw new UserError("Está dada de baja: reactívala primero.");
   const token = await issueToken(userId, "reset", actorId, ADMIN_RESET_HOURS * 60);
   const link = accessLink(token, origin);
   let sentFrom: string | null = null;
   if (link.startsWith("http")) {
-    sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, `Cambia tu contraseña de ${appName()}`,
-      `Hola, ${u.name.split(" ")[0]}:\n\nUn administrador te ha enviado este enlace para que pongas una contraseña nueva.`,
-      { label: "Poner una contraseña nueva", url: link }, `El enlace caduca en ${ADMIN_RESET_HOURS} horas y solo sirve una vez.`, userId)
+    sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, u.has_password ? `Cambia tu contraseña ${appDel()}` : `Crea tu contraseña ${appDel()}`,
+      `Hola, ${u.name.split(" ")[0]}:\n\n${admin?.name ?? "Un administrador"} te ha enviado este enlace para que ${u.has_password ? "pongas una contraseña nueva" : "crees tu contraseña"}.`,
+      { label: u.has_password ? "Poner una contraseña nueva" : "Crear mi contraseña", url: link }, `El enlace caduca en ${ADMIN_RESET_HOURS} horas y solo sirve una vez.`, actorId)
       .catch((err) => { console.error("[contraseña]", err); return null; });
     await markSent(token, sentFrom);
   }
@@ -205,35 +210,37 @@ export async function requestPasswordReset(emailRaw: string, ip: string | null, 
   const link = accessLink(token, origin);
   if (!link.startsWith("http")) return;
   const via = !u.has_password && u.sso_enabled ? "\n\nRecuerda que también puedes entrar con tu cuenta de Google o Microsoft, sin contraseña." : "";
-  const sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, `Cambia tu contraseña de ${appName()}`,
-    `Hola, ${u.name.split(" ")[0]}:\n\nHemos recibido una petición para cambiar tu contraseña. Si has sido tú, usa este botón.${via}`,
-    { label: "Poner una contraseña nueva", url: link },
-    `El enlace caduca en ${RESET_MINUTES} minutos y solo sirve una vez. Si no lo has pedido tú, ignora este correo: tu contraseña no cambia.`, u.id)
+  const sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, u.has_password ? `Cambia tu contraseña ${appDel()}` : `Crea tu contraseña ${appDel()}`,
+    `Hola, ${u.name.split(" ")[0]}:\n\n${u.has_password ? "Hemos recibido una petición para cambiar tu contraseña" : "Nos has pedido un enlace para crear tu contraseña"}. Si has sido tú, usa este botón.${via}`,
+    { label: u.has_password ? "Poner una contraseña nueva" : "Crear mi contraseña", url: link },
+    `El enlace caduca en ${RESET_MINUTES} minutos y solo sirve una vez. Si no lo has pedido tú, ignora este correo: no cambia nada.`, null)
     .catch((err) => { console.error("[contraseña]", err); return null; });
   await markSent(token, sentFrom);
   await audit(null, u.id, "reset_requested", { sent: Boolean(sentFrom) });
 }
 
 export type TokenInfo =
-  | { ok: true; purpose: "invite" | "reset"; name: string; email: string; inviter: string | null; expires_at: Date; sso: boolean }
-  | { ok: false; reason: "invalid" | "expired" | "used" | "inactive" };
+  | { ok: true; purpose: "invite" | "reset"; name: string; email: string; inviter: string | null; expires_at: Date; sso: boolean; has_password: boolean }
+  | { ok: false; reason: "invalid" | "expired" | "used" | "inactive"; purpose?: "invite" | "reset"; inviter?: string | null; has_password?: boolean };
 
 export async function tokenInfo(token: string): Promise<TokenInfo> {
   if (!TOKEN_RE.test(token)) return { ok: false, reason: "invalid" };
   const [t] = await sql<{ purpose: "invite" | "reset"; expires_at: Date; used_at: Date | null; name: string; email: string | null;
-                          is_active: boolean; sso_enabled: boolean; inviter: string | null }[]>`
-    SELECT t.purpose, t.expires_at, t.used_at, u.name, u.email, u.is_active, u.sso_enabled, i.name AS inviter
+                          is_active: boolean; sso_enabled: boolean; inviter: string | null; has_password: boolean }[]>`
+    SELECT t.purpose, t.expires_at, t.used_at, u.name, u.email, u.is_active, u.sso_enabled, i.name AS inviter, u.password_hash IS NOT NULL AS has_password
     FROM user_tokens t JOIN users u ON u.id = t.user_id LEFT JOIN users i ON i.id = t.created_by
     WHERE t.token_hash = ${hash(token)}`;
   if (!t || !t.email) return { ok: false, reason: "invalid" };
-  if (t.used_at) return { ok: false, reason: "used" };
-  if (t.expires_at < new Date()) return { ok: false, reason: "expired" };
-  if (!t.is_active) return { ok: false, reason: "inactive" };
-  return { ok: true, purpose: t.purpose, name: t.name, email: t.email, inviter: t.inviter, expires_at: t.expires_at, sso: t.sso_enabled };
+  const more = { purpose: t.purpose, inviter: t.inviter, has_password: t.has_password };
+  if (t.used_at) return { ok: false, reason: "used", ...more };
+  if (t.expires_at < new Date()) return { ok: false, reason: "expired", ...more };
+  if (!t.is_active) return { ok: false, reason: "inactive", ...more };
+  return { ok: true, purpose: t.purpose, name: t.name, email: t.email, inviter: t.inviter, expires_at: t.expires_at, sso: t.sso_enabled, has_password: t.has_password };
 }
 
 /** Crea o cambia la contraseña con el enlace. Devuelve el usuario para abrirle sesión. */
 export async function completeToken(token: string, password: string, repeat: string, ip: string | null, ua: string | null): Promise<string> {
+  // Devuelve el id; el tipo de enlace y si ya tenía contraseña se leen con tokenInfo antes de llamar.
   const info = await tokenInfo(token);
   if (!info.ok) {
     throw new UserError(info.reason === "expired" ? "El enlace ha caducado. Pide otro." : info.reason === "used" ? "Este enlace ya se ha usado. Pide otro si lo necesitas."
@@ -256,7 +263,8 @@ export async function completeToken(token: string, password: string, repeat: str
   });
   await audit(userId, userId, info.purpose === "invite" ? "invite_accepted" : "password_reset");
   await logLogin({ userId, email: info.email, method: "password", success: true, reason: info.purpose === "invite" ? "primera entrada (invitación)" : "contraseña nueva con enlace", ip, ua });
-  if (info.purpose === "reset") await passwordChangedNotice(userId).catch(() => null);
+  // Aviso de seguridad solo si ya tenía contraseña (crearla por primera vez no es un cambio).
+  if (info.purpose === "reset" && info.has_password) await passwordChangedNotice(userId).catch(() => null);
   return userId;
 }
 
@@ -264,9 +272,9 @@ export async function completeToken(token: string, password: string, repeat: str
 export async function passwordChangedNotice(userId: string) {
   const [u] = await sql<{ name: string; email: string | null }[]>`SELECT name, email FROM users WHERE id = ${userId}`;
   if (!u?.email) return;
-  await sendSystemEmail({ email: u.email, name: u.name }, `Tu contraseña de ${appName()} ha cambiado`,
+  await sendSystemEmail({ email: u.email, name: u.name }, `Tu contraseña ${appDel()} ha cambiado`,
     `Hola, ${u.name.split(" ")[0]}:\n\nTu contraseña acaba de cambiar y se han cerrado tus otras sesiones.\n\nSi no has sido tú, avisa cuanto antes a un administrador de tu empresa.`,
-    undefined, undefined, userId);
+    undefined, undefined, null);
 }
 
 // ---------------------------------------------------------------------------
@@ -274,7 +282,7 @@ export async function passwordChangedNotice(userId: string) {
 
 export type OffboardPreview = {
   deals: number; leads: number; activities: number; persons: number; organizations: number; campaigns: number;
-  enrollments: number; rules: number; mailbox: string | null; booking: boolean;
+  enrollments: number; rules: number; mailbox: string | null; booking: boolean; outbound: number; solo_rules: number;
 };
 
 export async function offboardPreview(userId: string): Promise<OffboardPreview> {
@@ -289,9 +297,15 @@ export async function offboardPreview(userId: string): Promise<OffboardPreview> 
       (SELECT count(*)::int FROM sequence_enrollments WHERE user_id = ${userId} AND status = 'active') AS enrollments,
       (SELECT count(*)::int FROM assignment_rules WHERE ${userId}::uuid = ANY(user_ids) AND is_active) AS rules,
       (SELECT email FROM mailbox_connections WHERE user_id = ${userId} AND purpose = 'main' LIMIT 1) AS mailbox,
+      (SELECT count(*)::int FROM mailbox_connections WHERE user_id = ${userId} AND purpose = 'outbound') AS outbound,
+      (SELECT count(*)::int FROM assignment_rules WHERE user_ids = ARRAY[${userId}::uuid] AND is_active) AS solo_rules,
       EXISTS (SELECT 1 FROM booking_pages WHERE user_id = ${userId} AND is_active) AS booking`;
   return r;
 }
+
+/** ¿Lleva algo que tenga que pasar a otra persona? */
+export const needsReceiver = (p: OffboardPreview) =>
+  p.deals + p.leads + p.activities + p.persons + p.organizations + p.campaigns + p.enrollments + p.outbound > 0;
 
 async function adminsLeft(exceptId: string) {
   const [r] = await sql<{ n: number }[]>`
@@ -313,8 +327,7 @@ export async function offboardUser(actorId: string, userId: string, input: Recor
   if (!u.is_active) throw new UserError("Ya está dado de baja.");
   if (u.role === "admin" && (await adminsLeft(userId)) === 0) throw new UserError("Tiene que quedar al menos un administrador.");
   const preview = await offboardPreview(userId);
-  const pending = preview.deals + preview.leads + preview.activities + preview.campaigns + preview.enrollments;
-  if (pending > 0 && !to) throw new UserError("Elige a quién pasan sus deals, leads y tareas.");
+  if (needsReceiver(preview) && !to) throw new UserError("Elige a quién pasa lo que lleva.");
   if (to) {
     const [t] = await sql<{ ok: boolean }[]>`SELECT (is_active AND kind = 'human' AND role <> 'viewer') AS ok FROM users WHERE id = ${to}`;
     if (!t?.ok || to === userId) throw new UserError("Elige a una persona activa que pueda llevar deals.");

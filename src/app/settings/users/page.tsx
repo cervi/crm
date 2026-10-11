@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  anonymizeUserAction, cancelInviteAction, createUserAction, inviteUserAction, offboardUserAction, reactivateUserAction, resendInviteAction,
+  anonymizeUserAction, cancelInviteAction, inviteUserAction, offboardUserAction, reactivateUserAction, resendInviteAction,
   resetPasswordAction, sendResetLinkAction, setUserSsoAction, signOutUserAction, updateUserAction,
 } from "@/app/actions/auth";
 import { METHOD_LABEL } from "@/lib/login-log";
@@ -12,7 +12,7 @@ import { Drawer } from "@/components/Drawer";
 import { Icon } from "@/components/Icon";
 import { ROLE_LABELS, requireAdminPage } from "@/lib/auth";
 import { dateTime } from "@/lib/format";
-import { AUDIT_TEXT, offboardPreview, systemSender, userHistory, type OffboardPreview } from "@/lib/user-lifecycle";
+import { AUDIT_TEXT, needsReceiver, offboardPreview, systemSender, userHistory, type OffboardPreview } from "@/lib/user-lifecycle";
 import { listAllUsers, type AdminUserRow } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +53,8 @@ function PreviewList({ p }: { p: OffboardPreview }) {
   const items = [
     [p.deals, "deal abierto", "deals abiertos"], [p.leads, "lead abierto", "leads abiertos"], [p.activities, "actividad pendiente", "actividades pendientes"],
     [p.persons, "contacto", "contactos"], [p.organizations, "empresa", "empresas"], [p.campaigns, "campaña", "campañas"],
-    [p.enrollments, "contacto en secuencias", "contactos en secuencias"], [p.rules, "regla de reparto", "reglas de reparto"],
+    [p.enrollments, "contacto en secuencias", "contactos en secuencias"], [p.outbound, "buzón de outbound", "buzones de outbound"],
+    [p.rules, "regla de reparto", "reglas de reparto"],
   ].filter(([n]) => Number(n) > 0) as [number, string, string][];
   return items.length
     ? <ul className="plain-list">{items.map(([n, one, many]) => <li key={one}><strong>{n}</strong> {n === 1 ? one : many}</li>)}</ul>
@@ -79,13 +80,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const access = (u: AdminUserRow) =>
     u.anonymized_at ? { label: "Datos borrados", cls: "", hint: "Sus datos personales se borraron. Su historia queda como «Usuario eliminado»." }
     : !u.is_active ? { label: "De baja", cls: "", hint: "No puede entrar. Su historia se conserva." }
-    : u.locked ? { label: "Bloqueado", cls: "lost", hint: "Demasiados intentos fallidos. Envíale un enlace para cambiar la contraseña." }
-    : pending(u) && u.invite_expires_at && new Date(u.invite_expires_at) > new Date() ? { label: "Invitación enviada", cls: "warn", hint: "Aún no ha creado su contraseña." }
-    : pending(u) && u.invited_at ? { label: "Invitación caducada", cls: "lost", hint: "Reenvíale la invitación." }
-    : pending(u) ? { label: "Sin acceso", cls: "", hint: "Existe (por ejemplo, traído de Pipedrive) pero aún no puede entrar. Invítale." }
-    : !u.has_password && u.sso_enabled ? { label: "Con Google/Microsoft", cls: "won", hint: "Entra con su cuenta de Google o Microsoft." }
+    : u.locked ? { label: "Bloqueado", cls: "lost", hint: "Envíale un enlace para cambiar la contraseña." }
+    : pending(u) && u.invite_expires_at && new Date(u.invite_expires_at) > new Date() ? { label: "Invitación enviada", cls: "", hint: "Aún no ha creado su contraseña." }
+    : pending(u) && u.invited_at ? { label: "Invitación caducada", cls: "warn", hint: "Reenvíale la invitación." }
+    : pending(u) ? { label: "Sin invitar", cls: "", hint: "Existe (por ejemplo, traído de Pipedrive) pero aún no puede entrar." }
+    : !u.has_password && u.sso_enabled ? { label: "Con Google/Microsoft", cls: "", hint: "" }
     : u.must_change_password ? { label: "Contraseña temporal", cls: "warn", hint: "Tendrá que cambiarla al entrar." }
-    : { label: "Activo", cls: "won", hint: "Puede entrar." };
+    : { label: "Activo", cls: "", hint: "" };
 
   const senderText = sender
     ? sender.user_id === me.id ? `Le llegará un correo desde tu buzón (${sender.email}).` : `Le llegará un correo desde ${sender.email}.`
@@ -102,24 +103,19 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         <div className="head-actions">
           <Drawer label={<><Icon name="plus" />Invitar a alguien</>} buttonClass="btn" title="Invitar a alguien"
                   subtitle="Recibe un enlace para crear su propia contraseña. Nadie más la conoce.">
-            <ActionForm action={inviteUserAction} submitLabel="Enviar invitación" pendingLabel="Enviando…" resetOnSuccess>
+            <ActionForm action={inviteUserAction} submitLabel="Dar acceso" pendingLabel="Enviando…" resetOnSuccess>
               <label className="field"><span className="label">Nombre *</span><input name="name" required autoComplete="off" /></label>
               <label className="field"><span className="label">Email *</span><input name="email" type="email" required autoComplete="off" /></label>
               <RoleSelect />
               {ssoReady && <label className="checkbox"><input type="checkbox" name="sso" defaultChecked /> También puede entrar con su cuenta de Google o Microsoft</label>}
               <p className="meta" style={{ margin: 0 }}>{senderText} El enlace caduca en 7 días. Si ya existía (por ejemplo, traído de Pipedrive), conserva sus deals.</p>
+              <details className="drawer-more">
+                <summary className="meta">Prefiero ponerle yo una contraseña inicial (sin correo)</summary>
+                <label className="field"><span className="label">Contraseña inicial</span>
+                  <input name="password" type="text" minLength={10} autoComplete="off" />
+                  <span className="meta">Mínimo 10 caracteres. Pásasela por un canal seguro: tendrá que cambiarla al entrar. Si la escribes, no se envía invitación.</span></label>
+              </details>
             </ActionForm>
-            <details className="drawer-more">
-              <summary className="meta">Prefiero ponerle yo una contraseña inicial</summary>
-              <ActionForm action={createUserAction} submitLabel="Dar acceso con contraseña" secondary resetOnSuccess>
-                <label className="field"><span className="label">Nombre *</span><input name="name" required /></label>
-                <label className="field"><span className="label">Email *</span><input name="email" type="email" required /></label>
-                <RoleSelect />
-                <label className="field"><span className="label">Contraseña inicial *</span>
-                  <input name="password" type="text" required minLength={10} autoComplete="off" />
-                  <span className="meta">Mínimo 10 caracteres. Pásasela por un canal seguro: tendrá que cambiarla al entrar.</span></label>
-              </ActionForm>
-            </details>
           </Drawer>
         </div>
       </div>
@@ -161,7 +157,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                       </span>
                     </td>
                     <td>{ROLE_LABELS[u.role]}</td>
-                    <td><span className={`badge ${a.cls}`} title={a.hint}>{a.label}</span></td>
+                    <td><span className={`badge ${a.cls}`}>{a.label}</span>{a.hint && view !== "baja" && <div className="meta">{a.hint}</div>}</td>
                     <td className="nowrap">
                       {view === "baja" ? (u.deactivated_at ? <>{dateTime(u.deactivated_at)}{u.deactivated_by_name && <div className="meta">por {u.deactivated_by_name}</div>}</> : <span className="muted">—</span>)
                         : view === "invitados" ? (u.invited_at ? <>{dateTime(u.invited_at)}{u.invite_expires_at && <div className="meta">{until(u.invite_expires_at)}</div>}</> : <span className="muted">Sin invitar</span>)
@@ -174,12 +170,12 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                         <ActionForm action={resendInviteAction.bind(null, u.id)} className="form inline" secondary
                                     submitLabel={u.invited_at ? "Reenviar invitación" : "Invitar"} pendingLabel="Enviando…" />
                       )}
-                      <Drawer label="Gestionar" title={u.name} subtitle={`${u.email ?? "sin email"} · ${ROLE_LABELS[u.role]} · ${a.label}`} buttonTitle={`Gestionar a ${u.name}`}>
+                      <Drawer label="Gestionar" buttonClass="btn secondary" title={u.name} subtitle={`${u.email ?? "sin email"} · ${ROLE_LABELS[u.role]} · ${a.label}`} buttonTitle={`Gestionar a ${u.name}`}>
                         {u.is_active ? (
                           <>
                             <section className="drawer-section">
                               <h3>Datos y rol</h3>
-                              <ActionForm action={updateUserAction.bind(null, u.id)} submitLabel="Guardar cambios">
+                              <ActionForm action={updateUserAction.bind(null, u.id)} submitLabel="Guardar cambios" secondary={pending(u)}>
                                 <label className="field"><span className="label">Nombre *</span><input name="name" required defaultValue={u.name} /></label>
                                 <label className="field"><span className="label">Email *</span><input name="email" type="email" required defaultValue={u.email ?? ""} /></label>
                                 <RoleSelect value={u.role} />
@@ -197,11 +193,11 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                                   </p>
                                   <ActionForm action={resendInviteAction.bind(null, u.id)} submitLabel={u.invited_at ? "Reenviar invitación" : "Enviar invitación"} pendingLabel="Enviando…" />
                                   {u.invited_at && <ActionForm action={cancelInviteAction.bind(null, u.id)} submitLabel="Cancelar la invitación" secondary className="form inline"
-                                                               confirm="El enlace dejará de servir. Podrás volver a invitarle cuando quieras." />}
+                                                               confirm="El enlace dejará de servir. Seguirá en la lista, sin acceso; para quitarle del todo, dale de baja." />}
                                 </>
                               ) : (
                                 <>
-                                  <p className="meta" style={{ margin: 0 }}>Si la ha olvidado o se ha bloqueado, envíale un enlace para que ponga una nueva. Caduca en 24 horas.</p>
+                                  <p className="meta" style={{ margin: 0 }}>{u.has_password ? "Si la ha olvidado o se ha bloqueado, envíale un enlace para que ponga una nueva." : "Entra con Google o Microsoft. Si quiere también una contraseña, envíale un enlace para crearla."} El enlace caduca en 24 horas.</p>
                                   <ActionForm action={sendResetLinkAction.bind(null, u.id)} submitLabel="Enviar enlace para cambiar la contraseña" pendingLabel="Enviando…" secondary />
                                 </>
                               )}
@@ -245,11 +241,12 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                                 <p className="meta" style={{ margin: 0 }}>Deja de poder entrar al momento y se cierran sus sesiones. Su historia (correos, notas, deals ganados) se conserva a su nombre.</p>
                                 <PreviewList p={preview} />
                                 {preview.mailbox && <p className="meta" style={{ margin: 0 }}>Se desconecta su correo ({preview.mailbox}){preview.booking ? " y se desactiva su página de reservas" : ""}.</p>}
+                                {preview.solo_rules > 0 && <p className="meta" style={{ margin: 0 }}>Si no eliges a nadie, {preview.solo_rules === 1 ? "la regla de reparto en la que solo está se desactivará" : `las ${preview.solo_rules} reglas de reparto en las que solo está se desactivarán`}.</p>}
                                 <ActionForm action={offboardUserAction.bind(null, u.id)} submitLabel="Dar de baja" danger
-                                            confirm={`${u.name} no podrá entrar. Puedes reactivarle más adelante, pero lo traspasado no vuelve solo.`}>
-                                  <label className="field"><span className="label">Pasar lo que lleva a{preview.deals + preview.leads + preview.activities + preview.campaigns + preview.enrollments > 0 ? " *" : ""}</span>
-                                    <select name="to" defaultValue={owners.some((o) => o.id === me.id) ? me.id : ""}>
-                                      <option value="">— Nadie —</option>
+                                            confirm={`${u.name} no podrá entrar.${needsReceiver(preview) ? " Todo lo de la lista pasará a la persona elegida." : ""} Puedes reactivarle más adelante, pero lo traspasado no vuelve solo.`}>
+                                  <label className="field"><span className="label">Pasar lo que lleva a{needsReceiver(preview) ? " *" : ""}</span>
+                                    <select name="to" defaultValue="" required={needsReceiver(preview)}>
+                                      <option value="">{needsReceiver(preview) ? "Elige a quién" : "— Nadie —"}</option>
                                       {owners.filter((o) => o.id !== u.id).map((o) => <option key={o.id} value={o.id}>{o.name}{o.id === me.id ? " (tú)" : ""}</option>)}
                                     </select>
                                     <span className="meta">Deals y leads abiertos, actividades pendientes, contactos, empresas, campañas y secuencias.</span></label>
@@ -262,7 +259,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                             {!u.anonymized_at && (
                               <section className="drawer-section">
                                 <h3>Reactivar</h3>
-                                <p className="meta" style={{ margin: 0 }}>Vuelve a poder entrar con su contraseña de antes. Lo que se traspasó al darle de baja sigue donde está.</p>
+                                <p className="meta" style={{ margin: 0 }}>Vuelve a poder entrar con su contraseña de antes. Lo que se traspasó al darle de baja sigue donde está, y tendrá que volver a conectar su correo.</p>
                                 <ActionForm action={reactivateUserAction.bind(null, u.id)} submitLabel="Reactivar" />
                               </section>
                             )}
