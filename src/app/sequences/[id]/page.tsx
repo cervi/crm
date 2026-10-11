@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import {
   archiveSequenceAction, bulkEnrollmentsAction, deleteSequenceAction, deleteStepAction, duplicateSequenceAction, moveStepAction, saveStepAction,
-  saveVariantAction, setSequenceActiveAction, removeExampleAction, stepActiveAction, updateSequenceSettingsAction, variantAction,
+  saveVariantAction, setSequenceActiveAction, removeExampleAction, completeTaskAction, stepActiveAction, updateSequenceSettingsAction, variantAction,
 } from "@/app/actions/sequences";
 import { ActionForm } from "@/components/ActionForm";
 import { Drawer } from "@/components/Drawer";
@@ -497,31 +497,81 @@ async function Emails({ id, view, filter }: { id: string; view: "scheduled" | "s
   );
 }
 
+const CALL_OUTCOMES = [["answered", "Contestó"], ["no_answer", "No contestó"], ["voicemail", "Buzón de voz"], ["busy", "Ocupado"], ["wrong_number", "Número erróneo"]] as const;
+
 async function Tasks({ id }: { id: string }) {
   const tasks = await listQueue({ userId: null, all: true, when: "todas", sequenceId: id });
-  return tasks.length === 0 ? (
-    <div className="empty-state"><strong>No hay tareas pendientes en esta secuencia.</strong>
-      <span className="meta">Las llamadas, pasos de LinkedIn y correos manuales aparecen aquí y en <Link href="/sequences/tasks">Tareas de secuencias</Link>.</span></div>
-  ) : (
+  const back = `/sequences/${id}?tab=tareas`;
+  if (tasks.length === 0) {
+    return (
+      <div className="empty-state"><strong>No hay tareas pendientes en esta secuencia.</strong>
+        <span className="meta">Las llamadas, pasos de LinkedIn y correos manuales aparecen aquí y en <Link href="/sequences/tasks">Tareas de secuencias</Link>.</span></div>
+    );
+  }
+  const overdue = tasks.filter((t) => t.overdue).length;
+  return (
     <>
-      <p><Link className="btn" href={`/sequences/tasks/hacer?secuencia=${id}`}><Icon name="send" />Hacerlas una tras otra</Link></p>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Tarea</th><th>Contacto</th><th>Paso</th><th>Vence</th><th>Responsable</th></tr></thead>
-          <tbody>
-            {tasks.map((t) => (
-              <tr key={t.activity_id}>
-                <td><Icon name={STEP_KINDS[t.step_kind as keyof typeof STEP_KINDS]?.icon ?? "check"} /> {t.subject}
-                  {t.priority === "high" && <span className="badge warn" style={{ marginLeft: 6 }}>Alta</span>}</td>
-                <td><Link href={`/persons/${t.person_id}`}>{t.person_name}</Link>{t.organization && <div className="meta">{t.organization}</div>}</td>
-                <td className="num">{t.step} de {t.steps}</td>
-                <td className={`nowrap${t.overdue ? " tone-bad" : ""}`}>{t.due_at ? dateTime(t.due_at) : "—"}</td>
-                <td className="meta">{t.owner_name ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="task-toolbar">
+        <span className="meta">{tasks.length} pendiente{tasks.length === 1 ? "" : "s"}{overdue ? <> · <span className="tone-bad">{overdue} vencida{overdue === 1 ? "" : "s"}</span></> : ""}.
+          {" "}Al marcar una como hecha, el contacto sigue con el paso siguiente.</span>
+        <Link className="btn secondary" href={`/sequences/tasks/hacer?secuencia=${id}`}><Icon name="send" />Hacerlas una tras otra</Link>
       </div>
+      <ul className="task-cards">
+        {tasks.map((t) => {
+          const kind = STEP_KINDS[t.step_kind as keyof typeof STEP_KINDS];
+          const isCall = t.step_kind === "call";
+          const isLinkedin = t.step_kind.startsWith("linkedin");
+          const isManualEmail = t.step_kind === "manual_email";
+          return (
+            <li key={t.activity_id} className={`task-card${t.overdue ? " overdue" : ""}`}>
+              <div className="task-card-main">
+                <div className="task-card-head">
+                  <span className="task-kind"><Icon name={kind?.icon ?? "check"} />{kind?.short ?? "Tarea"}</span>
+                  {t.priority === "high" && <span className="badge warn">Prioridad alta</span>}
+                  <span className={`meta${t.overdue ? " tone-bad" : ""}`}>{t.overdue ? "Vencida · " : "Vence "}{t.due_at ? dateTime(t.due_at) : "sin fecha"}</span>
+                  <span className="meta">· paso {t.step} de {t.steps}</span>
+                </div>
+                <h3>{t.subject}</h3>
+                <p className="task-who">
+                  <Link href={`/persons/${t.person_id}`}><strong>{t.person_name}</strong></Link>
+                  {[t.job_title, t.organization].filter(Boolean).length > 0 && <span className="meta"> · {[t.job_title, t.organization].filter(Boolean).join(" · ")}</span>}
+                  {t.deal_id && <> · <Link href={`/deals/${t.deal_id}`}>{t.deal_title}</Link></>}
+                </p>
+                {t.note && <p className="task-howto">{t.note}</p>}
+                <div className="task-contact">
+                  {t.phone && <a className="btn secondary small" href={`tel:${t.phone.replace(/\s+/g, "")}`}><Icon name="phone" />{t.phone}</a>}
+                  {isCall && !t.phone && <span className="meta">Sin teléfono: <Link href={`/persons/${t.person_id}`}>añádelo en su ficha</Link>.</span>}
+                  {t.linkedin_url && <a className="btn secondary small" href={t.linkedin_url} target="_blank" rel="noreferrer"><Icon name="users" />LinkedIn</a>}
+                  {isLinkedin && !t.linkedin_url && <span className="meta">Sin perfil de LinkedIn en su ficha.</span>}
+                  {t.email && <a className="btn secondary small" href={`mailto:${t.email}`}><Icon name="mail" />{t.email}</a>}
+                </div>
+              </div>
+              <div className="task-card-act">
+                {isManualEmail ? (
+                  <Link className="btn" href={`/sequences/tasks/hacer?tarea=${t.activity_id}`}>Revisar y enviar el correo</Link>
+                ) : (
+                  <ActionForm action={completeTaskAction.bind(null, t.activity_id, back)} submitLabel={isCall ? "Guardar llamada" : "Hecha"} pendingLabel="Guardando…" good>
+                    {isCall && (
+                      <fieldset className="task-outcomes">
+                        <legend className="label">¿Qué pasó?</legend>
+                        {CALL_OUTCOMES.map(([v, l], i) => (
+                          <label key={v}><input type="radio" name="outcome" value={v} defaultChecked={i === 1} />{l}</label>
+                        ))}
+                      </fieldset>
+                    )}
+                    <label className="field"><span className="label">Nota (opcional)</span>
+                      <textarea name="note" rows={2} placeholder={isCall ? "Qué te dijo, cuándo volver a llamar…" : "Algo que quieras dejar apuntado"} /></label>
+                    {isCall && <p className="meta" style={{ margin: 0 }}>Si contestó, la secuencia se para para este contacto.</p>}
+                  </ActionForm>
+                )}
+                <ActionForm action={completeTaskAction.bind(null, t.activity_id, back)} submitLabel="Saltar este paso" pendingLabel="…" secondary className="form inline">
+                  <input type="hidden" name="skip" value="1" />
+                </ActionForm>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </>
   );
 }
