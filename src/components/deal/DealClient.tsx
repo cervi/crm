@@ -187,10 +187,10 @@ export function EmailComposerFields({ dealId, templates, trackDefault, trackAvai
         <div className="compose-signature">
           <label className="checkbox"><input type="checkbox" name="signature" checked={withSig} onChange={(e) => setWithSig(e.target.checked)} />Añadir mi firma</label>
           {withSig && <div className="signature-preview" aria-label="Firma" dangerouslySetInnerHTML={{ __html: signatureHtml }} />}
-          <a className="meta" href="/account#firma">Editar firma</a>
+          <a className="meta" href="/account?tab=perfil#firma">Editar firma</a>
         </div>
       ) : (
-        <p className="meta" style={{ margin: 0 }}>Sin firma. <a href="/account#firma">Crear mi firma</a> para que vaya al final de tus correos.</p>
+        <p className="meta" style={{ margin: 0 }}>Sin firma. <a href="/account?tab=perfil#firma">Crear mi firma</a> para que vaya al final de tus correos.</p>
       )}
       <div className="compose-tools">
         <button type="button" className="btn secondary small" onClick={insert} disabled={state.loading}>

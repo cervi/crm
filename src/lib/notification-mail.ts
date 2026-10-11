@@ -64,7 +64,7 @@ async function noticesEmail(items: Pending[], grouped: boolean) {
     lines.push("");
   }
   const subject = items.length === 1 ? items[0].title : grouped ? `Tus avisos: ${items.length} novedades` : `${items.length} avisos: ${items[0].title}`;
-  const body = [...lines, `Cambia qué te llega y cuándo en ${url("/account#avisos")}`].join("\n");
+  const body = [...lines, `Cambia qué te llega y cuándo en ${url("/account?tab=avisos")}`].join("\n");
   return { subject: subject.slice(0, 200), body };
 }
 
@@ -130,7 +130,7 @@ export async function weekPlanEmail(userId: string) {
     ...sec("Deals que deberían cerrarse en estas dos semanas (o ya van tarde)", closing.map((d) => `- ${d.title} · ${money(d.value, d.currency)} · ${short.format(new Date(d.expected_close_date))} ${url(`/deals/${d.id}`)}`)),
     ...sec("Deals sin ninguna actividad programada: dales un siguiente paso", quiet.map((d) => `- ${d.title} · ${money(d.value, d.currency)} ${url(`/deals/${d.id}`)}`)),
     `Ábrelo en el CRM: ${url("/")}`,
-    `Cambia qué te llega en ${url("/account#avisos")}`,
+    `Cambia qué te llega en ${url("/account?tab=avisos")}`,
   ].join("\n");
   return { subject: `Tu semana: ${agenda.sessions} reuniones, ${closing.length} deals por cerrar, ${quiet.length} sin siguiente paso`, body };
 }

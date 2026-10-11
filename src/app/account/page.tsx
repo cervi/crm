@@ -35,7 +35,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   return (
     <main className="page">
       <div className="page-head account-head">
-        <Avatar name={user.name} />
+        <Avatar name={user.name} size="lg" />
         <div>
           <h1>{user.name}</h1>
           <p className="muted" style={{ margin: 0 }}>{user.email} · {ROLE_LABELS[user.role]}
