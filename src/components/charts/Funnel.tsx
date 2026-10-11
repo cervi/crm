@@ -32,7 +32,7 @@ export function Funnel({ stages, onStage }: { stages: FunnelStage[]; onStage?: R
           <>
             <span className="cfunnel-label">{s.label}</span>
             <span className="cfunnel-track">
-              <span className={`cfunnel-bar${s.value === 0 ? " empty" : ""}`} style={{ width: `${width}%` }} />
+              <span className={`cfunnel-bar${s.value === 0 ? " is-zero" : ""}`} style={{ width: `${width}%` }} />
             </span>
             <span className="cfunnel-value"><b>{num.format(s.value)}</b><span className="meta">{i === 0 ? "" : pct(s.value, top)}</span></span>
           </>

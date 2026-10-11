@@ -571,7 +571,7 @@ details.lose > summary::-webkit-details-marker { display: none; }
 .linechart { position: relative; }
 .linechart svg { display: block; overflow: visible; touch-action: pan-y; }
 .linechart .grid { stroke: var(--border); stroke-width: 1; }
-.linechart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.linechart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; animation: none; display: inline; }
 .linechart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .linechart .area { fill: var(--accent); opacity: .1; }
 .linechart .dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
@@ -1627,7 +1627,7 @@ main.reports > .sales-head { margin-top: 18px !important; }
 .chart-box { position: relative; min-width: 0; }
 .chart-box svg { display: block; width: 100%; height: auto; overflow: visible; }
 .chart-box .grid { stroke: var(--border); stroke-width: 1; }
-.chart-box .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart-box .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; animation: none; display: inline; }
 .chart-box .crosshair { stroke: var(--border-strong); stroke-width: 1; }
 .sales-tip { transform: translate(-50%, -100%); margin-top: -10px; gap: 3px; z-index: 5; min-width: 160px; }
 .sales-tip strong { font-size: 12.5px; color: var(--text); }
@@ -2451,7 +2451,7 @@ a.cfunnel-row:hover, .cfunnel li.on .cfunnel-row { background: var(--panel-2); t
 .cfunnel-label { font-size: 13px; color: var(--text-2); }
 .cfunnel-track { display: flex; justify-content: center; height: 26px; }
 .cfunnel-bar { display: block; height: 100%; background: var(--series-1); border-radius: 4px; transition: width .2s; }
-.cfunnel-bar.empty { width: 2px !important; background: var(--border-strong); }
+.cfunnel-bar.is-zero { width: 2px !important; background: var(--border-strong); }
 .cfunnel li.on .cfunnel-bar { filter: brightness(1.08); }
 .cfunnel-value { display: flex; align-items: baseline; gap: 6px; justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .cfunnel-value b { font-size: 15px; color: var(--text); }
