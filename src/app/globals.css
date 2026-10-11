@@ -2367,3 +2367,30 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .chips .view-chip.deletable a { padding-right: 28px; }
 .view-chip form { top: 50%; transform: translateY(-50%); right: 6px; }
 .act-card { font-size: 14px; color: var(--text); }
+
+/* Índice de ajustes: grupos, buscador y filas compactas */
+.settings-index { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
+.settings-nav { position: sticky; top: 76px; display: grid; gap: 12px; }
+.settings-nav input { width: 100%; }
+.settings-nav nav { display: grid; gap: 2px; }
+.settings-nav nav a { padding: 7px 10px; border-radius: var(--r-sm); color: var(--text-2); font-weight: 500; }
+.settings-nav nav a:hover { background: var(--sunken); text-decoration: none; color: var(--text); }
+.settings-nav nav a.dim { opacity: .4; }
+.settings-groups { display: grid; gap: 26px; }
+.settings-group { scroll-margin-top: 80px; }
+.settings-group h2 { margin: 0; font-size: 16px; }
+.settings-group > .meta { margin: 2px 0 10px; }
+.settings-group ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
+.settings-row { display: grid; grid-template-columns: 34px 1fr 16px; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--panel); color: inherit; height: 100%; }
+.settings-row:hover { border-color: var(--accent); text-decoration: none; box-shadow: var(--shadow); }
+.settings-row strong { display: block; }
+.settings-row .meta { display: block; margin-top: 1px; }
+.settings-row > svg { width: 16px; height: 16px; color: var(--muted); transform: rotate(-90deg); }
+.settings-ico { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-soft); }
+.settings-ico svg { width: 18px; height: 18px; stroke: var(--accent-ink); }
+@media (max-width: 760px) {
+  .settings-index { grid-template-columns: 1fr; }
+  .settings-nav { position: static; }
+  .settings-nav nav { display: flex; flex-wrap: wrap; gap: 4px; }
+}
