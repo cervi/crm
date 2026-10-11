@@ -1,5 +1,8 @@
 import { changePasswordAction, signOutOthersAction, updateProfileAction } from "@/app/actions/auth";
+import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
+import { Avatar } from "@/components/Avatar";
+import { Icon } from "@/components/Icon";
 import { RichTextField } from "@/components/RichTextField";
 import { saveSignatureAction } from "@/app/actions/email-editor";
 import { ROLE_LABELS, requireUser } from "@/lib/auth";
@@ -12,8 +15,17 @@ import { connectionOf } from "@/lib/mailbox";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Mi cuenta" };
 
-export default async function AccountPage({ searchParams }: { searchParams: Promise<{ change?: string }> }) {
-  const [user, { change }] = await Promise.all([requireUser(), searchParams]);
+const TABS = [
+  { key: "perfil", label: "Perfil y firma", icon: "user" },
+  { key: "seguridad", label: "Contraseña y sesiones", icon: "settings" },
+  { key: "avisos", label: "Avisos y resúmenes", icon: "bell" },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
+
+export default async function AccountPage({ searchParams }: { searchParams: Promise<{ change?: string; tab?: string }> }) {
+  const [user, sp] = await Promise.all([requireUser(), searchParams]);
+  const forced = Boolean(sp.change || user.must_change_password);
+  const tab: Tab = forced ? "seguridad" : TABS.find((t) => t.key === sp.tab)?.key ?? "perfil";
   const sessions = await sql<{ created_at: Date; last_seen_at: Date; user_agent: string | null }[]>`
     SELECT created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ${user.id} AND expires_at > now() ORDER BY last_seen_at DESC`;
   const [sig] = await sql<{ email_signature: string | null }[]>`SELECT email_signature FROM users WHERE id = ${user.id}`;
@@ -21,57 +33,92 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const hasMail = conn?.status === "active";
   const hours = Array.from({ length: 24 }, (_, h) => h);
   return (
-    <main className="page narrow">
-      <div className="page-head">
+    <main className="page">
+      <div className="page-head account-head">
+        <Avatar name={user.name} />
         <div>
-          <h1>Mi cuenta</h1>
-          <p className="muted" style={{ margin: 0 }}>{user.email} · {ROLE_LABELS[user.role]}</p>
+          <h1>{user.name}</h1>
+          <p className="muted" style={{ margin: 0 }}>{user.email} · {ROLE_LABELS[user.role]}
+            {" · "}{hasMail ? <>correo conectado ({conn!.email})</> : <Link href="/settings/mailbox">conecta tu correo</Link>}</p>
         </div>
       </div>
 
-      {(change || user.must_change_password) && (
-        <p className="callout" role="alert">Estás usando una contraseña temporal: elige una nueva para continuar.</p>
-      )}
+      {forced && <p className="callout" role="alert">Estás usando una contraseña temporal: elige una nueva para continuar.</p>}
 
-      <section className="panel">
-        <h2>Contraseña</h2>
-        <ActionForm action={changePasswordAction} submitLabel="Cambiar contraseña" resetOnSuccess>
-          <label className="field"><span className="label">Contraseña actual *</span>
-            <input name="current" type="password" required autoComplete="current-password" /></label>
-          <div className="grid-2">
-            <label className="field"><span className="label">Nueva contraseña *</span>
-              <input name="password" type="password" required minLength={10} autoComplete="new-password" /></label>
-            <label className="field"><span className="label">Repítela *</span>
-              <input name="repeat" type="password" required minLength={10} autoComplete="new-password" /></label>
-          </div>
-          <p className="meta" style={{ margin: 0 }}>Al menos 10 caracteres. Al cambiarla se cierran tus sesiones en otros dispositivos.</p>
-        </ActionForm>
-      </section>
+      <div className="settings-index">
+        {!forced && (
+          <aside className="settings-nav" aria-label="Secciones de tu cuenta">
+            <nav>
+              {TABS.map((t) => (
+                <Link key={t.key} href={`/account?tab=${t.key}`} aria-current={tab === t.key ? "page" : undefined}><Icon name={t.icon} />{t.label}</Link>
+              ))}
+              <Link href="/settings/mailbox"><Icon name="inbox" />Correo y calendario</Link>
+              <Link href="/settings/booking"><Icon name="activities" />Enlace de reserva</Link>
+            </nav>
+          </aside>
+        )}
+        <div className="account-body">
+          {tab === "perfil" && (
+            <>
+              <section className="panel" aria-labelledby="h-datos">
+                <h2 id="h-datos">Tus datos</h2>
+                <ActionForm action={updateProfileAction} submitLabel="Guardar nombre" secondary className="form form-narrow">
+                  <label className="field"><span className="label">Nombre</span><input name="name" required defaultValue={user.name} autoComplete="name" /></label>
+                </ActionForm>
+                <dl className="account-facts">
+                  <div><dt>Correo de acceso</dt><dd>{user.email}</dd></div>
+                  <div><dt>Rol</dt><dd>{ROLE_LABELS[user.role]}</dd></div>
+                </dl>
+                <p className="meta" style={{ margin: 0 }}>El correo de acceso y el rol los cambia un administrador.</p>
+              </section>
+              <section className="panel" aria-labelledby="h-firma" id="firma">
+                <h2 id="h-firma">Firma de tus correos</h2>
+                <p className="meta" style={{ marginTop: 0 }}>Va al final de lo que envías desde el CRM: la ficha del deal, las secuencias y los agentes. Puedes pegar la que ya usas en Gmail u Outlook.</p>
+                <ActionForm action={saveSignatureAction.bind(null, null)} submitLabel="Guardar firma" secondary>
+                  <RichTextField name="signature" initial={sig?.email_signature ?? ""} label="Firma" hint="Admite {{remitente}} y {{remitente_email}}." />
+                </ActionForm>
+              </section>
+            </>
+          )}
 
-      {!user.must_change_password && (
-        <>
-          <section className="panel">
-            <h2>Tus datos</h2>
-            <ActionForm action={updateProfileAction} submitLabel="Guardar" secondary className="form inline">
-              <label className="field"><span className="label">Nombre *</span><input name="name" required defaultValue={user.name} /></label>
-            </ActionForm>
-            <p className="meta">El email y el rol los cambia un administrador.</p>
-          </section>
+          {tab === "seguridad" && (
+            <>
+              <section className="panel" aria-labelledby="h-pass">
+                <h2 id="h-pass">Cambiar la contraseña</h2>
+                <ActionForm action={changePasswordAction} submitLabel="Cambiar contraseña" resetOnSuccess className="form form-narrow">
+                  <label className="field"><span className="label">Contraseña actual</span>
+                    <input name="current" type="password" required autoComplete="current-password" /></label>
+                  <label className="field"><span className="label">Nueva contraseña</span>
+                    <input name="password" type="password" required minLength={10} autoComplete="new-password" />
+                    <span className="meta">Al menos 10 caracteres. Una frase corta que recuerdes funciona bien.</span></label>
+                  <label className="field"><span className="label">Repítela</span>
+                    <input name="repeat" type="password" required minLength={10} autoComplete="new-password" /></label>
+                </ActionForm>
+                <p className="meta" style={{ margin: 0 }}>Al cambiarla se cierran tus sesiones en otros dispositivos y te llega un aviso por correo.
+                  {" "}¿No recuerdas la actual? <Link href="/login/recuperar">Te enviamos un enlace</Link>.</p>
+              </section>
+              {!forced && (
+                <section className="panel" aria-labelledby="h-ses">
+                  <h2 id="h-ses">Dónde tienes la sesión abierta</h2>
+                  <ul className="session-list">
+                    {sessions.map((s, i) => (
+                      <li key={i}>
+                        <strong>{browserName(s.user_agent)}</strong>{i === 0 && <span className="badge" style={{ marginLeft: 6 }}>Probablemente esta</span>}
+                        <span className="meta">Desde el {dateTime(s.created_at)} · última actividad {dateTime(s.last_seen_at)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {sessions.length > 1 && <ActionForm action={signOutOthersAction} submitLabel="Cerrar las demás sesiones" secondary />}
+                </section>
+              )}
+            </>
+          )}
 
-          <section className="panel" aria-label="Firma" id="firma">
-            <h2>Firma de tus correos</h2>
-            <ActionForm action={saveSignatureAction.bind(null, null)} submitLabel="Guardar firma" secondary>
-              <RichTextField name="signature" initial={sig?.email_signature ?? ""} label="Firma"
-                             hint="Va al final de los correos que envías desde el CRM: desde la ficha del deal, las secuencias y los agentes. Admite variables como {{remitente}} y {{remitente_email}}. Puedes pegar la que ya usas en Outlook o Gmail." />
-            </ActionForm>
-          </section>
-
-
+          {tab === "avisos" && (
           <section className="panel" aria-label="Avisos y resúmenes" id="avisos">
             <h2>Avisos y resúmenes</h2>
             <p className="meta" style={{ marginTop: 0 }}>Qué te avisa el CRM y por dónde. Lo urgente puede llegarte al momento; el resto, agrupado a las 12:00 y a las 17:00 para no recibir un correo por cada cosa.
-              {!hasMail && <> <strong className="tone-bad">Ahora mismo no te llega nada por correo:</strong> conecta tu cuenta en <a href="/settings/mailbox">Correo, calendario y documentos</a>.</>}</p>
-            <ActionForm action={saveNotificationPrefsAction} submitLabel="Guardar avisos">
+              {!hasMail && <> <strong className="tone-bad">Ahora mismo no te llega nada por correo:</strong> conecta tu cuenta en <a href="/settings/mailbox">Correo, calendario y documentos</a>.</>}</p>            <ActionForm action={saveNotificationPrefsAction} submitLabel="Guardar avisos">
               <div className="table-wrap">
                 <table className="prefs-table">
                   <thead><tr><th>Cuando…</th><th>Cómo te aviso</th></tr></thead>
@@ -129,23 +176,9 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
               </div>
             )}
           </section>
-
-          <section className="panel">
-            <h2>Sesiones abiertas</h2>
-            <ul className="plain-list">
-              {sessions.map((s, i) => (
-                <li key={i}>
-                  <strong>{browserName(s.user_agent)}</strong>{" "}
-                  <span className="meta">· desde el {dateTime(s.created_at)} · última actividad {dateTime(s.last_seen_at)}</span>
-                </li>
-              ))}
-            </ul>
-            {sessions.length > 1 && (
-              <ActionForm action={signOutOthersAction} submitLabel="Cerrar las demás sesiones" secondary />
-            )}
-          </section>
-        </>
-      )}
+          )}
+        </div>
+      </div>
     </main>
   );
 }
