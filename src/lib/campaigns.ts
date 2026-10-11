@@ -497,3 +497,82 @@ export async function runCampaignReplies(): Promise<string | number | null> {
     return rows.length;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Analítica de la campaña: embudo por contacto, actividad diaria y respuestas por tipo
+
+export type CampaignAnalytics = {
+  funnel: { key: string; label: string; value: number; note?: string }[];
+  daily: { day: string; sent: number; opened: number; replied: number }[];
+  replies: { cls: string; n: number }[];
+};
+
+export async function campaignAnalytics(id: string): Promise<CampaignAnalytics> {
+  const out = sql`m.campaign_id = ${id} AND m.person_id = cc.person_id AND m.direction = 'out' AND m.status = 'sent'`;
+  const [f] = await sql<{ total: number; verified: number; contacted: number; bounced: number; opened: number; replied: number; interested: number; deals: number; won: number }[]>`
+    SELECT count(*)::int AS total,
+           count(*) FILTER (WHERE cc.status NOT IN ('pending', 'invalid'))::int AS verified,
+           count(*) FILTER (WHERE EXISTS (SELECT 1 FROM emails m WHERE ${out}))::int AS contacted,
+           count(*) FILTER (WHERE EXISTS (SELECT 1 FROM emails m WHERE ${out} AND m.bounced))::int AS bounced,
+           count(*) FILTER (WHERE EXISTS (SELECT 1 FROM emails m WHERE ${out} AND m.open_count > 0))::int AS opened,
+           count(*) FILTER (WHERE cc.reply_class IS NOT NULL AND cc.reply_class <> 'fuera_oficina')::int AS replied,
+           count(*) FILTER (WHERE cc.status = 'interested' OR cc.reply_class = 'interesado' OR cc.deal_id IS NOT NULL)::int AS interested,
+           count(*) FILTER (WHERE cc.deal_id IS NOT NULL)::int AS deals,
+           count(*) FILTER (WHERE EXISTS (SELECT 1 FROM deals d WHERE d.id = cc.deal_id AND d.status = 'won'))::int AS won
+    FROM campaign_contacts cc WHERE cc.campaign_id = ${id}`;
+  const funnel = [
+    { key: "total", label: "En la lista", value: f.total },
+    { key: "verified", label: "Verificados", value: f.verified, note: f.total - f.verified ? `${f.total - f.verified} por verificar o no válidos` : undefined },
+    { key: "contacted", label: "Contactados", value: f.contacted, note: f.bounced ? `${f.bounced} rebotó${f.bounced === 1 ? "" : "aron"}` : undefined },
+    { key: "opened", label: "Abrieron", value: f.opened },
+    { key: "replied", label: "Respondieron", value: f.replied },
+    { key: "interested", label: "Interesados", value: f.interested },
+    { key: "deals", label: "Con deal", value: f.deals },
+    { key: "won", label: "Ganados", value: f.won },
+  ];
+  // Día a día desde el primer envío (como mucho los últimos 60 días).
+  const daily = await sql<CampaignAnalytics["daily"]>`
+    WITH bounds AS (
+      SELECT greatest(coalesce(min(sent_at)::date, current_date), current_date - 59) AS d0
+      FROM emails WHERE campaign_id = ${id} AND direction = 'out' AND status = 'sent'
+    ), days AS (SELECT generate_series((SELECT d0 FROM bounds), current_date, interval '1 day')::date AS day)
+    SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+           (SELECT count(*)::int FROM emails m WHERE m.campaign_id = ${id} AND m.direction = 'out' AND m.status = 'sent' AND m.sent_at::date = d.day) AS sent,
+           (SELECT count(*)::int FROM emails m WHERE m.campaign_id = ${id} AND m.direction = 'out' AND m.first_opened_at::date = d.day) AS opened,
+           (SELECT count(*)::int FROM emails r WHERE r.direction = 'in' AND r.sent_at::date = d.day AND coalesce(r.reply_class, '') NOT IN ('ooo', 'bounce')
+              AND EXISTS (SELECT 1 FROM campaign_contacts cc WHERE cc.campaign_id = ${id} AND cc.person_id = r.person_id AND r.sent_at > cc.added_at)) AS replied
+    FROM days d ORDER BY d.day`;
+  const replies = await sql<CampaignAnalytics["replies"]>`
+    SELECT reply_class AS cls, count(*)::int AS n FROM campaign_contacts WHERE campaign_id = ${id} AND reply_class IS NOT NULL
+    GROUP BY reply_class ORDER BY n DESC`;
+  return { funnel, daily, replies };
+}
+
+export type CampaignEmail = {
+  id: string; person_id: string | null; person_name: string | null; to: string | null; from: string | null; subject: string; at: Date;
+  opened: boolean; open_count: number; clicked: boolean; bounced: boolean; replied: boolean; reply_class: string | null; body: string;
+};
+
+/** Correos de la campaña: los enviados (con su estado) o las respuestas recibidas. */
+export async function campaignEmails(id: string, view: "sent" | "replies", filter?: string | null): Promise<CampaignEmail[]> {
+  if (view === "replies") {
+    return sql<CampaignEmail[]>`
+      SELECT r.id, r.person_id, p.full_name AS person_name, r.to_email AS to, r.from_email AS from, r.subject, r.sent_at AS at,
+             false AS opened, 0 AS open_count, false AS clicked, false AS bounced, true AS replied, r.reply_class, left(r.body, 240) AS body
+      FROM emails r JOIN persons p ON p.id = r.person_id
+      WHERE r.direction = 'in' AND EXISTS (SELECT 1 FROM campaign_contacts cc WHERE cc.campaign_id = ${id} AND cc.person_id = r.person_id AND r.sent_at > cc.added_at)
+      ORDER BY r.sent_at DESC LIMIT 300`;
+  }
+  const f = filter ?? "";
+  return sql<CampaignEmail[]>`
+    SELECT * FROM (
+      SELECT m.id, m.person_id, p.full_name AS person_name, m.to_email AS to, m.from_email AS from, m.subject, m.sent_at AS at,
+             m.open_count > 0 AS opened, m.open_count, m.click_count > 0 AS clicked, coalesce(m.bounced, false) AS bounced, NULL::text AS reply_class, '' AS body,
+             EXISTS (SELECT 1 FROM emails r WHERE r.person_id = m.person_id AND r.direction = 'in' AND r.sent_at > m.sent_at
+                       AND r.reply_class IS DISTINCT FROM 'ooo' AND r.reply_class IS DISTINCT FROM 'bounce') AS replied
+      FROM emails m LEFT JOIN persons p ON p.id = m.person_id
+      WHERE m.campaign_id = ${id} AND m.direction = 'out' AND m.status = 'sent') x
+    WHERE (${f} = '' OR (${f} = 'abiertos' AND opened) OR (${f} = 'sin_abrir' AND NOT opened AND NOT bounced) OR (${f} = 'clics' AND clicked)
+           OR (${f} = 'respondidos' AND replied) OR (${f} = 'rebotados' AND bounced))
+    ORDER BY at DESC LIMIT 300`;
+}
