@@ -1,8 +1,7 @@
 import { changePasswordAction, saveUiPrefsAction, signOutOthersAction, updateProfileAction } from "@/app/actions/auth";
 import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
-import { Avatar } from "@/components/Avatar";
-import { Icon } from "@/components/Icon";
+import { AccountShell } from "@/components/account/AccountShell";
 import { RichTextField } from "@/components/RichTextField";
 import { saveSignatureAction } from "@/app/actions/email-editor";
 import { ROLE_LABELS, requireUser } from "@/lib/auth";
@@ -15,18 +14,13 @@ import { connectionOf } from "@/lib/mailbox";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Mi cuenta" };
 
-const TABS = [
-  { key: "perfil", label: "Perfil y firma", icon: "user" },
-  { key: "preferencias", label: "Preferencias", icon: "system" },
-  { key: "seguridad", label: "Contraseña y dispositivos", icon: "lock" },
-  { key: "avisos", label: "Avisos y resúmenes", icon: "bell" },
-] as const;
-type Tab = (typeof TABS)[number]["key"];
+const TABS = ["perfil", "preferencias", "seguridad", "avisos"] as const;
+type Tab = (typeof TABS)[number];
 
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ change?: string; tab?: string }> }) {
   const [user, sp] = await Promise.all([requireUser(), searchParams]);
   const forced = Boolean(sp.change || user.must_change_password);
-  const tab: Tab = forced ? "seguridad" : TABS.find((t) => t.key === sp.tab)?.key ?? "perfil";
+  const tab: Tab = forced ? "seguridad" : TABS.find((t) => t === sp.tab) ?? "perfil";
   const sessions = await sql<{ created_at: Date; last_seen_at: Date; user_agent: string | null }[]>`
     SELECT created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ${user.id} AND expires_at > now() ORDER BY last_seen_at DESC`;
   const [sig] = await sql<{ email_signature: string | null }[]>`SELECT email_signature FROM users WHERE id = ${user.id}`;
@@ -35,31 +29,8 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const [ui] = await sql<{ home: string | null; density: string | null }[]>`SELECT ui_prefs->>'home' AS home, ui_prefs->>'density' AS density FROM users WHERE id = ${user.id}`;
   const hours = Array.from({ length: 24 }, (_, h) => h);
   return (
-    <main className="page">
-      <div className="page-head account-head">
-        <Avatar name={user.name} size="lg" />
-        <div>
-          <h1>{user.name}</h1>
-          <p className="muted" style={{ margin: 0 }}>{user.email} · {ROLE_LABELS[user.role]}
-            {" · "}{hasMail ? <>correo conectado ({conn!.email})</> : <Link href="/settings/mailbox">conecta tu correo</Link>}</p>
-        </div>
-      </div>
-
+    <AccountShell user={user} active={tab} hideNav={forced}>
       {forced && <p className="callout" role="alert">Estás usando una contraseña temporal: elige una nueva para continuar.</p>}
-
-      <div className="settings-index">
-        {!forced && (
-          <aside className="settings-nav" aria-label="Secciones de tu cuenta">
-            <nav>
-              {TABS.map((t) => (
-                <Link key={t.key} href={`/account?tab=${t.key}`} aria-current={tab === t.key ? "page" : undefined}><Icon name={t.icon} />{t.label}</Link>
-              ))}
-              <Link href="/settings/mailbox"><Icon name="inbox" />Correo y calendario</Link>
-              <Link href="/settings/booking"><Icon name="activities" />Enlace de reserva</Link>
-            </nav>
-          </aside>
-        )}
-        <div className="account-body">
           {tab === "perfil" && (
             <>
               <section className="panel" aria-labelledby="h-datos">
@@ -203,9 +174,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
             )}
           </section>
           )}
-        </div>
-      </div>
-    </main>
+    </AccountShell>
   );
 }
 

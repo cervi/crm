@@ -1,3 +1,4 @@
+import { AccountShell } from "@/components/account/AccountShell";
 import Link from "next/link";
 import { saveBookingPageAction } from "@/app/actions/booking";
 import { ActionForm } from "@/components/ActionForm";
@@ -16,11 +17,10 @@ export default async function BookingSettingsPage() {
   const base = publicBase();
   const url = page && base ? `${base}/book/${page.slug}` : null;
   return (
-    <main className="page narrow">
-      <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
-      <div className="page-head">
+    <AccountShell user={me} active="reserva">
+      <div className="section-intro">
         <div>
-          <h1>Enlace de reserva</h1>
+          <h2>Enlace de reserva</h2>
           <p className="muted" style={{ margin: 0 }}>
             Una página con tus huecos libres para que los contactos elijan cuándo reunirse contigo. La reunión se crea en tu calendario con
             invitación y queda en su deal; si quien reserva no está en el CRM, entra como contacto nuevo con su deal. En las plantillas de
@@ -29,7 +29,7 @@ export default async function BookingSettingsPage() {
         </div>
       </div>
 
-      {!conn && <p className="callout">Para ofrecer huecos, conecta tu calendario en <Link href="/settings/mailbox">Ajustes → Correo, calendario y documentos</Link>.</p>}
+      {!conn && <p className="callout">Para ofrecer huecos, conecta tu calendario en <Link href="/settings/mailbox">Correo y calendario</Link>.</p>}
       {url && page?.is_active && (
         <p className="callout good">Tu página: <a href={url} target="_blank" rel="noreferrer">{url}</a></p>
       )}
@@ -53,9 +53,9 @@ export default async function BookingSettingsPage() {
           <label className="field"><span className="label">Texto para quien reserva (opcional)</span>
             <textarea name="description" rows={3} defaultValue={page?.description ?? ""} /></label>
           <label className="checkbox"><input type="checkbox" name="is_active" defaultChecked={page ? page.is_active : true} />Página activa</label>
-          <p className="meta" style={{ margin: 0 }}>Los días, horas, márgenes y antelación son los de tus preferencias de huecos en Ajustes → Correo, calendario y documentos.</p>
+          <p className="meta" style={{ margin: 0 }}>Los días, horas, márgenes y antelación son los de tus preferencias de huecos en Correo y calendario.</p>
         </ActionForm>
       </section>
-    </main>
+    </AccountShell>
   );
 }

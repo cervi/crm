@@ -1,3 +1,4 @@
+import { AccountShell } from "@/components/account/AccountShell";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { listConnections, listOutboundMailboxes, availableSlots, providerOf, warmupLimit, type Connection } from "@/lib/mailbox";
@@ -75,11 +76,10 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
   const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
 
   return (
-    <main className="page medium">
-      <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
-      <div className="page-head">
+    <AccountShell user={me} active="correo" wide>
+      <div className="section-intro">
         <div>
-          <h1>Correo, calendario y documentos</h1>
+          <h2>Correo, calendario y documentos</h2>
           <p className="muted" style={{ margin: 0 }}>
             Cada persona puede conectar su cuenta de <strong>Microsoft 365</strong> (Outlook, calendario y OneDrive) o de{" "}
             <strong>Google Workspace</strong> (Gmail, Google Calendar y Drive). Con ella, los correos del CRM salen desde su buzón,
@@ -307,6 +307,6 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
           )}
         </section>
       )}
-    </main>
+    </AccountShell>
   );
 }

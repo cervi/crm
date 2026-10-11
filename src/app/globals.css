@@ -2396,6 +2396,9 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .account-head { justify-content: flex-start; gap: 14px; align-items: center; }
 .account-body { display: grid; gap: 16px; max-width: 760px; }
 .account-body .panel { margin: 0; }
+.account-body.wide { max-width: none; }
+.section-intro h2 { font-size: 20px; margin: 0 0 4px; }
+.section-intro p { max-width: 70ch; }
 .form.form-narrow { max-width: 420px; }
 .settings-nav nav a { display: flex; align-items: center; gap: 8px; }
 .settings-nav nav a svg { width: 16px; height: 16px; stroke: var(--muted); }
