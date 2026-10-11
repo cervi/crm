@@ -313,7 +313,7 @@ createServer(async (req, res) => {
         return send(res, 200, { messages: page, ...(start + size < list.length ? { nextPageToken: String(start + size) } : {}) });
       }
       if (p === "/gmail/v1/users/me/messages/send" && req.method === "POST") {
-        const { raw } = JSON.parse(await body(req));
+        const { raw, threadId: inThread } = JSON.parse(await body(req));
         const text = Buffer.from(raw, "base64url").toString("utf8");
         const [head, ...rest] = text.split("\r\n\r\n");
         const headers = Object.fromEntries(head.split("\r\n").map((l) => [l.slice(0, l.indexOf(":")).toLowerCase(), l.slice(l.indexOf(":") + 1).trim()]));
@@ -330,10 +330,13 @@ createServer(async (req, res) => {
             if (/text\/html/.test(ph)) html = b64(pb.join(""));
           }
         } else plain = b64(rest.join("\r\n\r\n"));
-        const sent = { id, to: decodeWord(headers.to ?? ""), subject: decodeWord(headers.subject ?? ""), body: plain, html };
+        const threadId = inThread ?? id;
+        const sent = { id, threadId, to: decodeWord(headers.to ?? ""), subject: decodeWord(headers.subject ?? ""), body: plain, html,
+                       cc: headers.cc ?? null, bcc: headers.bcc ?? null, inReplyTo: headers["in-reply-to"] ?? null, references: headers.references ?? null,
+                       listUnsubscribe: headers["list-unsubscribe"] ?? null, listUnsubscribePost: headers["list-unsubscribe-post"] ?? null };
         state.gsent.push(sent);
-        state.gmessages.push(gmsg(id, 0, { From: GME.email, To: headers.to, Subject: headers.subject }, sent.body.slice(0, 100), ["SENT"]));
-        return send(res, 200, { id, threadId: id, labelIds: ["SENT"] });
+        state.gmessages.push({ ...gmsg(id, 0, { From: GME.email, To: headers.to, Subject: headers.subject, "Message-ID": `<${id}@mock.gmail>` }, sent.body.slice(0, 100), ["SENT"]), threadId });
+        return send(res, 200, { id, threadId, labelIds: ["SENT"] });
       }
       const gm = /^\/gmail\/v1\/users\/me\/messages\/([^/]+)$/.exec(p);
       if (gm) {
@@ -377,6 +380,27 @@ createServer(async (req, res) => {
     if (g === "/me/mailboxSettings") {
       return send(res, 200, { workingHours: { daysOfWeek: ["monday", "tuesday", "wednesday", "thursday", "friday"], startTime: "09:00:00.0000000", endTime: "17:00:00.0000000" } });
     }
+    if (g === "/me/messages" && req.method === "GET" && /internetMessageId eq/.test(url.searchParams.get("$filter") ?? "")) {
+      const imid = /internetMessageId eq '(.*)'/.exec(url.searchParams.get("$filter"))[1].replace(/''/g, "'");
+      return send(res, 200, { value: state.messages.filter((x) => x.internetMessageId === imid).map((x) => ({ id: x.id })) });
+    }
+    const createReply = /^\/me\/messages\/([^/]+)\/createReply$/.exec(g);
+    if (createReply && req.method === "POST") {
+      const orig = state.messages.find((x) => x.id === decodeURIComponent(createReply[1]));
+      if (!orig) return send(res, 404, { error: { code: "ErrorItemNotFound", message: "No existe" } });
+      const id = token("msg");
+      const draft = { id, internetMessageId: `<${id}@mock>`, conversationId: orig.conversationId ?? orig.id, subject: `RE: ${orig.subject}`,
+                      toRecipients: [{ emailAddress: { address: ME.mail } }], replyToId: orig.id, isDraft: true };
+      state.drafts.set(id, draft);
+      return send(res, 201, draft);
+    }
+    const patchMsg = /^\/me\/messages\/([^/]+)$/.exec(g);
+    if (patchMsg && req.method === "PATCH") {
+      const d = state.drafts.get(decodeURIComponent(patchMsg[1]));
+      if (!d) return send(res, 404, { error: { code: "ErrorItemNotFound", message: "No existe" } });
+      Object.assign(d, JSON.parse(await body(req)));
+      return send(res, 200, d);
+    }
     if (g === "/me/messages" && req.method === "GET") {
       const m = /receivedDateTime ge (\S+)/.exec(url.searchParams.get("$filter") ?? "");
       const since = m ? Date.parse(m[1]) : 0;
@@ -387,7 +411,7 @@ createServer(async (req, res) => {
     if (g === "/me/messages" && req.method === "POST") {
       const j = JSON.parse(await body(req));
       const id = token("msg");
-      const draft = { id, internetMessageId: `<${id}@mock>`, ...j, isDraft: true };
+      const draft = { id, internetMessageId: `<${id}@mock>`, conversationId: id, ...j, isDraft: true };
       state.drafts.set(id, draft);
       return send(res, 201, draft);
     }
