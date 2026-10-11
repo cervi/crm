@@ -167,7 +167,7 @@ export async function createExample(actor: Actor): Promise<string> {
           const st = STEPS[ev.email];
           const sent = when(ev.at, 9, 30 + ev.email);
           const opens = ev.opens ?? 0;
-          const [m] = await tx<{ id: string }[]>`
+          const outRows: { id: string }[] = await tx<{ id: string }[]>`
             INSERT INTO emails (direction, status, person_id, organization_id, user_id, from_email, to_email, to_name, subject, body, sent_at, track,
                                 open_count, first_opened_at, last_opened_at, open_alert_at, created_by, created_at, enrollment_id, sequence_step_id, bounced, reply_to_email)
             VALUES ('out', 'sent', ${p.id}, ${o.id}, ${actor.id}, ${fromEmail}, ${address}, ${vars.nombre_completo},
@@ -175,7 +175,7 @@ export async function createExample(actor: Actor): Promise<string> {
                     ${opens}, ${opens ? new Date(sent.getTime() + 3_600_000) : null}, ${opens ? new Date(sent.getTime() + opens * 5_400_000) : null},
                     ${opens ? sent : null}, ${actor.id}, ${sent}, ${en.id}, ${stepIds[ev.email]}, ${Boolean(ev.bounced)}, ${st.thread ? lastOut : null})
             RETURNING id`;
-          lastOut = m.id;
+          lastOut = outRows[0].id;
         } else if ("task" in ev) {
           const st = STEPS[ev.task];
           const at = when(ev.at, 10, 0);
