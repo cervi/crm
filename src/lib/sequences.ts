@@ -930,7 +930,7 @@ async function callAfterOpens(): Promise<number> {
       note: `De la secuencia «${r.name}». Está caliente: buen momento para llamar.`, due_at: new Date().toISOString(),
       deal_id: r.deal_id ?? undefined, person_id: r.person_id, owner_id: d?.owner_id ?? r.user_id ?? undefined,
     });
-    await sql`UPDATE activities SET priority = 'high', step_kind = 'call' WHERE id = ${id}`;
+    await sql`UPDATE activities SET priority = 'high', step_kind = 'call', enrollment_id = ${r.id} WHERE id = ${id}`;
     await sql`UPDATE sequence_enrollments SET call_task_created = true WHERE id = ${r.id}`;
   }
   return rows.length;
