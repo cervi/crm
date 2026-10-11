@@ -1711,6 +1711,8 @@ dialog.drawer[open] { animation: drawer-in .18s ease-out; }
 .block-head.row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 td.row-actions { text-align: right; white-space: nowrap; }
 td.row-actions > * { margin-left: 6px; vertical-align: middle; }
+td.row-actions.wrap-actions { white-space: normal; }
+td.row-actions.wrap-actions > * { margin: 3px 0 3px 6px; }
 td.row-actions form { display: inline-flex; }
 tr.row-muted td { color: var(--muted); }
 .users-table td, .accounts-table td { vertical-align: middle; }

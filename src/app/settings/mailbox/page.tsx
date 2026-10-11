@@ -113,8 +113,8 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                       : conn.status === "active" ? <span className="badge won">Conectada</span>
                       : <span className="badge lost" title={conn.last_error ?? undefined}>Hay que reconectar</span>}</td>
                     <td className="nowrap">{conn ? (conn.mail_synced_at || conn.calendar_synced_at ? dateTime(conn.calendar_synced_at ?? conn.mail_synced_at) : <span className="muted">Todavía no</span>) : <span className="muted">—</span>}</td>
-                    <td>{sig ? "Puesta" : <span className="muted">Sin firma</span>}</td>
-                    <td className="row-actions">
+                    <td className="nowrap">{sig ? "Puesta" : <span className="muted">Sin firma</span>}</td>
+                    <td className="row-actions wrap-actions">
                       {!conn && available.length > 0 && (u.id === me.id || me.role === "admin") && available.map((ap) => (
                         <a key={ap.key} className="btn secondary small" href={`/api/integrations/${ap.key}/connect?user=${u.id}`}>Conectar {ap.label}</a>
                       ))}
