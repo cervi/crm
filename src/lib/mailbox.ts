@@ -436,6 +436,50 @@ export async function matchContacts(emails: string[], ownerId: string | null = n
 }
 
 
+const AUTOMATED = /^(no-?reply|noreply|do-?not-?reply|notifications?|notificaciones|alerts?|newsletter|news|mailer|bounce|postmaster|marketing|info-?bounce)\b/i;
+const FREE = new Set(["gmail.com", "googlemail.com", "hotmail.com", "hotmail.es", "outlook.com", "outlook.es", "live.com", "yahoo.com", "yahoo.es",
+  "icloud.com", "me.com", "protonmail.com", "proton.me", "aol.com", "gmx.com", "gmx.es", "msn.com"]);
+
+/**
+ * Alguien que aún no está en el CRM pero escribe desde el dominio de una
+ * empresa que sí está (p. ej. otra persona de @queplan.cl): se da de alta
+ * como contacto de esa empresa y el correo va a su deal abierto.
+ */
+export async function matchByDomain(emails: string[], ownerId: string | null): Promise<Match | null> {
+  const team = new Set((await sql<{ email: string }[]>`SELECT lower(email) AS email FROM users WHERE email IS NOT NULL`).map((u) => u.email));
+  const teamDomains = new Set([...team].map((e) => e.split("@")[1]));
+  for (const raw of emails) {
+    const email = raw.toLowerCase();
+    const [local, domain] = email.split("@");
+    if (!domain || FREE.has(domain) || teamDomains.has(domain) || team.has(email) || AUTOMATED.test(local)) continue;
+    const [org] = await sql<{ id: string; owner_id: string | null }[]>`
+      SELECT id, owner_id FROM organizations WHERE deleted_at IS NULL AND (lower(domain) = ${domain} OR lower(domain) = ${`www.${domain}`}) LIMIT 1`;
+    if (!org) continue;
+    const name = local.split(/[._-]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ") || email;
+    const personId = await transaction(async (tx) => {
+      const [dup] = await tx<{ person_id: string }[]>`SELECT person_id FROM person_emails WHERE lower(email) = ${email} LIMIT 1`;
+      if (dup) return dup.person_id;
+      const [first, ...rest] = name.split(" ");
+      const [p] = await tx<{ id: string }[]>`
+        INSERT INTO persons (first_name, last_name, owner_id) VALUES (${first}, ${rest.join(" ") || null}, ${org.owner_id ?? ownerId}) RETURNING id`;
+      await tx`INSERT INTO person_emails (person_id, email, is_primary) VALUES (${p.id}, ${email}, true)`;
+      await tx`INSERT INTO person_organizations (person_id, organization_id, started_at) VALUES (${p.id}, ${org.id}, current_date)`;
+      await recordEvent(tx, INTEGRATION_ACTOR, "person", p.id, "person.created", { name, organization_id: org.id, source: "correo" });
+      return p.id;
+    });
+    // Su deal abierto en esa empresa (el del dueño del buzón primero, luego el más reciente).
+    const [deal] = await sql<{ id: string; required_activity_type: string | null }[]>`
+      SELECT d.id, s.required_activity_type FROM deals d JOIN stages s ON s.id = d.stage_id
+      WHERE d.organization_id = ${org.id} AND d.status = 'open' AND d.deleted_at IS NULL
+      ORDER BY (d.owner_id IS NOT DISTINCT FROM ${ownerId}::uuid) DESC, (d.deal_type IN ('onboarding', 'renewal')) ASC, d.updated_at DESC LIMIT 1`;
+    if (deal) await sql`INSERT INTO deal_participants (deal_id, person_id) VALUES (${deal.id}, ${personId}) ON CONFLICT DO NOTHING`;
+    const [p] = await sql<{ full_name: string }[]>`SELECT full_name FROM persons WHERE id = ${personId}`;
+    return { person_id: personId, email, full_name: p?.full_name ?? name, organization_id: org.id, deal_id: deal?.id ?? null,
+             required_activity_type: deal?.required_activity_type ?? null };
+  }
+  return null;
+}
+
 export type SyncResult = { emails: number; meetings: number; updated: number; notes?: number; error?: string };
 
 /** Documentos de Gemini adjuntos a un evento de Meet: notas y transcripción. */
@@ -453,7 +497,10 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
         const outgoing = m.from === own;
         const others = [...new Set(outgoing ? m.to : [m.from])].filter((e) => e && e !== own);
         const matches = await matchContacts(others, conn.user_id);
-        const who = others.map((e) => matches.find((x) => x.email === e)).find(Boolean);
+        // Rebotes antes que nada; luego, si no es de ningún contacto, por el dominio de su empresa.
+        const isBounce = !outgoing && /mailer-daemon|postmaster|mail delivery|maildelivery/i.test(m.from);
+        const who = others.map((e) => matches.find((x) => x.email === e)).find(Boolean)
+          ?? (isBounce ? undefined : await matchByDomain(others, conn.user_id).catch(() => null) ?? undefined);
         // Rebotes: el aviso del servidor de correo no viene de un contacto.
         if (!outgoing && /mailer-daemon|postmaster|mail delivery|maildelivery/i.test(m.from)) {
           await recordBounce(conn, `${m.subject ?? ""}\n${m.preview ?? ""}`, m.ref).catch((err) => console.error("[rebote]", err));
@@ -509,8 +556,9 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
           continue;
         }
         if (e.cancelled) continue;
-        const matches = await matchContacts([...new Set(e.emails.filter((x) => x !== own))], conn.user_id);
-        const who = matches.find((m) => m.deal_id) ?? matches[0];
+        const attendees = [...new Set(e.emails.filter((x) => x !== own))];
+        const matches = await matchContacts(attendees, conn.user_id);
+        const who = matches.find((m) => m.deal_id) ?? matches[0] ?? await matchByDomain(attendees, conn.user_id).catch(() => null);
         if (!who) continue;
         // Una reunión futura con el contacto de un deal cuenta como la sesión que pide su fase.
         const type = e.start > new Date() && who.required_activity_type && isSessionType(who.required_activity_type)
