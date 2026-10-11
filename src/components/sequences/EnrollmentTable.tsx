@@ -32,18 +32,24 @@ const OPS = [
 export function EnrollmentTable({ rows, action, mailboxes, steps, canEdit }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [op, setOp] = useState<string>("");
+  const [armed, setArmed] = useState(false);
+  const risky = op === "remove" || op === "finish" || op === "step";
   const [state, formAction, pending] = useActionState(action, undefined);
-  useEffect(() => { if (state?.ok) { setSelected(new Set()); setOp(""); } }, [state]);
+  useEffect(() => { if (state?.ok) { setSelected(new Set()); setOp(""); setArmed(false); } }, [state]);
+  useEffect(() => { setArmed(false); }, [op, selected]);
   const all = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const ids = useMemo(() => [...selected], [selected]);
 
   return (
-    <form action={formAction} className="enroll-table">
+    <form action={formAction} className="enroll-table" onSubmit={(e) => {
+      // Quitar, terminar o mover de paso no se deshace: primero se pide confirmación.
+      if (risky && !armed) { e.preventDefault(); setArmed(true); }
+    }}>
       {ids.map((id) => <input key={id} type="hidden" name="ids" value={id} />)}
       {canEdit && (
-        <div className={`seq-bulk${ids.length ? " on" : ""}`} role="region" aria-label="Acciones en bloque">
-          <strong>{ids.length ? `${ids.length} seleccionado${ids.length === 1 ? "" : "s"}` : "Selecciona contactos para actuar en bloque"}</strong>
+        <div className={`seq-bulk${ids.length ? " on" : ""}`} role="region" aria-label="Acciones en bloque" hidden={!ids.length && !state}>
+          <strong>{ids.length ? `${ids.length} seleccionado${ids.length === 1 ? "" : "s"}` : ""}</strong>
           {ids.length > 0 && (
             <>
               <select name="op" value={op} onChange={(e) => setOp(e.target.value)} aria-label="Acción" required>
@@ -64,8 +70,13 @@ export function EnrollmentTable({ rows, action, mailboxes, steps, canEdit }: Pro
                   {steps.map((s) => <option key={s.index} value={s.index}>{s.label}</option>)}
                 </select>
               )}
-              <button type="submit" className={op === "remove" || op === "finish" ? "btn danger small" : "btn small"} disabled={!op || pending}>
-                {pending ? "Aplicando…" : "Aplicar"}</button>
+              {armed && <span className="form-confirm" role="alert">
+                {op === "remove" ? `Se quitan ${ids.length} de la secuencia y se borran sus tareas pendientes.`
+                  : op === "finish" ? `Se terminan ${ids.length}: no recibirán más pasos.`
+                  : `Se mueven ${ids.length} de paso: si es uno anterior, pueden volver a recibir correos.`}</span>}
+              <button type="submit" className={risky ? "btn danger small" : "btn small"} disabled={!op || pending}>
+                {pending ? "Aplicando…" : armed ? "Sí, aplicar" : "Aplicar"}</button>
+              {armed && <button type="button" className="btn secondary small" onClick={() => setArmed(false)}>Cancelar</button>}
               <button type="button" className="btn secondary small" onClick={() => setSelected(new Set())}>Quitar selección</button>
             </>
           )}

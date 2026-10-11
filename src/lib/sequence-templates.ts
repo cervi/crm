@@ -90,8 +90,7 @@ async function insertSequence(actor: Actor, name: string, description: string | 
 }
 
 export async function createBlankSequence(actor: Actor, name: string, folder?: string | null): Promise<string> {
-  if (!name.trim()) throw new UserError("Ponle un nombre a la secuencia.");
-  return insertSequence(actor, name.trim(), null, [], folder);
+  return insertSequence(actor, name.trim() || "Nueva secuencia", null, [], folder);
 }
 
 export async function createFromTemplate(actor: Actor, key: string, name?: string | null, folder?: string | null): Promise<string> {

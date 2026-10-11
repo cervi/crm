@@ -54,6 +54,9 @@ const STATUS_FILTERS = [
 ] as const;
 
 const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)} %` : "—");
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** Las variables se enseñan legibles: {{nombre_completo}} → [nombre completo]. */
+const vars = (t: string) => t.replace(/\{\{\s*([\w.]+)(?:\|[^}]*)?\s*\}\}/g, (_, k: string) => `[${k.replace(/_/g, " ")}]`);
 
 function statusOf(e: Enrollment): { label: string; tone: string } {
   if (e.status === "active") return { label: e.waiting_activity_id ? "Esperando tarea" : "Activo", tone: "open" };
@@ -114,9 +117,9 @@ export default async function SequencePage({ params, searchParams }: {
         {canEdit && !seq.archived_at && (
           <div className="head-actions">
             <ActionForm action={setSequenceActiveAction.bind(null, id, !seq.is_active)} submitLabel={seq.is_active ? "Pausar la secuencia" : "Activar"}
-                        secondary={seq.is_active} className="form inline"
+                        secondary={seq.is_active || seq.steps.length === 0} className="form inline"
                         confirm={seq.is_active ? "No saldrá nada hasta que la vuelvas a activar. Los contactos se quedan donde están." : undefined} />
-            <Link className="btn" href={`/sequences/${id}/anadir`}><Icon name="plus" />Añadir contactos</Link>
+            <Link className={seq.is_active || seq.steps.length === 0 ? "btn" : "btn secondary"} href={`/sequences/${id}/anadir`}><Icon name="plus" />Añadir contactos</Link>
           </div>
         )}
       </div>
@@ -130,7 +133,7 @@ export default async function SequencePage({ params, searchParams }: {
         {TABS.map((t) => (
           <Link key={t.key} href={`/sequences/${id}?tab=${t.key}`} aria-current={tab === t.key ? "page" : undefined}>
             {t.label}
-            {t.key === "contactos" && enrollments.length > 0 && <span className="count neutral">{enrollments.length}</span>}
+            {t.key === "contactos" && enrollments.length - report.status.removed > 0 && <span className="count neutral">{enrollments.length - report.status.removed}</span>}
             {t.key === "pasos" && <span className="count neutral">{seq.steps.length}</span>}
             {t.key === "tareas" && waitingTasks > 0 && <span className="count">{waitingTasks}</span>}
           </Link>
@@ -168,12 +171,14 @@ async function Summary({ id, report: r, steps }: { id: string; report: Awaited<R
   const max = Math.max(1, funnel[0].n);
   return (
     <>
-      <section className="kpi-row" aria-label="Contactos por estado">
+      <section className="kpi-row" aria-label="Lo importante">
         <Kpi label="Activos" value={r.status.active} hint={r.status.scheduled ? `${r.status.scheduled} con correo programado` : undefined} />
-        <Kpi label="En pausa" value={r.status.paused} />
-        <Kpi label="Terminados" value={r.status.finished} />
-        <Kpi label="Rebotados" value={r.status.bounced} />
-        <Kpi label="No enviados" value={r.status.failed} />
+        <Kpi label="Respondieron" value={r.contacts.replied} hint={r.contacts.delivered ? `${pct(r.contacts.replied, r.contacts.delivered)} de los que lo recibieron` : undefined} />
+        <Kpi label="Interesados" value={r.contacts.interested} />
+        <Link href={`/sequences/${id}?tab=contactos&estado=paused`} className="kpi kpi-link">
+          <span className="meta">Necesitan atención</span><strong>{r.status.paused + r.status.failed + r.status.bounced}</strong>
+          <span className="meta">{[r.status.paused && `${r.status.paused} en pausa`, r.status.failed && `${r.status.failed} sin enviar`, r.status.bounced && `${r.status.bounced} rebotados`].filter(Boolean).join(" · ") || "Nada"}</span>
+        </Link>
       </section>
       <div className="grid-2">
         <section className="panel" aria-label="Embudo por contacto">
@@ -200,7 +205,7 @@ async function Summary({ id, report: r, steps }: { id: string; report: Awaited<R
             <Kpi label="Respuestas" value={pct(r.emails.replied, r.emails.sent)} />
           </div>
           <h3>Tareas</h3>
-          <p className="meta" style={{ margin: 0 }}>{r.tasks.pending} pendientes · {r.tasks.done} hechas{r.tasks.calls_answered ? ` · ${r.tasks.calls_answered} llamadas contestadas` : ""}</p>
+          <p className="meta" style={{ margin: 0 }}>{plural(r.tasks.pending, "pendiente", "pendientes")} · {plural(r.tasks.done, "hecha", "hechas")}{r.tasks.calls_answered ? ` · ${plural(r.tasks.calls_answered, "llamada contestada", "llamadas contestadas")}` : ""}</p>
         </section>
       </div>
 
@@ -216,7 +221,7 @@ async function Summary({ id, report: r, steps }: { id: string; report: Awaited<R
                   { sent: 0, opened: 0, clicked: 0, replied: 0 });
                 return (
                   <tr key={st.id}>
-                    <td><Icon name={STEP_KINDS[st.kind].icon} /> {st.position}. {STEP_KINDS[st.kind].short}{st.subject ? ` · ${st.subject}` : st.thread_reply ? " · en el hilo" : ""}
+                    <td><Icon name={STEP_KINDS[st.kind].icon} /> {st.position}. {STEP_KINDS[st.kind].short}{st.subject ? ` · ${vars(st.subject)}` : st.thread_reply ? " · en el hilo" : ""}
                       {st.variants.length > 0 && <span className="meta"> · A/B</span>}</td>
                     {isEmailKind(st.kind) ? (
                       <><td className="num">{sum.sent || "—"}</td><td className="num">{pct(sum.opened, sum.sent)}</td><td className="num">{pct(sum.clicked, sum.sent)}</td><td className="num">{pct(sum.replied, sum.sent)}</td></>
@@ -310,8 +315,8 @@ async function Steps({ id, userId, seq, canEdit }: { id: string; userId: string;
                       {st.variants.length > 0 && ` · prueba A/B (${1 + st.variants.filter((v) => v.is_active).length} variantes)`}
                       {!st.is_active && " · desactivado (se salta)"}
                     </p>
-                    <h3 style={{ margin: "2px 0 0" }}>{st.subject || (st.thread_reply ? "Re: (asunto anterior)" : isEmail ? "(sin asunto)" : k.label)}</h3>
-                    {!isEmail && st.body && <p className="meta clamp-2" style={{ margin: "2px 0 0" }}>{st.body}</p>}
+                    <h3 style={{ margin: "2px 0 0" }}>{st.subject ? vars(st.subject) : st.thread_reply ? "Re: (asunto anterior)" : isEmail ? "(sin asunto)" : k.label}</h3>
+                    {!isEmail && st.body && <p className="meta clamp-2" style={{ margin: "2px 0 0" }}>{vars(st.body)}</p>}
                   </div>
                   {canEdit && (
                     <div className="ee-row">
@@ -320,12 +325,17 @@ async function Steps({ id, userId, seq, canEdit }: { id: string; userId: string;
                           <StepForm step={st} first={i === 0} types={typeOptions} label={`paso ${st.position}`} {...editor} />
                         </ActionForm>
                       </Drawer>
-                      {i > 0 && <form action={moveStepAction.bind(null, id, st.id, -1)}><button type="submit" className="btn secondary small" aria-label={`Subir el paso ${st.position}`}>↑</button></form>}
-                      {i < seq.steps.length - 1 && <form action={moveStepAction.bind(null, id, st.id, 1)}><button type="submit" className="btn secondary small" aria-label={`Bajar el paso ${st.position}`}>↓</button></form>}
-                      <form action={stepActiveAction.bind(null, id, st.id, !st.is_active)}><button type="submit" className="btn secondary small">{st.is_active ? "Desactivar" : "Activar"}</button></form>
-                      <form action={deleteStepAction.bind(null, id, st.id)}>
-                        <ConfirmButton label="Quitar" ariaLabel={`Quitar el paso ${st.position}`} confirm="Se quita el paso; los contactos que estaban en él pasan al siguiente." />
-                      </form>
+                      <details className="step-more">
+                        <summary className="btn secondary small" aria-label={`Más acciones del paso ${st.position}`}><Icon name="dots" /></summary>
+                        <div className="step-more-menu">
+                          {i > 0 && <form action={moveStepAction.bind(null, id, st.id, -1)}><button type="submit">Subir</button></form>}
+                          {i < seq.steps.length - 1 && <form action={moveStepAction.bind(null, id, st.id, 1)}><button type="submit">Bajar</button></form>}
+                          <form action={stepActiveAction.bind(null, id, st.id, !st.is_active)}><button type="submit">{st.is_active ? "Desactivar (se salta)" : "Activar"}</button></form>
+                          <form action={deleteStepAction.bind(null, id, st.id)}>
+                            <ConfirmButton label="Quitar el paso" ariaLabel={`Quitar el paso ${st.position}`} confirm="Se quita el paso; los contactos que estaban en él pasan al siguiente." />
+                          </form>
+                        </div>
+                      </details>
                     </div>
                   )}
                 </div>

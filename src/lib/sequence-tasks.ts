@@ -39,7 +39,7 @@ export async function listQueue(f: { userId: string | null; all?: boolean; tab?:
            d.id AS deal_id, d.title AS deal_title, u.name AS owner_name, (a.due_at < now()) AS overdue,
            a.draft_subject, a.draft_html, a.draft_to
     FROM sequence_enrollments e
-    JOIN activities a ON a.id = e.waiting_activity_id AND NOT a.done
+    JOIN activities a ON a.enrollment_id = e.id AND NOT a.done AND a.step_kind IS NOT NULL
     JOIN sequences s ON s.id = e.sequence_id
     JOIN persons p ON p.id = e.person_id
     LEFT JOIN LATERAL (SELECT job_title, organization_id FROM person_organizations WHERE person_id = p.id AND status = 'current' ORDER BY created_at DESC LIMIT 1) po ON true
@@ -59,7 +59,7 @@ export async function listQueue(f: { userId: string | null; all?: boolean; tab?:
 export async function queueCounts(userId: string | null, all: boolean) {
   const rows = await sql<{ kind: string; n: number; overdue: number }[]>`
     SELECT coalesce(a.step_kind, 'task') AS kind, count(*)::int AS n, count(*) FILTER (WHERE a.due_at < now())::int AS overdue
-    FROM sequence_enrollments e JOIN activities a ON a.id = e.waiting_activity_id AND NOT a.done
+    FROM sequence_enrollments e JOIN activities a ON a.enrollment_id = e.id AND NOT a.done AND a.step_kind IS NOT NULL
     WHERE e.status = 'active' AND (${all} OR a.owner_id = ${userId})
       AND a.due_at < date_trunc('day', now()) + interval '1 day'
     GROUP BY 1`;

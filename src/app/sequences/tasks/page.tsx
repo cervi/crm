@@ -76,7 +76,7 @@ export default async function SequenceTasksPage({ searchParams }: { searchParams
                     <td className={`nowrap${t.overdue ? " tone-bad" : ""}`}>{t.due_at ? dateTime(t.due_at) : "—"}{t.overdue && <div className="meta">vencida</div>}</td>
                     {all && <td className="meta">{t.owner_name ?? "—"}</td>}
                     <td className="row-actions">
-                      <Link className="btn small" href={`/sequences/tasks/hacer?tarea=${t.activity_id}${all ? "&todos=1" : ""}`}>Hacer</Link>
+                      <Link className="btn secondary small" href={`/sequences/tasks/hacer?tarea=${t.activity_id}${all ? "&todos=1" : ""}`}>Hacer</Link>
                       <ActionForm action={completeTaskAction.bind(null, t.activity_id, back)} submitLabel="Saltar" secondary className="form inline">
                         <input type="hidden" name="skip" value="1" />
                       </ActionForm>

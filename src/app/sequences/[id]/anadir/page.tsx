@@ -59,6 +59,8 @@ export default async function AddContactsPage({ params, searchParams }: {
   const [conns, outbound] = reviewing ? await Promise.all([listConnections(), listOutboundMailboxes()]) : [[], []];
   const mailboxes = [...conns, ...outbound].filter((c) => c.status === "active" && !c.paused);
   const mine = conns.find((c) => c.user_id === user.id && c.status === "active");
+  const ready = (byIssue.get("ok") ?? 0) + (byIssue.get("missing_data") ?? 0);
+  const firstAutoEmail = seq.steps[0]?.kind === "email" && seq.steps[0].is_active;
 
   return (
     <main className="page medium">
@@ -110,7 +112,9 @@ export default async function AddContactsPage({ params, searchParams }: {
       )}
 
       {reviewing && (
-        <ActionForm action={enrollManyAction.bind(null, id)} submitLabel={`Añadir a «${seq.name}»`} pendingLabel="Añadiendo…">
+        <ActionForm action={enrollManyAction.bind(null, id)} pendingLabel="Añadiendo…"
+                    submitLabel={`Añadir ${ready} contacto${ready === 1 ? "" : "s"} a «${seq.name}»`}
+                    confirm={seq.is_active && firstAutoEmail ? `El primer correo saldrá a ${ready} contacto${ready === 1 ? "" : "s"} ${seq.steps[0].delay_days || seq.steps[0].delay_hours ? "cuando pase la espera del paso 1" : "en cuanto se abra el horario de envío"}.` : undefined}>
           {checks.map((c) => <input key={c.person_id} type="hidden" name="ids" value={c.person_id} />)}
           <section className="panel" aria-label="Revisión">
             <h2>Revisión</h2>
@@ -120,6 +124,7 @@ export default async function AddContactsPage({ params, searchParams }: {
                 <li key={k}>
                   <strong>{byIssue.get(k)}</strong> {ENROLL_ISSUES[k].label.toLowerCase()}{" "}
                   {ENROLL_ISSUES[k].blocking ? <span className="meta">· no entran</span>
+                    : k === "missing_data" ? <span className="meta">· entran, pero su correo se pausará hasta que completes esos datos (o pongas un valor por defecto)</span>
                     : <label className="checkbox" style={{ display: "inline-flex", marginLeft: 6 }}><input type="checkbox" name="include" value={k} />Añadirlos igualmente</label>}
                 </li>
               ))}

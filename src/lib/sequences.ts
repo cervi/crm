@@ -550,7 +550,7 @@ export async function bulkEnrollments(actor: Actor, sequenceId: string, ids: str
   return n;
 }
 
-export type EnrollIssue = "no_email" | "bounced" | "unsubscribed" | "in_this" | "in_other" | "recent";
+export type EnrollIssue = "no_email" | "bounced" | "unsubscribed" | "in_this" | "in_other" | "recent" | "missing_data";
 export const ENROLL_ISSUES: Record<EnrollIssue, { label: string; blocking: boolean }> = {
   no_email: { label: "Sin email", blocking: true },
   bounced: { label: "Su email rebotó", blocking: true },
@@ -558,6 +558,7 @@ export const ENROLL_ISSUES: Record<EnrollIssue, { label: string; blocking: boole
   in_this: { label: "Ya está en esta secuencia", blocking: true },
   in_other: { label: "Está activo en otra secuencia", blocking: false },
   recent: { label: "Le escribiste hace menos de 7 días", blocking: false },
+  missing_data: { label: "Le faltan datos que usan los correos", blocking: false },
 };
 
 export type EnrollCheck = { person_id: string; name: string; email: string | null; organization: string | null; issue: EnrollIssue | null; detail: string | null };
@@ -566,15 +567,20 @@ export type EnrollCheck = { person_id: string; name: string; email: string | nul
 export async function checkEnrollment(sequenceId: string, personIds: string[]): Promise<EnrollCheck[]> {
   const ids = [...new Set(personIds.filter(isId))].slice(0, 2000);
   if (!ids.length) return [];
-  const needsEmail = (await loadSteps(sequenceId)).some((st) => isEmailKind(st.kind) && st.is_active);
+  const loaded = await loadSteps(sequenceId);
+  const needsEmail = loaded.some((st) => isEmailKind(st.kind) && st.is_active);
+  // Variables sin valor por defecto que usan los correos: si al contacto le faltan, su correo se quedará en pausa.
+  const text = loaded.filter((st) => isEmailKind(st.kind) && st.is_active).flatMap((st) => [st.subject, st.body, ...st.variants.map((v) => `${v.subject} ${v.body}`)]).join(" ");
+  const uses = (k: string) => new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`).test(text);
   const rows = await sql<{ person_id: string; name: string; email: string | null; any_email: boolean; organization: string | null; unsubscribed: boolean;
-                           in_this: boolean; other: string | null; recent: boolean }[]>`
+                           in_this: boolean; other: string | null; recent: boolean; job_title: string | null; first_name: string | null }[]>`
     SELECT p.id AS person_id, p.full_name AS name,
            (SELECT email FROM person_emails WHERE person_id = p.id AND bounced_at IS NULL ORDER BY is_primary DESC, created_at LIMIT 1) AS email,
            EXISTS (SELECT 1 FROM person_emails WHERE person_id = p.id) AS any_email,
            (SELECT o.name FROM person_organizations po JOIN organizations o ON o.id = po.organization_id
             WHERE po.person_id = p.id AND po.status = 'current' ORDER BY po.created_at DESC LIMIT 1) AS organization,
-           p.unsubscribed_at IS NOT NULL AS unsubscribed,
+           p.unsubscribed_at IS NOT NULL AS unsubscribed, p.first_name,
+           (SELECT job_title FROM person_organizations WHERE person_id = p.id AND status = 'current' ORDER BY created_at DESC LIMIT 1) AS job_title,
            EXISTS (SELECT 1 FROM sequence_enrollments e WHERE e.person_id = p.id AND e.sequence_id = ${sequenceId} AND e.status IN ('active', 'paused')) AS in_this,
            (SELECT s.name FROM sequence_enrollments e JOIN sequences s ON s.id = e.sequence_id
             WHERE e.person_id = p.id AND e.sequence_id <> ${sequenceId} AND e.status IN ('active', 'paused') LIMIT 1) AS other,
@@ -582,11 +588,12 @@ export async function checkEnrollment(sequenceId: string, personIds: string[]): 
     FROM persons p WHERE p.id IN ${sql(ids)} AND p.deleted_at IS NULL
     ORDER BY p.full_name`;
   return rows.map((r) => {
+    const missing = [uses("empresa") && !r.organization ? "empresa" : null, uses("cargo") && !r.job_title ? "cargo" : null].filter(Boolean) as string[];
     const issue: EnrollIssue | null = r.in_this ? "in_this" : r.unsubscribed ? "unsubscribed"
       : needsEmail && !r.email ? (r.any_email ? "bounced" : "no_email")
-      : r.other ? "in_other" : r.recent ? "recent" : null;
+      : r.other ? "in_other" : r.recent ? "recent" : missing.length ? "missing_data" : null;
     return { person_id: r.person_id, name: r.name, email: r.email, organization: r.organization, issue,
-             detail: issue === "in_other" ? `En «${r.other}»` : null };
+             detail: issue === "in_other" ? `En «${r.other}»` : issue === "missing_data" ? `Falta: ${missing.join(", ")} (su correo se quedará en pausa)` : null };
   });
 }
 
@@ -605,7 +612,8 @@ export async function enrollMany(actor: Actor, sequenceId: string, personIds: st
   const include = new Set(opts.include ?? []);
   const skipped: Partial<Record<EnrollIssue, number>> = {};
   const ok = checks.filter((c) => {
-    if (!c.issue || (!ENROLL_ISSUES[c.issue].blocking && include.has(c.issue))) return true;
+    // «Le faltan datos» es solo un aviso: entra, y su correo se pausa hasta completarlo.
+    if (!c.issue || c.issue === "missing_data" || (!ENROLL_ISSUES[c.issue].blocking && include.has(c.issue))) return true;
     skipped[c.issue] = (skipped[c.issue] ?? 0) + 1;
     return false;
   });
@@ -1026,6 +1034,7 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
               s.schedule_id, s.daily_limit, s.cc, s.bcc`;
   // En el orden en que vencían (RETURNING no lo garantiza): reparto A/B y envíos predecibles.
   due.sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime());
+  const pausedBy = new Map<string, { userId: string; sequenceId: string; name: string; people: string[]; missing: Set<string> }>();
   const later = async (id: string, at: Date) => { await sql`UPDATE sequence_enrollments SET next_run_at = ${at} WHERE id = ${id}`; out.waiting++; };
   for (const e of due) {
     const steps = await loadSteps(e.sequence_id);
@@ -1091,7 +1100,14 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
           const msg = `Paso ${step.position} sin enviar: ${problems.join("; ") || "asunto vacío"}.`;
           await sql`UPDATE sequence_enrollments SET status = 'paused', paused_reason = 'Faltan datos', error = ${msg.slice(0, 300)}, next_run_at = NULL WHERE id = ${e.id}`;
           const who = e.user_id ?? e.enrolled_by;
-          if (who) await notify(sql, { userId: who, kind: "sequence", title: `Secuencia en pausa: ${p.full_name}`, body: msg, link: `/sequences/${e.sequence_id}?tab=contactos` });
+          // Un solo aviso por persona y secuencia en cada pasada (no uno por contacto).
+          if (who) {
+            const k = `${who}|${e.sequence_id}`;
+            const g = pausedBy.get(k) ?? { userId: who, sequenceId: e.sequence_id, name: e.sequence_name, people: [] as string[], missing: new Set<string>() };
+            g.people.push(p.full_name);
+            for (const m of c.missing) g.missing.add(m);
+            pausedBy.set(k, g);
+          }
           out.paused++;
           continue;
         }
@@ -1162,6 +1178,15 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
           next_run_at = CASE WHEN attempts + 1 >= 3 THEN NULL ELSE now() + interval '1 hour' END
         WHERE id = ${e.id}`;
     }
+  }
+  for (const g of pausedBy.values()) {
+    const n = g.people.length;
+    await notify(sql, {
+      userId: g.userId, kind: "sequence",
+      title: n === 1 ? `${g.people[0]} en pausa en «${g.name}»` : `${n} contactos en pausa en «${g.name}»`,
+      body: `${g.missing.size ? `Les falta: ${missingText([...g.missing])}. ` : ""}Complétalo (o pon un valor por defecto a la variable) y reanúdalos.`,
+      link: `/sequences/${g.sequenceId}?tab=contactos&estado=paused`,
+    }).catch(() => null);
   }
   return out;
 }
