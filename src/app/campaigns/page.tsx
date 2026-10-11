@@ -9,17 +9,20 @@ import { ActionForm } from "@/components/ActionForm";
 import { CampaignFields } from "@/components/CampaignFields";
 import { saveCampaignAction } from "@/app/actions/outbound";
 import { money } from "@/lib/format";
+import { createExampleAction } from "@/app/actions/sequences";
+import { existingExample } from "@/lib/sequence-example";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Campañas de outbound" };
 
 const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)} %` : "—");
 
-export default async function CampaignsPage() {
-  await requireUser();
-  const [campaigns, sequences, mailboxes, pipelines, users] = await Promise.all([
-    listCampaigns(), listSequences(), listOutboundMailboxes(), listPipelines(), listUsers(),
+export default async function CampaignsPage({ searchParams }: { searchParams: Promise<{ hecho?: string }> }) {
+  const [me, sp] = await Promise.all([requireUser(), searchParams]);
+  const [campaigns, sequences, mailboxes, pipelines, users, example] = await Promise.all([
+    listCampaigns(), listSequences(), listOutboundMailboxes(), listPipelines(), listUsers(), existingExample(),
   ]);
+  const hasExampleCampaign = campaigns.some((c) => c.example);
   return (
     <main className="page">
       <div className="page-head">
@@ -28,6 +31,14 @@ export default async function CampaignsPage() {
           <p className="muted" style={{ margin: 0 }}>Listas de contactos (CSV, CRM, API o un agente), verificadas, con su primera línea personalizada y una secuencia desde vuestros buzones de outbound. Las respuestas se clasifican solas.</p>
         </div>
       </div>
+      {sp.hecho === "ejemplo-borrado" && <p className="callout good" role="status">Ejemplo borrado: la campaña, la secuencia y sus contactos, empresas, deal, correos y tareas de muestra.</p>}
+      {me.role !== "viewer" && !hasExampleCampaign && (
+        <div className="callout example-offer">
+          <div><strong>¿Quieres ver cómo funciona una campaña antes de montar la tuya?</strong>
+            <span className="meta"> Crea una campaña de ejemplo con 15 contactos ficticios: unos por verificar o por aprobar con su primera línea personalizada, otros ya en la secuencia, con respuestas clasificadas, un interesado convertido en deal, un rebote y una baja. No envía nada y se borra con un clic.</span></div>
+          <ActionForm action={createExampleAction.bind(null, "campaign")} submitLabel={example ? "Ver la campaña de ejemplo" : "Ver un ejemplo"} pendingLabel="Creando el ejemplo…" secondary className="form inline" />
+        </div>
+      )}
       <div className="table-wrap">
         <table>
           <thead><tr><th>Campaña</th><th>Estado</th><th className="num">Contactos</th><th className="num">Enviados</th><th className="num">Abiertos</th>
@@ -37,7 +48,7 @@ export default async function CampaignsPage() {
             {campaigns.map((c) => (
               <tr key={c.id}>
                 <td><Link href={`/campaigns/${c.id}`}><strong>{c.name}</strong></Link>{c.sequence_name && <div className="meta">{c.sequence_name}</div>}</td>
-                <td><span className={`badge ${c.status === "active" ? "won" : ""}`}>{CAMPAIGN_STATUS[c.status]}</span>
+                <td>{c.example ? <span className="badge">Ejemplo · no envía</span> : <span className={`badge ${c.status === "active" ? "won" : ""}`}>{CAMPAIGN_STATUS[c.status]}</span>}
                   {c.stats.ready > 0 && <div className="meta">{c.stats.ready} para aprobar</div>}</td>
                 <td className="num">{c.stats.contacts}</td>
                 <td className="num">{c.stats.sent}</td>
@@ -55,7 +66,7 @@ export default async function CampaignsPage() {
       <section className="panel" style={{ marginTop: 18 }}>
         <h2>Nueva campaña</h2>
         <ActionForm action={saveCampaignAction.bind(null, null)} submitLabel="Crear campaña">
-          <CampaignFields sequences={sequences.filter((s) => s.is_active && s.steps > 0)}
+          <CampaignFields sequences={sequences.filter((s) => s.is_active && s.steps > 0 && s.id !== example)}
                           mailboxes={mailboxes.map((m) => ({ id: m.id, email: m.email, paused: m.paused, limit: warmupLimit(m) }))}
                           pipelines={pipelines} users={users.filter((u) => u.kind === "human")} />
         </ActionForm>

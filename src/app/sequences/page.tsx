@@ -67,12 +67,12 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
         </div>
       </div>
 
-      {sp.hecho === "ejemplo-borrado" && <p className="callout good" role="status">Ejemplo borrado, con sus contactos, empresas, correos y tareas de muestra.</p>}
+      {sp.hecho === "ejemplo-borrado" && <p className="callout good" role="status">Ejemplo borrado: la campaña, la secuencia y sus contactos, empresas, deal, correos y tareas de muestra.</p>}
       {canEdit && !example && view !== "archivadas" && (
         <div className="callout example-offer">
           <div><strong>¿Quieres ver cómo funciona antes de montar la tuya?</strong>
-            <span className="meta"> Crea una secuencia de ejemplo con 10 contactos ficticios a medio camino: correos abiertos, respuestas, un rebote, un «fuera de la oficina» y tareas en tu cola. No envía nada y se borra con un clic.</span></div>
-          <ActionForm action={createExampleAction} submitLabel="Ver un ejemplo" pendingLabel="Creando el ejemplo…" secondary className="form inline" />
+            <span className="meta"> Crea una campaña de outbound de ejemplo con su secuencia y 15 contactos ficticios a medio camino: correos abiertos, respuestas, un interesado con su deal, un rebote, un «fuera de la oficina» y tareas en tu cola. No envía nada y se borra con un clic.</span></div>
+          <ActionForm action={createExampleAction.bind(null, "sequence")} submitLabel="Ver un ejemplo" pendingLabel="Creando el ejemplo…" secondary className="form inline" />
         </div>
       )}
 

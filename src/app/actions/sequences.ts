@@ -11,7 +11,7 @@ import {
 } from "@/lib/sequences";
 import { archiveSequence, createBlankSequence, createFromTemplate, createWithAi, duplicateSequence } from "@/lib/sequence-templates";
 import { completeQueueTask } from "@/lib/sequence-tasks";
-import { createExample, removeExample } from "@/lib/sequence-example";
+import { createExample, exampleCampaign, removeExample } from "@/lib/sequence-example";
 import { deleteSchedule, saveSchedule } from "@/lib/send-schedule";
 
 export async function createSequenceAction(_: ActionState, form: FormData): Promise<ActionState> {
@@ -247,21 +247,23 @@ export async function sendManualAndNextAction(activityId: string, back: string, 
   redirect(back);
 }
 
-/** Crea (o abre, si ya existe) la secuencia de ejemplo con contactos ficticios. */
-export async function createExampleAction(_: ActionState): Promise<ActionState> {
+/** Crea (o abre, si ya existe) el ejemplo de outbound: campaña + secuencia con contactos ficticios. Abre lo que se pidió. */
+export async function createExampleAction(open: "sequence" | "campaign", _: ActionState): Promise<ActionState> {
   const g = await guard("write");
   if ("error" in g) return g;
-  let id = "";
-  try { id = await createExample(g.actor); } catch (err) { return { error: toUserMessage(err) }; }
+  let id = "", campaign: string | null = null;
+  try { id = await createExample(g.actor); campaign = await exampleCampaign(id); } catch (err) { return { error: toUserMessage(err) }; }
   revalidatePath("/sequences");
-  redirect(`/sequences/${id}`);
+  revalidatePath("/campaigns");
+  redirect(open === "campaign" && campaign ? `/campaigns/${campaign}` : `/sequences/${id}`);
 }
 
 /** Borra el ejemplo entero (secuencia, contactos, empresas, correos y tareas de muestra). */
-export async function removeExampleAction(id: string, _: ActionState): Promise<ActionState> {
+export async function removeExampleAction(id: string, back: "sequences" | "campaigns", _: ActionState): Promise<ActionState> {
   const g = await guard("write");
   if ("error" in g) return g;
   try { await removeExample(id); } catch (err) { return { error: toUserMessage(err) }; }
   revalidatePath("/sequences");
-  redirect("/sequences?hecho=ejemplo-borrado");
+  revalidatePath("/campaigns");
+  redirect(`/${back}?hecho=ejemplo-borrado`);
 }

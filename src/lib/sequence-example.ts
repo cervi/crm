@@ -4,7 +4,7 @@ import type { Actor } from "./events";
 import { STEP_KINDS, type StepKind } from "./step-kinds";
 
 // ===========================================================================
-// Secuencia de ejemplo: una prospección en frío a medio camino, con diez
+// Ejemplo de outbound: una campaña con su secuencia, a medio camino, con diez
 // contactos ficticios en todos los estados posibles (respondió, interesado,
 // rebotó, fuera de la oficina, llamada pendiente, se dio de baja…), correos
 // enviados con aperturas y respuestas, y tareas en la cola.
@@ -81,6 +81,34 @@ const CONTACTS: Contact[] = [
     end: { status: "active", next: 0, at: 1 } },
 ];
 
+// Cómo queda cada contacto en la campaña (por nombre).
+type CampaignState = { status: string; reply?: string; summary?: string; retakeIn?: number; deal?: boolean };
+const IN_CAMPAIGN: Record<string, CampaignState> = {
+  Laura: { status: "interested", reply: "interesado", summary: "Le interesa: están revisando cómo trabaja el equipo. Propone el jueves a las 10.", deal: true },
+  Marcos: { status: "later", reply: "mas_adelante", summary: "Ahora están con el cierre del trimestre; pide que le escribas en enero.", retakeIn: 90 },
+  Ana: { status: "enrolled" },
+  Javier: { status: "bounced" },
+  Elena: { status: "enrolled", reply: "fuera_oficina", summary: "Fuera de la oficina unos días: la secuencia sigue cuando vuelva." },
+  Pablo: { status: "enrolled" },
+  Sofía: { status: "enrolled" },
+  Diego: { status: "completed" },
+  Carmen: { status: "unsubscribed", reply: "baja", summary: "Pide que no le escribamos más." },
+  Raúl: { status: "enrolled" },
+};
+
+/** Contactos que aún no han entrado en la secuencia: por verificar, para aprobar (con su primera línea) y uno no válido. */
+const WAITING: { first: string; last: string; title: string; org: string; domain: string; industry: string; city: string; status: "ready" | "pending" | "invalid"; line?: string; note?: string; email?: string }[] = [
+  { first: "Lucía", last: "Romero", title: "Directora Comercial", org: "Bodegas Lazo", domain: "bodegaslazo.example", industry: "Alimentación", city: "Logroño", status: "ready",
+    line: "Vi que Bodegas Lazo acaba de abrir distribución en México: enhorabuena por el salto." },
+  { first: "Tomás", last: "Gil", title: "CEO", org: "Fintra Pagos", domain: "fintrapagos.example", industry: "Software", city: "Madrid", status: "ready",
+    line: "Leí tu entrevista sobre cómo duplicasteis el equipo de ventas en un año." },
+  { first: "Irene", last: "Pastor", title: "Head of Growth", org: "Vela Viajes", domain: "velaviajes.example", industry: "Turismo", city: "Palma", status: "ready",
+    line: "Estáis contratando tres SDR: justo cuando más pesa el trabajo manual del CRM." },
+  { first: "Álvaro", last: "Ibáñez", title: "Director General", org: "Metales Cid", domain: "metalescid.example", industry: "Industria", city: "Burgos", status: "pending" },
+  { first: "Nuria", last: "Soler", title: "Responsable de Ventas", org: "Soler & Hijos", domain: "solerhijos.example", industry: "Distribución", city: "Girona", status: "invalid",
+    email: "info@solerhijos.example", note: "Es un correo genérico (info@), no de una persona" },
+];
+
 const DAY = 86_400_000;
 /** Hace `days` días (o dentro de, si es negativo), a una hora de oficina. */
 function when(days: number, hour = 9, minute = 30): Date {
@@ -106,7 +134,12 @@ export async function isExample(sequenceId: string): Promise<boolean> {
 
 export async function createExample(actor: Actor): Promise<string> {
   const existing = await existingExample();
-  if (existing) return existing;
+  if (existing) {
+    // Los ejemplos de antes no tenían campaña: se rehacen enteros.
+    const [ex] = await sql<{ campaign: string | null }[]>`SELECT example->>'campaign' AS campaign FROM sequences WHERE id = ${existing}`;
+    if (ex?.campaign) return existing;
+    await removeExample(existing);
+  }
   const [me] = await sql<{ name: string; email: string | null }[]>`SELECT name, email FROM users WHERE id = ${actor.id}`;
   const sender = me?.name?.split(" ")[0] || "Tu nombre";
   const fromEmail = me?.email ?? null;
@@ -131,7 +164,17 @@ export async function createExample(actor: Actor): Promise<string> {
       stepIds.push(row.id);
     }
 
-    const persons: string[] = [], orgs: string[] = [];
+    const [pl] = await tx<{ id: string; stage: string }[]>`
+      SELECT p.id, (SELECT id FROM stages st WHERE st.pipeline_id = p.id AND st.is_active ORDER BY st.position LIMIT 1) AS stage
+      FROM pipelines p WHERE p.is_active ORDER BY (lower(p.name) = 'outbound') DESC, p.position LIMIT 1`;
+    const [camp] = await tx<{ id: string }[]>`
+      INSERT INTO campaigns (name, status, sequence_id, pipeline_id, owner_id, target, require_approval, send_days, send_from, send_to, created_by, created_at, example)
+      VALUES ('Ejemplo · Directores de operaciones (España)', 'active', ${seq.id}, ${pl?.id ?? null}, ${actor.id},
+              ${tx.json({ sector: "Logística, industria, servicios", size: "50–500 empleados", country: "España", roles: "Operaciones, Ventas, Dirección" })},
+              true, '{1,2,3,4,5}', 9, 18, ${actor.id}, ${when(15)}, true)
+      RETURNING id`;
+
+    const persons: string[] = [], orgs: string[] = [], deals: string[] = [];
     for (const c of CONTACTS) {
       const [o] = await tx<{ id: string }[]>`
         INSERT INTO organizations (name, domain, industry, country, city, owner_id)
@@ -202,24 +245,86 @@ export async function createExample(actor: Actor): Promise<string> {
           RETURNING id`;
         await tx`UPDATE sequence_enrollments SET waiting_activity_id = ${a.id} WHERE id = ${en.id}`;
       }
+
+      // Su ficha en la campaña: estado, respuesta clasificada y, si le interesa, su deal.
+      const cs = IN_CAMPAIGN[c.first] ?? { status: "enrolled" };
+      let dealId: string | null = null;
+      if (cs.deal && pl?.stage) {
+        const replyAt = when(Math.min(...c.events.filter((ev) => "reply" in ev).map((ev) => ev.at)), 16, 20);
+        const [d] = await tx<{ id: string }[]>`
+          INSERT INTO deals (title, organization_id, pipeline_id, stage_id, value, currency, owner_id, source, created_at, stage_entered_at, expected_close_date)
+          VALUES (${`${c.org} (ejemplo) — outbound`}, ${o.id}, ${pl.id}, ${pl.stage}, 12000, 'EUR', ${actor.id}, 'Outbound: Ejemplo · Directores de operaciones (España)',
+                  ${replyAt}, ${replyAt}, ${new Date(Date.now() + 45 * DAY).toISOString().slice(0, 10)})
+          RETURNING id`;
+        dealId = d.id; deals.push(d.id);
+        await tx`INSERT INTO deal_participants (deal_id, person_id, is_primary) VALUES (${d.id}, ${p.id}, true)`;
+        await tx`UPDATE emails SET deal_id = ${d.id} WHERE person_id = ${p.id}`;
+        await tx`UPDATE sequence_enrollments SET deal_id = ${d.id} WHERE id = ${en.id}`;
+        await tx`
+          INSERT INTO activities (type, subject, note, due_at, done, deal_id, person_id, organization_id, owner_id, created_by_id)
+          VALUES ('task', ${`Responder a ${c.first} ${c.last}: interesado (campaña de ejemplo)`}, ${cs.summary ?? null},
+                  ${new Date(Math.ceil((Date.now() + 3_600_000) / 1_800_000) * 1_800_000)}, false, ${d.id}, ${p.id}, ${o.id}, ${actor.id}, ${actor.id})`;
+      }
+      if (cs.retakeIn) {
+        await tx`
+          INSERT INTO activities (type, subject, note, due_at, done, person_id, organization_id, owner_id, created_by_id)
+          VALUES ('task', ${`Retomar con ${c.first} ${c.last} (campaña de ejemplo)`}, ${`Dijo: ${cs.summary ?? ""}`}, ${when(-cs.retakeIn, 9, 30)}, false,
+                  ${p.id}, ${o.id}, ${actor.id}, ${actor.id})`;
+      }
+      await tx`
+        INSERT INTO campaign_contacts (campaign_id, person_id, email, status, verify_note, enrollment_id, deal_id, reply_class, reply_summary, retake_at, source, added_at, updated_at)
+        VALUES (${camp.id}, ${p.id}, ${address}, ${cs.status}, 'Verificado', ${en.id}, ${dealId}, ${cs.reply ?? null}, ${cs.summary ?? null},
+                ${cs.retakeIn ? new Date(Date.now() + cs.retakeIn * DAY).toISOString().slice(0, 10) : null}, 'csv', ${when(c.enrolledAgo + 1, 8)}, ${when(0, 8)})`;
+      await tx`UPDATE sequence_enrollments SET campaign_contact_id = (SELECT id FROM campaign_contacts WHERE campaign_id = ${camp.id} AND person_id = ${p.id}) WHERE id = ${en.id}`;
     }
-    await tx`UPDATE sequences SET example = ${tx.json({ persons, orgs })} WHERE id = ${seq.id}`;
+
+    // Los que aún esperan para entrar: por verificar, para aprobar y uno descartado.
+    for (const w of WAITING) {
+      const [o] = await tx<{ id: string }[]>`
+        INSERT INTO organizations (name, domain, industry, country, city, owner_id)
+        VALUES (${`${w.org} (ejemplo)`}, ${w.domain}, ${w.industry}, 'España', ${w.city}, ${actor.id}) RETURNING id`;
+      const [p] = await tx<{ id: string }[]>`
+        INSERT INTO persons (first_name, last_name, owner_id) VALUES (${w.first}, ${`${w.last} (ejemplo)`}, ${actor.id}) RETURNING id`;
+      orgs.push(o.id); persons.push(p.id);
+      const address = w.email ?? `${w.first.normalize("NFD").replace(/[^a-zA-Z]/g, "").toLowerCase()}@${w.domain}`;
+      await tx`INSERT INTO person_emails (person_id, email, is_primary) VALUES (${p.id}, ${address}, true)`;
+      await tx`INSERT INTO person_organizations (person_id, organization_id, job_title) VALUES (${p.id}, ${o.id}, ${w.title})`;
+      await tx`
+        INSERT INTO campaign_contacts (campaign_id, person_id, email, status, verify_note, personal_line, source, added_at)
+        VALUES (${camp.id}, ${p.id}, ${address}, ${w.status}, ${w.note ?? (w.status === "ready" ? "Verificado" : null)}, ${w.line ?? null}, 'csv', ${when(0, 8)})`;
+    }
+    // Los correos de la secuencia cuentan para la campaña.
+    await tx`UPDATE emails SET campaign_id = ${camp.id} WHERE person_id = ANY(${persons}::uuid[])`;
+    await tx`UPDATE sequences SET example = ${tx.json({ persons, orgs, deals, campaign: camp.id })} WHERE id = ${seq.id}`;
     return seq.id;
   }) as Promise<string>;
 }
 
-/** Borra el ejemplo entero: secuencia, contactos, empresas, correos y tareas de muestra. */
+/** La secuencia de ejemplo de una campaña de ejemplo. */
+export async function exampleOfCampaign(campaignId: string): Promise<string | null> {
+  const [c] = await sql<{ sequence_id: string | null; example: boolean }[]>`SELECT sequence_id, example FROM campaigns WHERE id = ${campaignId}`;
+  return c?.example ? c.sequence_id : null;
+}
+
+export async function exampleCampaign(sequenceId: string): Promise<string | null> {
+  const [s] = await sql<{ campaign: string | null }[]>`SELECT example->>'campaign' AS campaign FROM sequences WHERE id = ${sequenceId}`;
+  return s?.campaign ?? null;
+}
+
+/** Borra el ejemplo entero: secuencia, campaña, contactos, empresas, deal, correos y tareas de muestra. */
 export async function removeExample(sequenceId: string) {
-  const [s] = await sql<{ example: { persons?: string[]; orgs?: string[] } | null }[]>`SELECT example FROM sequences WHERE id = ${sequenceId}`;
+  const [s] = await sql<{ example: { persons?: string[]; orgs?: string[]; deals?: string[]; campaign?: string } | null }[]>`SELECT example FROM sequences WHERE id = ${sequenceId}`;
   if (!s) throw new UserError("La secuencia no existe.");
   if (!s.example) throw new UserError("Esta secuencia no es un ejemplo: bórrala desde sus ajustes.");
-  const persons = (s.example.persons ?? []).filter(Boolean), orgs = (s.example.orgs ?? []).filter(Boolean);
+  const persons = (s.example.persons ?? []).filter(Boolean), orgs = (s.example.orgs ?? []).filter(Boolean), deals = (s.example.deals ?? []).filter(Boolean);
   await sql.begin(async (tx) => {
     const enr = (await tx<{ id: string }[]>`SELECT id FROM sequence_enrollments WHERE sequence_id = ${sequenceId}`).map((r) => r.id);
     await tx`UPDATE sequence_enrollments SET waiting_activity_id = NULL WHERE sequence_id = ${sequenceId}`;
-    await tx`DELETE FROM activities WHERE enrollment_id = ANY(${enr}::uuid[]) OR person_id = ANY(${persons}::uuid[])`;
+    await tx`DELETE FROM campaigns WHERE example AND (id = ${s.example?.campaign ?? null}::uuid OR sequence_id = ${sequenceId})`;
+    await tx`DELETE FROM activities WHERE enrollment_id = ANY(${enr}::uuid[]) OR person_id = ANY(${persons}::uuid[]) OR deal_id = ANY(${deals}::uuid[])`;
     await tx`DELETE FROM emails WHERE enrollment_id = ANY(${enr}::uuid[]) OR person_id = ANY(${persons}::uuid[])`;
     await tx`DELETE FROM sequences WHERE id = ${sequenceId}`;
+    if (deals.length) await tx`DELETE FROM deals WHERE id = ANY(${deals}::uuid[])`;
     if (persons.length) await tx`DELETE FROM persons WHERE id = ANY(${persons}::uuid[])`;
     if (orgs.length) await tx`DELETE FROM organizations WHERE id = ANY(${orgs}::uuid[])`;
   });

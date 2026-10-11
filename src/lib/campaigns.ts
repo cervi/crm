@@ -39,7 +39,7 @@ export const CONTACT_STATUS: Record<ContactStatus, string> = {
 export type Campaign = {
   id: string; name: string; status: CampaignStatus; sequence_id: string | null; sequence_name: string | null; mailbox_ids: string[];
   pipeline_id: string | null; owner_id: string | null; owner_name: string | null; target: { sector?: string; size?: string; country?: string; roles?: string };
-  require_approval: boolean; send_days: number[]; send_from: number; send_to: number; created_at: Date;
+  require_approval: boolean; send_days: number[]; send_from: number; send_to: number; created_at: Date; example: boolean;
 };
 
 export type CampaignStats = {
@@ -48,7 +48,7 @@ export type CampaignStats = {
 };
 
 const campaignCols = sql`c.id, c.name, c.status, c.sequence_id, s.name AS sequence_name, c.mailbox_ids, c.pipeline_id, c.owner_id, u.name AS owner_name,
-  c.target, c.require_approval, c.send_days, c.send_from, c.send_to, c.created_at`;
+  c.target, c.require_approval, c.send_days, c.send_from, c.send_to, c.created_at, c.example`;
 const campaignFrom = sql`FROM campaigns c LEFT JOIN sequences s ON s.id = c.sequence_id LEFT JOIN users u ON u.id = c.owner_id`;
 
 export async function getCampaign(id: string): Promise<Campaign | null> {
@@ -111,6 +111,8 @@ export async function saveCampaign(actor: Actor, id: string | null, data: Record
     send_days: days.length ? days : [1, 2, 3, 4, 5], mailbox_ids: mailboxes,
   };
   if (id) {
+    const [ex] = await sql<{ example: boolean }[]>`SELECT example FROM campaigns WHERE id = ${id}`;
+    if (ex?.example) throw new UserError("La campaña de ejemplo no se puede cambiar. Crea una campaña nueva.");
     await sql`UPDATE campaigns SET ${sql(values as unknown as Record<string, never>)} WHERE id = ${id}`;
     return id;
   }
@@ -121,6 +123,7 @@ export async function saveCampaign(actor: Actor, id: string | null, data: Record
 export async function setCampaignStatus(id: string, status: CampaignStatus) {
   const c = await getCampaign(id);
   if (!c) throw new UserError("La campaña ya no existe.");
+  if (c.example) throw new UserError("Es la campaña de ejemplo: no envía nada. Crea una campaña nueva para usar tus contactos.");
   if (status === "active") {
     if (!c.sequence_id) throw new UserError("Elige la secuencia de correos antes de ponerla en marcha.");
     const [mb] = await sql<{ n: number }[]>`
@@ -147,6 +150,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export async function addContacts(actor: Actor, campaignId: string, rows: ContactInput[], source: string): Promise<AddResult> {
   const c = await getCampaign(campaignId);
   if (!c) throw new UserError("La campaña ya no existe.");
+  if (c.example) throw new UserError("Es la campaña de ejemplo: no envía nada. Crea una campaña nueva para usar tus contactos.");
   if (c.status === "finished") throw new UserError("La campaña está terminada.");
   if (rows.length > 5000) throw new UserError("Como mucho 5000 contactos de una vez.");
   const out: AddResult = { added: 0, existing: 0, skipped: [] };
@@ -302,7 +306,7 @@ async function pickMailbox(c: Campaign): Promise<{ id: string; user_id: string }
 }
 
 export async function enrollApproved(c: Campaign, limit = 100): Promise<number> {
-  if (c.status !== "active" || !c.sequence_id) return 0;
+  if (c.status !== "active" || !c.sequence_id || c.example) return 0;
   const [first] = await sql<{ delay_days: number }[]>`SELECT delay_days FROM sequence_steps WHERE sequence_id = ${c.sequence_id} ORDER BY position LIMIT 1`;
   if (!first) return 0;
   const rows = await sql<{ id: string; person_id: string }[]>`
@@ -325,7 +329,7 @@ export async function enrollApproved(c: Campaign, limit = 100): Promise<number> 
 /** Trabajo: verificar, escribir la primera línea e inscribir lo aprobado. */
 export async function runCampaignPrepare(): Promise<string | number | null> {
   return runJob("campaign_prepare", async () => {
-    const campaigns = await sql<Campaign[]>`SELECT ${campaignCols} ${campaignFrom} WHERE c.status IN ('draft', 'active', 'paused')`;
+    const campaigns = await sql<Campaign[]>`SELECT ${campaignCols} ${campaignFrom} WHERE c.status IN ('draft', 'active', 'paused') AND NOT c.example`;
     const cache = new Map<string, boolean | null>();
     let done = 0;
     for (const c of campaigns) {
@@ -432,7 +436,7 @@ export async function runCampaignReplies(): Promise<string | number | null> {
       LEFT JOIN organizations o ON o.id = po.organization_id
       JOIN LATERAL (SELECT id, subject, body FROM emails e WHERE e.direction = 'in' AND e.person_id = cc.person_id AND e.reply_class IS NULL
                       AND e.sent_at > cc.added_at ORDER BY e.sent_at LIMIT 1) e ON true
-      WHERE cc.status IN ('enrolled', 'completed', 'later', 'approved')
+      WHERE cc.status IN ('enrolled', 'completed', 'later', 'approved') AND NOT c.example
       LIMIT 30`;
     for (const r of rows) {
       const text = `${r.subject}\n${r.body}`.slice(0, 4000);

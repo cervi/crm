@@ -14,6 +14,7 @@ import {
 } from "@/app/actions/outbound";
 import { date, money } from "@/lib/format";
 import { isId } from "@/lib/validation";
+import { removeExampleAction } from "@/app/actions/sequences";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Campaña" };
@@ -47,17 +48,30 @@ export default async function CampaignPage({ params, searchParams }: { params: P
         <div>
           <h1>{c.name}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            <span className={`badge ${c.status === "active" ? "won" : ""}`}>{CAMPAIGN_STATUS[c.status]}</span>{" "}
-            {c.sequence_name ? `Secuencia «${c.sequence_name}»` : "Sin secuencia"} · {c.mailbox_ids.length} buzón{c.mailbox_ids.length === 1 ? "" : "es"} ·
+            {c.example ? <span className="badge">Ejemplo · no envía</span> : <span className={`badge ${c.status === "active" ? "won" : ""}`}>{CAMPAIGN_STATUS[c.status]}</span>}{" "}
+            {c.sequence_name ? <>Secuencia <Link href={`/sequences/${c.sequence_id}`}>«{c.sequence_name}»</Link></> : "Sin secuencia"} · {c.example ? "buzones de outbound" : <>{c.mailbox_ids.length} buzón{c.mailbox_ids.length === 1 ? "" : "es"}</>} ·
             de {c.send_from}:00 a {c.send_to}:00
           </p>
         </div>
-        <div className="head-actions">
+        {!c.example && <div className="head-actions">
           {c.status !== "active" && c.status !== "finished" && <ActionForm action={setCampaignStatusAction.bind(null, id, "active")} submitLabel="Poner en marcha" pendingLabel="…" good className="form inline" />}
           {c.status === "active" && <ActionForm action={setCampaignStatusAction.bind(null, id, "paused")} submitLabel="Pausar" pendingLabel="…" secondary className="form inline" />}
           {c.status !== "finished" && <ActionForm action={setCampaignStatusAction.bind(null, id, "finished")} submitLabel="Terminar" pendingLabel="…" secondary className="form inline" />}
-        </div>
+        </div>}
       </div>
+
+      {c.example && (
+        <div className="callout example-offer">
+          <div><strong>Esto es una campaña de ejemplo con contactos ficticios: no envía nada.</strong>
+            <span className="meta"> Así trabaja una campaña: cargas una lista, se verifica cada correo, la IA escribe una primera línea para cada uno y tú la apruebas;
+              los aprobados entran en la secuencia, y cada respuesta se clasifica sola (interesado → deal y tarea para ti; «más adelante» → tarea para retomar; baja → no se le escribe más).
+              Para usarla con tus contactos, crea una campaña nueva abajo en <Link href="/campaigns">Campañas</Link>.</span></div>
+          {me.role !== "viewer" && c.sequence_id && (
+            <ActionForm action={removeExampleAction.bind(null, c.sequence_id, "campaigns")} submitLabel="Borrar el ejemplo" pendingLabel="Borrando…" secondary className="form inline"
+                        confirm="Se borran la campaña, su secuencia y sus contactos, empresas, deal, correos y tareas de muestra." />
+          )}
+        </div>
+      )}
 
       <section className="today-stats campaign-funnel" aria-label="Resultados">
         {funnel.map((f) => (
@@ -86,7 +100,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
         </section>
       )}
 
-      <div className="split">
+      {!c.example && <div className="split">
         <section className="panel" aria-label="Añadir contactos">
           <h2>Añadir contactos</h2>
           <div>
@@ -121,7 +135,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
             </ActionForm>
           </details>
         </section>
-      </div>
+      </div>}
 
       <h2 className="section-title">Contactos <span className="muted">{contacts.length}</span></h2>
       <nav className="chips" aria-label="Filtrar por estado">

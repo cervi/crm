@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { isExample } from "@/lib/sequence-example";
+import { exampleCampaign, isExample } from "@/lib/sequence-example";
 import { notFound } from "next/navigation";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import {
@@ -94,7 +94,7 @@ export default async function SequencePage({ params, searchParams }: {
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!isId(id)) notFound();
   const user = await requireUser();
-  const [seq, example] = await Promise.all([getSequence(id), isExample(id)]);
+  const [seq, example, exCampaign] = await Promise.all([getSequence(id), isExample(id), exampleCampaign(id)]);
   if (!seq) notFound();
   const tab: Tab = TABS.find((t) => t.key === sp.tab)?.key ?? (seq.steps.length === 0 ? "pasos" : "resumen");
   const canEdit = user.role !== "viewer";
@@ -133,12 +133,12 @@ export default async function SequencePage({ params, searchParams }: {
         <div className="callout example-offer">
           <div><strong>Esto es un ejemplo con contactos ficticios: no envía nada.</strong>
             <span className="meta"> Mira las pestañas: quién respondió o rebotó, los correos con sus aperturas, el informe por paso y las tareas que esperan en tu cola (en <Link href="/sequences/tasks">Tareas</Link>).
-              Para usarla con tus contactos, duplícala: la copia sale limpia, en pausa.</span></div>
+              {exCampaign && <> La usa la <Link href={`/campaigns/${exCampaign}`}>campaña de ejemplo</Link>.</>} Para usarla con tus contactos, duplícala: la copia sale limpia, en pausa.</span></div>
           {canEdit && (
             <div className="head-actions">
               <ActionForm action={duplicateSequenceAction.bind(null, id)} submitLabel="Usarla de verdad" pendingLabel="Duplicando…" className="form inline" />
-              <ActionForm action={removeExampleAction.bind(null, id)} submitLabel="Borrar el ejemplo" pendingLabel="Borrando…" secondary className="form inline"
-                          confirm="Se borran la secuencia y sus 10 contactos, empresas, correos y tareas de muestra." />
+              <ActionForm action={removeExampleAction.bind(null, id, "sequences")} submitLabel="Borrar el ejemplo" pendingLabel="Borrando…" secondary className="form inline"
+                          confirm="Se borran la secuencia, la campaña de ejemplo y sus contactos, empresas, deal, correos y tareas de muestra." />
             </div>
           )}
         </div>
