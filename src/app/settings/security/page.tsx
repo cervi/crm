@@ -91,7 +91,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
               ];
               const todo = items.filter((i) => !i.ok), done = items.filter((i) => i.ok);
               return (<>
-                {todo.length > 0 && <ul className="check-list">{todo.map((i, n) => <li key={n} className="todo">{i.node}</li>)}</ul>}
+                {todo.length > 0 && <ul className="check-list">{todo.map((i, n) => <li key={n} className="pending">{i.node}</li>)}</ul>}
                 {done.length > 0 && (todo.length === 0
                   ? <ul className="check-list">{done.map((i, n) => <li key={n} className="ok">{i.node}</li>)}</ul>
                   : <details className="check-done"><summary className="meta">Todo en orden: {done.length}</summary>
