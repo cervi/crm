@@ -1769,11 +1769,12 @@ export async function pendingFacets(): Promise<{ types: { key: string; n: number
   const [types, rules] = await Promise.all([
     sql<{ key: string; n: number }[]>`SELECT action_type AS key, count(*)::int AS n FROM automation_actions WHERE status = 'pending' GROUP BY 1 ORDER BY 2 DESC`,
     sql<{ key: string; label: string; n: number }[]>`
-      SELECT CASE WHEN x.actor = 'external' THEN 'external' ELSE coalesce(r.key, 'otros') END AS key,
-             CASE WHEN x.actor = 'external' THEN coalesce(max(x.agent_name), 'Agentes externos') ELSE coalesce(max(r.name), 'Asistente') END AS label,
-             count(*)::int AS n
-      FROM automation_actions x LEFT JOIN automation_rules r ON r.id = x.rule_id
-      WHERE x.status = 'pending' GROUP BY 1 ORDER BY 3 DESC`,
+      SELECT key, max(label) AS label, count(*)::int AS n FROM (
+        SELECT CASE WHEN x.actor = 'external' THEN 'external' ELSE coalesce(r.key, 'otros') END AS key,
+               CASE WHEN x.actor = 'external' THEN coalesce(x.agent_name, 'Agentes externos') ELSE coalesce(r.name, 'Asistente') END AS label
+        FROM automation_actions x LEFT JOIN automation_rules r ON r.id = x.rule_id
+        WHERE x.status = 'pending') t
+      GROUP BY key ORDER BY 3 DESC`,
   ]);
   return { types, rules };
 }
