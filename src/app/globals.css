@@ -2359,3 +2359,5 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .week-bar { display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 4px; min-width: 38px; height: 100%; }
 .week-bar .bar { width: 22px; height: 100%; display: flex; align-items: flex-end; background: var(--sunken); border-radius: 4px; overflow: hidden; }
 .week-bar .bar span { width: 100%; background: var(--series-1); border-radius: 4px 4px 0 0; }
+.rail-brand[aria-current="page"] { box-shadow: 0 0 0 3px var(--accent-soft); }
+.rail-brand { position: relative; }

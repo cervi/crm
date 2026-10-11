@@ -52,10 +52,11 @@ export function Nav({ inboxCount = 0, prefs = {} }: { inboxCount?: number; prefs
 
   return (
     <aside className="rail">
-      <Link href="/" className="rail-brand" aria-label="Inicio"><Icon name="deals" /></Link>
+      {/* El logo es «Hoy» (la portada): siempre arriba y no se puede quitar del menú. */}
+      <Link href="/" className="rail-brand" aria-label="Hoy" data-tip="Hoy" aria-current={path === "/" ? "page" : undefined}><Icon name="deals" /></Link>
       <nav aria-label="Principal">
         <ul>
-          {visible.slice(0, -1).map(link)}
+          {visible.slice(1, -1).map(link)}
           <li ref={moreRef} className="rail-more">
             <button type="button" aria-expanded={moreOpen} aria-haspopup="true" onClick={() => setMoreOpen((o) => !o)}
                     aria-label={hidden.length ? `Más secciones (${hidden.length})` : "Más: personalizar el menú"} data-tip={hidden.length ? "Más" : "Personalizar el menú"}
@@ -131,7 +132,7 @@ function NavEditor({ prefs, onClose }: { prefs: NavPrefs; onClose: () => void })
         </header>
         <div className="drawer-body">
           <ul className="nav-edit-list">
-            <li className="fixed"><span className="grip" /><Icon name="home" /><span className="name">Hoy</span><span className="meta">Siempre arriba</span></li>
+            <li className="fixed"><span className="grip" /><Icon name="home" /><span className="name">Hoy</span><span className="meta">Es el logo de arriba: siempre está</span></li>
             {items.map((h, idx) => {
               const it = byHref(h), shown = !hidden.has(h);
               return (
