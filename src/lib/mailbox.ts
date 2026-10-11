@@ -251,9 +251,11 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
 
 /** Envía un correo sin registrarlo en ningún deal (p. ej. el parte del día a uno mismo). */
 export async function sendPlainEmail(conn: Connection, to: string, subject: string, body: string, html?: string | null,
-                                     opts: { toName?: string | null; attachments?: MailAttachment[] } = {}) {
+                                     opts: { toName?: string | null; attachments?: MailAttachment[]; track?: boolean } = {}) {
+  // Sin seguimiento para los correos con enlaces privados (crear o cambiar una contraseña).
+  const finalHtml = html ? (opts.track === false ? html : trackHtmlLinks(html, null, null)) : undefined;
   await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: { email: to, name: opts.toName ?? null }, subject, body,
-                                            html: html ? trackHtmlLinks(html, null, null) : undefined, attachments: opts.attachments }));
+                                            html: finalHtml, attachments: opts.attachments }));
 }
 
 type ActivityRow = {

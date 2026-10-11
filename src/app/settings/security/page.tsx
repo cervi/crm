@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { endSessionAction, saveSsoSettingsAction } from "@/app/actions/auth";
+import { endSessionAction, saveSsoSettingsAction, saveSystemMailAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
 import { requireAdminPage, ROLE_LABELS } from "@/lib/auth";
 import { encryptionConfigured } from "@/lib/crypto";
@@ -34,6 +34,12 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
       FROM login_events WHERE at > now() - interval '7 days'`,
   ]);
   const providers = (["google", "microsoft"] as const).filter((k) => PROVIDERS[k].configured());
+  const [mailboxes, [mailSetting]] = await Promise.all([
+    sql<{ user_id: string; email: string; name: string }[]>`
+      SELECT m.user_id, m.email, u.name FROM mailbox_connections m JOIN users u ON u.id = m.user_id
+      WHERE m.purpose = 'main' AND m.status = 'active' AND u.role = 'admin' AND u.is_active ORDER BY u.name`,
+    sql<{ system_mail_user_id: string | null }[]>`SELECT system_mail_user_id FROM app_settings LIMIT 1`,
+  ]);
   return (
     <main className="page medium">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
@@ -76,6 +82,26 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
             </select>
             <span className="meta">Si la quitas, quien no tenga cuenta de Google o Microsoft con su mismo correo dejará de poder entrar.</span></label>
         </ActionForm>
+      </section>
+
+      <section className="panel" aria-label="Correos de acceso">
+        <h2>Correos de invitación y de contraseña</h2>
+        <p className="meta" style={{ marginTop: 0 }}>
+          Quien pide cambiar su contraseña la recibe desde su propio buzón, si lo tiene conectado. Si no, y para las invitaciones que no envía un administrador con buzón, sale desde este.
+        </p>
+        {mailboxes.length === 0 ? (
+          <p className="callout">Ningún administrador tiene su correo conectado: los enlaces de invitación y de contraseña habrá que copiarlos y enviarlos a mano.
+            Conéctalo en <Link href="/settings/mailbox">Correo, calendario y documentos</Link>.</p>
+        ) : (
+          <ActionForm action={saveSystemMailAction} submitLabel="Guardar">
+            <label className="field"><span className="label">Enviar desde</span>
+              <select name="user_id" defaultValue={mailSetting?.system_mail_user_id ?? ""}>
+                <option value="">El primer administrador con correo conectado</option>
+                {mailboxes.map((m) => <option key={m.user_id} value={m.user_id}>{m.email} ({m.name})</option>)}
+              </select>
+              <span className="meta">Solo buzones de administradores: los enlaces quedan en su carpeta de enviados.</span></label>
+          </ActionForm>
+        )}
       </section>
 
       <section className="panel" aria-label="Registro de accesos">

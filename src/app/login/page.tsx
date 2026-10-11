@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { loginAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
@@ -72,6 +73,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               <input name="email" type="email" autoComplete="username" required autoFocus={providers.length === 0} /></label>
             <label className="field"><span className="label">Contraseña</span>
               <input name="password" type="password" autoComplete="current-password" required /></label>
+            <Link href="/login/recuperar" className="meta forgot-link">¿Has olvidado tu contraseña?</Link>
           </ActionForm>
         ) : (
           <details className="admin-login"><summary className="meta">Soy administrador y quiero entrar con contraseña</summary>
@@ -83,7 +85,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </details>
         )}
         {demo && <p className="callout good">Demo: entra con <strong>{demo}</strong></p>}
-        <p className="meta">¿Olvidaste la contraseña? {providers.length ? "Entra con tu cuenta de Google o Microsoft, o pide" : "Pide"} a un administrador que te ponga una nueva.</p>
       </main>
     </div>
   );

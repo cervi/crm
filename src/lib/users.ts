@@ -3,6 +3,7 @@ import { sql } from "./db";
 import { UserError } from "./errors";
 import { hashPassword, passwordProblem, verifyPassword, type Role } from "./session";
 import { parse } from "./validation";
+import { audit, passwordChangedNotice } from "./user-lifecycle";
 
 export type UserRow = { id: string; name: string; kind: "human" | "ai_agent" };
 
@@ -18,6 +19,8 @@ export type AdminUserRow = {
   id: string; name: string; email: string | null; role: Role; is_active: boolean;
   has_password: boolean; last_login_at: Date | null; locked: boolean; must_change_password: boolean;
   open_deals: number; sessions: number; sso_enabled: boolean; last_login_method: string | null; failed_logins: number;
+  invited_at: Date | null; invite_expires_at: Date | null; invite_sent_from: string | null; deactivated_at: Date | null;
+  deactivated_by_name: string | null; anonymized_at: Date | null;
 };
 
 export async function listAllUsers(): Promise<AdminUserRow[]> {
@@ -25,8 +28,14 @@ export async function listAllUsers(): Promise<AdminUserRow[]> {
     SELECT u.id, u.name, u.email, u.role, u.is_active, u.password_hash IS NOT NULL AS has_password,
            u.last_login_at, coalesce(u.locked_until > now(), false) AS locked, u.must_change_password, u.sso_enabled, u.last_login_method, u.failed_logins,
            (SELECT count(*)::int FROM deals d WHERE d.owner_id = u.id AND d.status = 'open' AND d.deleted_at IS NULL) AS open_deals,
-           (SELECT count(*)::int FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS sessions
-    FROM users u WHERE u.kind = 'human'
+           (SELECT count(*)::int FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS sessions,
+           u.invited_at, inv.expires_at AS invite_expires_at, inv.sent_from AS invite_sent_from,
+           u.deactivated_at, db.name AS deactivated_by_name, u.anonymized_at
+    FROM users u
+    LEFT JOIN LATERAL (SELECT expires_at, sent_from FROM user_tokens t WHERE t.user_id = u.id AND t.purpose = 'invite' AND t.used_at IS NULL
+                       ORDER BY created_at DESC LIMIT 1) inv ON true
+    LEFT JOIN users db ON db.id = u.deactivated_by
+    WHERE u.kind = 'human'
     ORDER BY u.is_active DESC, u.name`;
 }
 
@@ -40,7 +49,7 @@ function checkPassword(password: string, email: string | null) {
 }
 
 /** Alta de un usuario con una contraseña inicial que tendrá que cambiar al entrar. */
-export async function createUser(input: Record<string, unknown>): Promise<string> {
+export async function createUser(input: Record<string, unknown>, actorId: string | null = null): Promise<string> {
   const v = parse(z.object({ name: NAME, email: EMAIL, role: ROLE, password: z.string() }), input);
   checkPassword(v.password, v.email);
   const hash = await hashPassword(v.password);
@@ -51,13 +60,15 @@ export async function createUser(input: Record<string, unknown>): Promise<string
   if (existing) {
     await sql`
       UPDATE users SET name = ${v.name}, role = ${v.role}, is_active = true, password_hash = ${hash},
-             must_change_password = true, failed_logins = 0, locked_until = NULL, updated_at = now()
+             must_change_password = true, failed_logins = 0, locked_until = NULL, deactivated_at = NULL, updated_at = now()
       WHERE id = ${existing.id}`;
+    await audit(actorId, existing.id, "access_given", { role: v.role });
     return existing.id;
   }
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO users (name, email, kind, role, password_hash, must_change_password)
     VALUES (${v.name}, ${v.email}, 'human', ${v.role}, ${hash}, true) RETURNING id`;
+  await audit(actorId, row.id, "access_given", { role: v.role });
   return row.id;
 }
 
@@ -68,24 +79,26 @@ async function adminsLeft(exceptId: string): Promise<number> {
   return r.n;
 }
 
+/** Nombre, correo y rol. Las bajas y reactivaciones tienen su propio flujo (user-lifecycle). */
 export async function updateUser(byId: string, userId: string, input: Record<string, unknown>) {
-  const v = parse(z.object({ name: NAME, email: EMAIL, role: ROLE, is_active: z.boolean() }), {
-    ...input, is_active: input.is_active === "on" || input.is_active === true,
-  });
-  const [cur] = await sql<{ role: Role; is_active: boolean }[]>`SELECT role, is_active FROM users WHERE id = ${userId} AND kind = 'human'`;
+  const v = parse(z.object({ name: NAME, email: EMAIL, role: ROLE }), input);
+  const [cur] = await sql<{ role: Role; is_active: boolean; name: string; email: string | null }[]>`
+    SELECT role, is_active, name, email FROM users WHERE id = ${userId} AND kind = 'human'`;
   if (!cur) throw new UserError("Ese usuario no existe.");
-  const losesAdmin = cur.role === "admin" && cur.is_active && (v.role !== "admin" || !v.is_active);
-  if (losesAdmin && (await adminsLeft(userId)) === 0) throw new UserError("Tiene que quedar al menos un administrador.");
-  if (userId === byId && !v.is_active) throw new UserError("No puedes desactivar tu propio usuario.");
-  await sql`
-    UPDATE users SET name = ${v.name}, email = ${v.email}, role = ${v.role}, is_active = ${v.is_active}, updated_at = now()
-    WHERE id = ${userId}`;
-  // Al desactivar a alguien, se le cierran las sesiones.
-  if (!v.is_active) await sql`DELETE FROM sessions WHERE user_id = ${userId}`;
+  if (cur.role === "admin" && cur.is_active && v.role !== "admin" && (await adminsLeft(userId)) === 0) {
+    throw new UserError("Tiene que quedar al menos un administrador.");
+  }
+  const [dup] = await sql`SELECT 1 FROM users WHERE lower(email) = ${v.email} AND id <> ${userId} AND kind = 'human'`;
+  if (dup) throw new UserError("Ya hay otra persona con ese correo.");
+  await sql`UPDATE users SET name = ${v.name}, email = ${v.email}, role = ${v.role}, updated_at = now() WHERE id = ${userId}`;
+  if (cur.role !== v.role) await audit(byId, userId, "role_changed", { from: cur.role, to: v.role });
+  if (cur.name !== v.name || (cur.email ?? "") !== v.email) await audit(byId, userId, "data_changed", { email_changed: (cur.email ?? "") !== v.email });
+  // Si baja de administrador, que vuelva a entrar con sus permisos nuevos.
+  if (cur.role === "admin" && v.role !== "admin") await sql`DELETE FROM sessions WHERE user_id = ${userId}`;
 }
 
 /** Un administrador pone una contraseña nueva (temporal) y desbloquea la cuenta. */
-export async function resetPassword(userId: string, password: string) {
+export async function resetPassword(userId: string, password: string, actorId: string | null = null) {
   const [u] = await sql<{ email: string | null }[]>`SELECT email FROM users WHERE id = ${userId} AND kind = 'human'`;
   if (!u) throw new UserError("Ese usuario no existe.");
   checkPassword(password, u.email);
@@ -94,10 +107,13 @@ export async function resetPassword(userId: string, password: string) {
            failed_logins = 0, locked_until = NULL, updated_at = now()
     WHERE id = ${userId}`;
   await sql`DELETE FROM sessions WHERE user_id = ${userId}`;
+  await sql`UPDATE user_tokens SET used_at = now() WHERE user_id = ${userId} AND used_at IS NULL`;
+  await audit(actorId, userId, "temp_password");
 }
 
-export async function signOutEverywhere(userId: string) {
+export async function signOutEverywhere(userId: string, actorId: string | null = null) {
   await sql`DELETE FROM sessions WHERE user_id = ${userId}`;
+  await audit(actorId, userId, "sessions_closed");
 }
 
 /** Cada usuario cambia su contraseña (pide la actual). Cierra sus otras sesiones. */
@@ -109,6 +125,9 @@ export async function changeOwnPassword(userId: string, current: string, next: s
   checkPassword(next, u.email);
   await sql`UPDATE users SET password_hash = ${await hashPassword(next)}, must_change_password = false, updated_at = now() WHERE id = ${userId}`;
   await sql`DELETE FROM sessions WHERE user_id = ${userId} AND token_hash <> ${keepTokenHash ?? ""}`;
+  await sql`UPDATE user_tokens SET used_at = now() WHERE user_id = ${userId} AND purpose = 'reset' AND used_at IS NULL`;
+  await audit(userId, userId, "password_changed");
+  await passwordChangedNotice(userId).catch(() => null);
 }
 
 export async function updateOwnName(userId: string, name: unknown) {

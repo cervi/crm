@@ -2285,3 +2285,8 @@ button.sf-sign.mine { overflow: visible; }
 .col-resize::after { content: ""; position: absolute; top: 25%; bottom: 25%; left: 4px; width: 1px; background: var(--border); opacity: 0; transition: opacity .12s; }
 .data-table th:hover .col-resize::after, .col-resizing .col-resize::after { opacity: 1; background: var(--accent); }
 body.col-resizing { cursor: col-resize; user-select: none; }
+.form-link { display: flex; gap: 8px; align-items: center; }
+.form-link input { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-2); background: var(--sunken); }
+.forgot-link { justify-self: end; margin-top: -6px; }
+.drawer-section.danger-zone { border-color: color-mix(in srgb, var(--bad) 35%, var(--border)); }
+.drawer-section .plain-list { margin: 0; }

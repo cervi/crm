@@ -10,7 +10,7 @@ import { SESSION_COOKIE, sessionUser } from "@/lib/session";
  * Además deja la ruta pedida en la cabecera x-pathname, para que las páginas
  * sepan a dónde volver tras iniciar sesión.
  */
-const PUBLIC = [/^\/login(\/|$)/, /^\/setup(\/|$)/, /^\/book\//, /^\/f\//, /^\/t\//, /^\/p\//, /^\/cp\//, /^\/u\//, /^\/s\//, /^\/firma\//, /^\/d\//, /^\/api\/public\//, /^\/api\/integrations\/(google|microsoft)\/(login|callback)$/];
+const PUBLIC = [/^\/login(\/|$)/, /^\/setup(\/|$)/, /^\/book\//, /^\/f\//, /^\/t\//, /^\/p\//, /^\/cp\//, /^\/u\//, /^\/s\//, /^\/firma\//, /^\/acceso\//, /^\/d\//, /^\/api\/public\//, /^\/api\/integrations\/(google|microsoft)\/(login|callback)$/];
 
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;

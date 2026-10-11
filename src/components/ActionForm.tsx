@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { CopyLink } from "./esign/CopyLink";
 import type { ActionState } from "@/lib/errors";
 
 type Props = {
@@ -64,6 +65,11 @@ export function ActionForm({ action, children, submitLabel, pendingLabel, classN
       {children}
       {state?.error && <p className="form-error" role="alert">{state.error}</p>}
       {state?.ok && state.message && <p className="form-ok" role="status">{state.message}</p>}
+      {state?.ok && (state as { link?: string }).link && (
+        // Enlace para copiarlo y mandarlo por otro canal (invitaciones, cambiar la contraseña…).
+        <div className="form-link"><input readOnly value={(state as { link: string }).link} aria-label="Enlace" onFocus={(e) => e.currentTarget.select()} />
+          <CopyLink url={(state as { link: string }).link} /></div>
+      )}
       {armed && <p className="form-confirm" role="alert">{confirm}</p>}
       <div className="form-actions">
         <button type="submit" disabled={pending} className={armed ? "btn danger" : danger ? "btn danger" : good ? "btn good" : secondary ? "btn secondary" : "btn"}>

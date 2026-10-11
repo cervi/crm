@@ -1,7 +1,7 @@
 import { sql } from "./db";
 
 /** Apunta una entrada (o un intento fallido) en el registro de accesos. */
-export async function logLogin(v: { userId?: string | null; email?: string | null; method: "password" | "google" | "microsoft"; success: boolean;
+export async function logLogin(v: { userId?: string | null; email?: string | null; method: "password" | "google" | "microsoft" | "reset"; success: boolean;
                                     reason?: string | null; ip?: string | null; ua?: string | null }) {
   await sql`INSERT INTO login_events (user_id, email, method, success, reason, ip, user_agent)
             VALUES (${v.userId ?? null}, ${v.email?.toLowerCase().slice(0, 320) ?? null}, ${v.method}, ${v.success}, ${v.reason?.slice(0, 200) ?? null},
@@ -19,4 +19,4 @@ export async function listLoginEvents(opts: { failed?: boolean; userId?: string 
     ORDER BY e.at DESC LIMIT ${opts.limit ?? 200}`;
 }
 
-export const METHOD_LABEL: Record<string, string> = { password: "Contraseña", google: "Google", microsoft: "Microsoft" };
+export const METHOD_LABEL: Record<string, string> = { password: "Contraseña", google: "Google", microsoft: "Microsoft", reset: "Recuperar contraseña" };

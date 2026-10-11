@@ -68,7 +68,7 @@ export function DataTable({ id, columns, rows, selectable, empty, colSettingsLab
   const isPinned = (k: string) => prefs.pinned.includes(k);
   // Ancho de cada columna: el que haya elegido la persona o uno razonable, para que un texto largo no ensanche la tabla.
   const firstKey = columns.find((c) => c.required)?.key ?? columns[0]?.key;
-  const widthOf = (k: string) => prefs.widths?.[k] ?? byKey.get(k)?.width ?? (k === firstKey ? 280 : 200);
+  const widthOf = (k: string) => prefs.widths?.[k] ?? byKey.get(k)?.width ?? (k === firstKey ? 360 : 220);
   const clips = (k: string) => { const c = byKey.get(k); return !c?.noClip && !/row-actions|done-col|check-col/.test(c?.className ?? ""); };
   const setWidth = (k: string, w: number | null) => {
     const widths = { ...(prefs.widths ?? {}) };
