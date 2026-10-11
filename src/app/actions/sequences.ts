@@ -11,6 +11,7 @@ import {
 } from "@/lib/sequences";
 import { archiveSequence, createBlankSequence, createFromTemplate, createWithAi, duplicateSequence } from "@/lib/sequence-templates";
 import { completeQueueTask } from "@/lib/sequence-tasks";
+import { createExample, removeExample } from "@/lib/sequence-example";
 import { deleteSchedule, saveSchedule } from "@/lib/send-schedule";
 
 export async function createSequenceAction(_: ActionState, form: FormData): Promise<ActionState> {
@@ -244,4 +245,23 @@ export async function sendManualAndNextAction(activityId: string, back: string, 
   try { await sendManualEmail(g.actor, activityId, Object.fromEntries(form)); } catch (err) { return { error: toUserMessage(err) }; }
   revalidatePath("/sequences/tasks");
   redirect(back);
+}
+
+/** Crea (o abre, si ya existe) la secuencia de ejemplo con contactos ficticios. */
+export async function createExampleAction(_: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  let id = "";
+  try { id = await createExample(g.actor); } catch (err) { return { error: toUserMessage(err) }; }
+  revalidatePath("/sequences");
+  redirect(`/sequences/${id}`);
+}
+
+/** Borra el ejemplo entero (secuencia, contactos, empresas, correos y tareas de muestra). */
+export async function removeExampleAction(id: string, _: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  try { await removeExample(id); } catch (err) { return { error: toUserMessage(err) }; }
+  revalidatePath("/sequences");
+  redirect("/sequences?hecho=ejemplo-borrado");
 }

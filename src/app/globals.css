@@ -2437,3 +2437,8 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 [data-density="compact"] .page { --gap: 12px; }
 .company-logo { max-height: 48px; max-width: 200px; object-fit: contain; }
 .brand-logo { max-height: 26px; max-width: 120px; object-fit: contain; }
+
+/* Oferta y aviso de la secuencia de ejemplo */
+.example-offer { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.example-offer > div:first-child { flex: 1 1 380px; }
+.example-offer .head-actions { flex-wrap: wrap; }

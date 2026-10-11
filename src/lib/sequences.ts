@@ -165,6 +165,10 @@ export async function createSequence(actor: Actor, data: unknown): Promise<strin
 }
 
 export async function setSequenceActive(id: string, active: boolean) {
+  if (active) {
+    const [ex] = await sql<{ ex: boolean }[]>`SELECT example IS NOT NULL AS ex FROM sequences WHERE id = ${id}`;
+    if (ex?.ex) throw new UserError("Es una secuencia de ejemplo y no envía nada. Para usarla de verdad, duplícala: la copia sale sin los contactos de muestra.");
+  }
   const res = await sql`UPDATE sequences SET is_active = ${active} WHERE id = ${id} AND archived_at IS NULL`;
   if (res.count === 0) throw new UserError("La secuencia no existe o está archivada.");
 }
@@ -607,6 +611,8 @@ export async function enrollMany(actor: Actor, sequenceId: string, personIds: st
   const seq = await getSequence(sequenceId);
   if (!seq) throw new UserError("La secuencia no existe.");
   if (seq.archived_at) throw new UserError("La secuencia está archivada.");
+  const [ex] = await sql<{ ex: boolean }[]>`SELECT example IS NOT NULL AS ex FROM sequences WHERE id = ${sequenceId}`;
+  if (ex?.ex) throw new UserError("A la secuencia de ejemplo no se pueden añadir contactos. Duplícala para usarla con los tuyos.");
   if (!seq.steps.length) throw new UserError("La secuencia no tiene pasos.");
   const checks = await checkEnrollment(sequenceId, personIds);
   const include = new Set(opts.include ?? []);
@@ -1023,7 +1029,7 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
   await releaseWaiting();
   const due = await sql<Due[]>`
     WITH picked AS (
-      SELECT e.id, e.next_run_at AS due_at FROM sequence_enrollments e JOIN sequences s ON s.id = e.sequence_id AND s.is_active AND s.archived_at IS NULL
+      SELECT e.id, e.next_run_at AS due_at FROM sequence_enrollments e JOIN sequences s ON s.id = e.sequence_id AND s.is_active AND s.archived_at IS NULL AND s.example IS NULL
       WHERE e.status = 'active' AND e.next_run_at <= now()
       ORDER BY e.next_run_at, e.created_at LIMIT ${limit} FOR UPDATE OF e SKIP LOCKED)
     UPDATE sequence_enrollments x SET next_run_at = now() + interval '10 minutes'   -- reclamada: nadie más la procesa a la vez

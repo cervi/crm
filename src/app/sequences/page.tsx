@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { newSequenceAction } from "@/app/actions/sequences";
+import { createExampleAction, newSequenceAction } from "@/app/actions/sequences";
 import { ActionForm } from "@/components/ActionForm";
 import { Drawer } from "@/components/Drawer";
 import { Icon } from "@/components/Icon";
@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { listSequencesFull, sequenceFolders } from "@/lib/sequence-reports";
 import { queueCounts } from "@/lib/sequence-tasks";
 import { SEQUENCE_TEMPLATES } from "@/lib/sequence-templates";
+import { existingExample } from "@/lib/sequence-example";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Secuencias" };
@@ -15,12 +16,12 @@ export const metadata = { title: "Secuencias" };
 const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)} %` : "—");
 const CHANNEL_ICON = { email: "mail", call: "phone", linkedin: "users", task: "check" } as const;
 
-export default async function SequencesPage({ searchParams }: { searchParams: Promise<{ ver?: string; carpeta?: string; q?: string; nueva?: string }> }) {
+export default async function SequencesPage({ searchParams }: { searchParams: Promise<{ ver?: string; carpeta?: string; q?: string; nueva?: string; hecho?: string }> }) {
   const [user, sp] = await Promise.all([requireUser(), searchParams]);
   const view = sp.ver === "archivadas" ? "archivadas" : sp.ver === "pausadas" ? "pausadas" : sp.ver === "activas" ? "activas" : "todas";
-  const [rows, folders, ai, tasks] = await Promise.all([
+  const [rows, folders, ai, tasks, example] = await Promise.all([
     listSequencesFull({ archived: view === "archivadas", folder: sp.carpeta || null, q: sp.q, status: view === "activas" ? "active" : view === "pausadas" ? "paused" : null }),
-    sequenceFolders(), getAiSettings(), queueCounts(user.id, false),
+    sequenceFolders(), getAiSettings(), queueCounts(user.id, false), existingExample(),
   ]);
   const qs = (p: Record<string, string | undefined>) => {
     const u = new URLSearchParams();
@@ -66,6 +67,15 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
         </div>
       </div>
 
+      {sp.hecho === "ejemplo-borrado" && <p className="callout good" role="status">Ejemplo borrado, con sus contactos, empresas, correos y tareas de muestra.</p>}
+      {canEdit && !example && view !== "archivadas" && (
+        <div className="callout example-offer">
+          <div><strong>¿Quieres ver cómo funciona antes de montar la tuya?</strong>
+            <span className="meta"> Crea una secuencia de ejemplo con 10 contactos ficticios a medio camino: correos abiertos, respuestas, un rebote, un «fuera de la oficina» y tareas en tu cola. No envía nada y se borra con un clic.</span></div>
+          <ActionForm action={createExampleAction} submitLabel="Ver un ejemplo" pendingLabel="Creando el ejemplo…" secondary className="form inline" />
+        </div>
+      )}
+
       <div className="filter-row">
         <nav className="chips" aria-label="Estado">
           {[["todas", "Todas"], ["activas", "Activas"], ["pausadas", "En pausa"], ["archivadas", "Archivadas"]].map(([k, l]) => (
@@ -104,7 +114,8 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
                     <Link href={`/sequences/${s.id}`}><strong>{s.name}</strong></Link>
                     <span className="channels" aria-label={`Canales: ${s.channels.join(", ")}`}>{s.channels.map((c) => <Icon key={c} name={CHANNEL_ICON[c as keyof typeof CHANNEL_ICON] ?? "check"} />)}</span>
                     <div className="meta">
-                      <span className={`badge ${s.archived_at ? "" : s.is_active ? "won" : "warn"}`}>{s.archived_at ? "Archivada" : s.is_active ? "Activa" : "En pausa"}</span>
+                      {s.is_example ? <span className="badge">Ejemplo · no envía</span>
+                        : <span className={`badge ${s.archived_at ? "" : s.is_active ? "won" : "warn"}`}>{s.archived_at ? "Archivada" : s.is_active ? "Activa" : "En pausa"}</span>}
                       {" "}{s.steps} paso{s.steps === 1 ? "" : "s"}{s.folder ? ` · ${s.folder}` : ""}{s.owner_name ? ` · ${s.owner_name}` : ""}
                     </div>
                   </td>

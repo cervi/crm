@@ -9,7 +9,7 @@ import { sql } from "./db";
 export type SequenceRow = {
   id: string; name: string; description: string | null; folder: string | null; is_active: boolean; archived_at: Date | null;
   owner_name: string | null; steps: number; channels: string[]; active: number; paused: number; finished: number; bounced: number; failed: number;
-  total: number; delivered: number; opened: number; replied: number; interested: number; created_at: Date;
+  total: number; delivered: number; opened: number; replied: number; interested: number; created_at: Date; is_example: boolean;
 };
 
 /** Personas que respondieron (sin contar «fuera de la oficina» ni rebotes) después de entrar. */
@@ -21,7 +21,7 @@ const INTERESTED = sql`EXISTS (SELECT 1 FROM emails r WHERE r.person_id = e.pers
 export async function listSequencesFull(f: { archived?: boolean; folder?: string | null; q?: string | null; status?: "active" | "paused" | null } = {}) {
   const q = (f.q ?? "").trim().toLowerCase();
   return sql<SequenceRow[]>`
-    SELECT s.id, s.name, s.description, s.folder, s.is_active, s.archived_at, u.name AS owner_name, s.created_at,
+    SELECT s.id, s.name, s.description, s.folder, s.is_active, s.archived_at, u.name AS owner_name, s.created_at, s.example IS NOT NULL AS is_example,
            (SELECT count(*)::int FROM sequence_steps st WHERE st.sequence_id = s.id) AS steps,
            coalesce((SELECT array_agg(DISTINCT CASE WHEN st.kind IN ('email', 'manual_email') THEN 'email' WHEN st.kind = 'call' THEN 'call'
                                               WHEN st.kind LIKE 'linkedin%' THEN 'linkedin' ELSE 'task' END)

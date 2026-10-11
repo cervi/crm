@@ -120,8 +120,9 @@ export async function duplicateSequence(actor: Actor, id: string): Promise<strin
       INSERT INTO sequences (name, description, created_by, owner_id, is_active, stop_on_reply, stop_on_meeting, send_days, send_from, send_to, track,
                              add_signature, unsubscribe_link, schedule_id, folder, daily_limit, pause_on_ooo, finish_on_click, same_account,
                              same_account_days, call_after_opens, cc, bcc)
-      SELECT left(name || ' (copia)', 120), description, ${actor.id}, ${actor.id}, false, stop_on_reply, stop_on_meeting, send_days, send_from, send_to, track,
-             add_signature, unsubscribe_link, schedule_id, folder, daily_limit, pause_on_ooo, finish_on_click, same_account,
+      SELECT CASE WHEN example IS NOT NULL THEN 'Prospección en frío' ELSE left(name || ' (copia)', 120) END,
+             CASE WHEN example IS NOT NULL THEN NULL ELSE description END, ${actor.id}, ${actor.id}, false, stop_on_reply, stop_on_meeting, send_days, send_from, send_to, track,
+             add_signature, unsubscribe_link, schedule_id, CASE WHEN example IS NOT NULL THEN NULL ELSE folder END, daily_limit, pause_on_ooo, finish_on_click, same_account,
              same_account_days, call_after_opens, cc, bcc
       FROM sequences WHERE id = ${id} RETURNING id`;
     if (!s) throw new UserError("La secuencia no existe.");
