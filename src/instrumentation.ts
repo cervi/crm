@@ -15,4 +15,17 @@ export async function register() {
   };
   setTimeout(tick, 30_000).unref();
   setInterval(tick, minutes * 60_000).unref();
+
+  // Envíos de las secuencias, cada minuto: así se respeta el margen entre correos de cada buzón
+  // sin esperar a la revisión completa (SEQUENCE_SEND_SECONDS, 60 por defecto; 0 lo desactiva).
+  const every = Number(process.env.SEQUENCE_SEND_SECONDS ?? 60);
+  if (every > 0) {
+    const { processSequences } = await import("./lib/sequences");
+    let busy = false;
+    setInterval(() => {
+      if (busy) return;
+      busy = true;
+      processSequences(20).catch((err) => console.error("[secuencias]", err)).finally(() => { busy = false; });
+    }, Math.max(20, every) * 1000).unref();
+  }
 }

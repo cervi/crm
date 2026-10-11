@@ -159,8 +159,56 @@ const seqSchema = z.object({
 export async function createSequence(actor: Actor, data: unknown): Promise<string> {
   const v = parse(seqSchema, data);
   const [row] = await sql<{ id: string }[]>`
-    INSERT INTO sequences (name, description, created_by) VALUES (${v.name}, ${v.description || null}, ${actor.id}) RETURNING id`;
+    INSERT INTO sequences (name, description, created_by, owner_id, schedule_id)
+    VALUES (${v.name}, ${v.description || null}, ${actor.id}, ${actor.id}, (SELECT id FROM send_schedules WHERE is_default LIMIT 1)) RETURNING id`;
   return row.id;
+}
+
+export async function setSequenceActive(id: string, active: boolean) {
+  const res = await sql`UPDATE sequences SET is_active = ${active} WHERE id = ${id} AND archived_at IS NULL`;
+  if (res.count === 0) throw new UserError("La secuencia no existe o está archivada.");
+}
+
+const emailList = z.string().trim().max(500).optional().transform((v) => {
+  const list = (v ?? "").split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+  for (const e of list) if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new UserError(`${e} no es un correo válido.`);
+  return list.join(", ") || null;
+});
+
+const rulesSchema = z.object({
+  name: z.string().trim().min(1, "El nombre es obligatorio").max(120),
+  description: z.string().trim().max(1000).optional(),
+  folder: z.string().trim().max(60).optional(),
+  owner_id: z.string().optional(),
+  schedule_id: z.string().optional(),
+  stop_on_reply: checkbox, stop_on_meeting: checkbox, pause_on_ooo: checkbox, finish_on_click: checkbox,
+  same_account: z.enum(["none", "stop", "delay"]).optional().default("none"),
+  same_account_days: z.coerce.number().int().min(1).max(90).optional().default(7),
+  call_after_opens: z.string().optional(),
+  daily_limit: z.string().optional(),
+  track: checkbox, add_signature: checkbox, unsubscribe_link: checkbox,
+  cc: emailList, bcc: emailList,
+});
+
+/** Ajustes de la secuencia: datos, horario, reglas y envío (como «Settings» en Apollo). */
+export async function updateSequenceSettings(id: string, form: FormData) {
+  const v = parse(rulesSchema, Object.fromEntries(form));
+  const num = (x: string | undefined, min: number, max: number, what: string) => {
+    if (!x?.trim()) return null;
+    const n = Number(x);
+    if (!Number.isInteger(n) || n < min || n > max) throw new UserError(`${what}: un número entre ${min} y ${max}, o vacío.`);
+    return n;
+  };
+  const res = await sql`
+    UPDATE sequences SET name = ${v.name}, description = ${v.description || null}, folder = ${v.folder || null},
+           owner_id = ${isId(v.owner_id ?? "") ? v.owner_id! : null}, schedule_id = ${isId(v.schedule_id ?? "") ? v.schedule_id! : null},
+           stop_on_reply = ${v.stop_on_reply}, stop_on_meeting = ${v.stop_on_meeting}, pause_on_ooo = ${v.pause_on_ooo}, finish_on_click = ${v.finish_on_click},
+           same_account = ${v.same_account}, same_account_days = ${v.same_account_days},
+           call_after_opens = ${num(v.call_after_opens, 1, 50, "Aperturas para crear la llamada")},
+           daily_limit = ${num(v.daily_limit, 1, 5000, "Límite diario de la secuencia")},
+           track = ${v.track}, add_signature = ${v.add_signature}, unsubscribe_link = ${v.unsubscribe_link}, cc = ${v.cc}, bcc = ${v.bcc}
+    WHERE id = ${id}`;
+  if (res.count === 0) throw new UserError("La secuencia no existe.");
 }
 
 export async function updateSequence(id: string, data: unknown) {
@@ -882,6 +930,23 @@ async function callAfterOpens(): Promise<number> {
     await sql`UPDATE sequence_enrollments SET call_task_created = true WHERE id = ${r.id}`;
   }
   return rows.length;
+}
+
+/** La tarea en la que esperaba una inscripción se ha hecho: sigue al momento (o termina si contestó la llamada). */
+export async function continueAfter(actor: Actor, activityId: string) {
+  const [w] = await sql<{ id: string; sequence_id: string; next_step: number; campaign_contact_id: string | null; deal_id: string | null;
+                          answered: boolean; name: string }[]>`
+    SELECT e.id, e.sequence_id, e.next_step, e.campaign_contact_id, e.deal_id, a.call_outcome = 'answered' AS answered, s.name
+    FROM sequence_enrollments e JOIN activities a ON a.id = e.waiting_activity_id JOIN sequences s ON s.id = e.sequence_id
+    WHERE e.waiting_activity_id = ${activityId} AND e.status = 'active' AND a.done`;
+  if (!w) return;
+  if (w.answered) {
+    await sql`UPDATE sequence_enrollments SET status = 'stopped', stopped_reason = 'Contestó la llamada', finished_at = now(), next_run_at = NULL,
+                     waiting_activity_id = NULL WHERE id = ${w.id}`;
+    if (w.deal_id) await recordEvent(sql, actor, "deal", w.deal_id, "sequence.stopped", { sequence: w.name, reason: "Contestó la llamada" });
+    return;
+  }
+  await advance(w.id, w.sequence_id, w.next_step, w.campaign_contact_id);
 }
 
 /** Tareas y correos manuales hechos (o borrados) fuera de la secuencia: la secuencia sigue. */

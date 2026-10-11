@@ -5,9 +5,13 @@ import { redirect } from "next/navigation";
 import { guard, writer } from "@/lib/auth";
 import { attempt, toUserMessage, type ActionState } from "@/lib/errors";
 import {
-  createSequence, deleteSequence, deleteStep, deleteVariant, enroll, moveStep, promoteVariant, resumeEnrollment, saveStep, saveVariant,
-  sendManualEmail, setVariantActive, skipManualEmail, stopEnrollment, updateSequence, updateSequenceSending,
+  bulkEnrollments, createSequence, deleteSequence, deleteStep, deleteVariant, enroll, enrollMany, moveStep, promoteVariant, resumeEnrollment, saveStep, saveVariant,
+  sendManualEmail, setSequenceActive, setStepActive, setVariantActive, skipManualEmail, stopEnrollment, updateSequence, updateSequenceSending,
+  updateSequenceSettings, type BulkOp, type EnrollIssue,
 } from "@/lib/sequences";
+import { archiveSequence, createBlankSequence, createFromTemplate, createWithAi, duplicateSequence } from "@/lib/sequence-templates";
+import { completeQueueTask } from "@/lib/sequence-tasks";
+import { deleteSchedule, saveSchedule } from "@/lib/send-schedule";
 
 export async function createSequenceAction(_: ActionState, form: FormData): Promise<ActionState> {
   const g = await guard("write");
@@ -112,4 +116,132 @@ export async function stopEnrollmentAction(enrollmentId: string, back: string): 
   const actor = await writer();
   try { await stopEnrollment(actor, enrollmentId); } catch (err) { console.error(toUserMessage(err)); }
   revalidatePath(back);
+}
+
+// --- Al estilo Apollo: crear, ajustes, contactos, tareas y horarios
+
+/** Nueva secuencia: en blanco, desde una plantilla o con IA. */
+export async function newSequenceAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const how = String(form.get("how") ?? "blank");
+  const name = String(form.get("name") ?? "");
+  const folder = String(form.get("folder") ?? "").trim() || null;
+  let id = "";
+  try {
+    id = how === "ai" ? await createWithAi(g.actor, String(form.get("brief") ?? ""), name, folder)
+      : how.startsWith("tpl:") ? await createFromTemplate(g.actor, how.slice(4), name, folder)
+      : await createBlankSequence(g.actor, name, folder);
+  } catch (err) { return { error: toUserMessage(err) }; }
+  redirect(`/sequences/${id}?tab=pasos`);
+}
+
+export async function duplicateSequenceAction(id: string, _: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  let copy = "";
+  try { copy = await duplicateSequence(g.actor, id); } catch (err) { return { error: toUserMessage(err) }; }
+  redirect(`/sequences/${copy}?tab=ajustes`);
+}
+
+export async function archiveSequenceAction(id: string, archived: boolean, _: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const res = await attempt(() => archiveSequence(id, archived));
+  revalidatePath("/sequences");
+  revalidatePath(`/sequences/${id}`);
+  return res?.error ? res : { ok: true, message: archived ? "Archivada: ya no envía nada." : "Recuperada del archivo (está en pausa: actívala cuando quieras)." };
+}
+
+export async function setSequenceActiveAction(id: string, active: boolean, _: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const res = await attempt(() => setSequenceActive(id, active));
+  revalidatePath(`/sequences/${id}`);
+  revalidatePath("/sequences");
+  return res;
+}
+
+export async function updateSequenceSettingsAction(id: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const res = await attempt(() => updateSequenceSettings(id, form));
+  revalidatePath(`/sequences/${id}`);
+  return res?.error ? res : { ok: true, message: "Ajustes guardados." };
+}
+
+export async function stepActiveAction(sequenceId: string, stepId: string, active: boolean): Promise<void> {
+  await writer();
+  await setStepActive(sequenceId, stepId, active);
+  revalidatePath(`/sequences/${sequenceId}`);
+}
+
+/** Acciones en bloque sobre los contactos de la secuencia. */
+export async function bulkEnrollmentsAction(sequenceId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const op = String(form.get("op") ?? "") as BulkOp;
+  if (!["pause", "resume", "finish", "remove", "mailbox", "step", "retry"].includes(op)) return { error: "Elige qué hacer." };
+  try {
+    const n = await bulkEnrollments(g.actor, sequenceId, form.getAll("ids").map(String), op, {
+      resumeAt: String(form.get("resume_at") ?? "") || null, reason: String(form.get("reason") ?? "") || null,
+      mailboxId: String(form.get("mailbox_id") ?? "") || null, step: form.get("step") === null || form.get("step") === "" ? null : Number(form.get("step")),
+    });
+    revalidatePath(`/sequences/${sequenceId}`);
+    const what: Record<BulkOp, string> = { pause: "pausados", resume: "reanudados", finish: "terminados", remove: "quitados de la secuencia",
+      mailbox: "cambiados de buzón", step: "movidos de paso", retry: "reintentados" };
+    return { ok: true, message: n === 0 ? "Ninguno de los seleccionados estaba en un estado que lo permita." : `${n} contacto${n === 1 ? "" : "s"} ${what[op]}.` };
+  } catch (err) { return { error: toUserMessage(err) }; }
+}
+
+/** Añadir contactos revisados (con los avisos que se aceptan) y el reparto de buzones. */
+export async function enrollManyAction(sequenceId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  let r: Awaited<ReturnType<typeof enrollMany>>;
+  try {
+    r = await enrollMany(g.actor, sequenceId, form.getAll("ids").map(String), {
+      mailboxIds: form.getAll("mailbox_ids").map(String), include: form.getAll("include").map(String) as EnrollIssue[],
+    });
+  } catch (err) { return { error: toUserMessage(err) }; }
+  revalidatePath(`/sequences/${sequenceId}`);
+  const skipped = Object.values(r.skipped).reduce((n, x) => n + (x ?? 0), 0);
+  redirect(`/sequences/${sequenceId}?tab=contactos&anadidos=${r.added}&saltados=${skipped}`);
+}
+
+export async function completeTaskAction(activityId: string, back: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const skip = form.get("skip") === "1";
+  try {
+    await completeQueueTask(g.actor, activityId, { outcome: String(form.get("outcome") ?? "") || null, note: String(form.get("note") ?? ""), skip });
+  } catch (err) { return { error: toUserMessage(err) }; }
+  revalidatePath("/sequences/tasks");
+  if (back) redirect(back);
+  return { ok: true, message: skip ? "Saltada." : "Hecha." };
+}
+
+export async function saveScheduleAction(id: string | null, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const res = await attempt(() => saveSchedule(id, form));
+  revalidatePath("/sequences/horarios");
+  return res?.error ? res : { ok: true, message: id ? "Horario guardado." : "Horario creado." };
+}
+
+export async function deleteScheduleAction(id: string, _: ActionState): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const res = await attempt(() => deleteSchedule(id));
+  revalidatePath("/sequences/horarios");
+  return res;
+}
+
+/** Modo «una tras otra»: envía el correo manual y pasa a la siguiente tarea. */
+export async function sendManualAndNextAction(activityId: string, back: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  try { await sendManualEmail(g.actor, activityId, Object.fromEntries(form)); } catch (err) { return { error: toUserMessage(err) }; }
+  revalidatePath("/sequences/tasks");
+  redirect(back);
 }

@@ -112,15 +112,34 @@ export async function disconnectMailbox(id: string) {
 }
 
 /** Límite, calentamiento y pausa de un buzón de outbound. */
+/** Ritmo de los envíos automáticos de un buzón: máximo por hora y margen entre correos (y, en los principales, el límite diario). */
+function pacing(data: Record<string, unknown>) {
+  const hourly = Number(data.hourly_limit ?? 20), gap = Number(data.min_gap_seconds ?? 90);
+  if (!Number.isInteger(hourly) || hourly < 1 || hourly > 200) throw new UserError("El máximo por hora va de 1 a 200 correos.");
+  if (!Number.isInteger(gap) || gap < 0 || gap > 3600) throw new UserError("El margen entre correos va de 0 a 3.600 segundos.");
+  return { hourly, gap };
+}
+
 export async function updateOutboundMailbox(id: string, data: Record<string, unknown>) {
   const limit = Number(data.daily_limit);
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new UserError("El límite diario va de 1 a 500 correos.");
   const warm = String(data.warmup_start ?? "");
   if (warm && !/^\d{4}-\d{2}-\d{2}$/.test(warm)) throw new UserError("Fecha de calentamiento no válida.");
   const paused = data.paused === "on";
+  const p = pacing(data);
   await sql`UPDATE mailbox_connections SET daily_limit = ${limit}, warmup_start = coalesce(${warm || null}::date, warmup_start),
+                   hourly_limit = ${p.hourly}, min_gap_seconds = ${p.gap},
                    paused = ${paused}, paused_reason = CASE WHEN ${paused} THEN coalesce(paused_reason, 'Pausado a mano') END
             WHERE id = ${id} AND purpose = 'outbound'`;
+}
+
+/** Ritmo de las secuencias en el buzón principal de una persona. */
+export async function updateMainPacing(userId: string, data: Record<string, unknown>) {
+  const limit = Number(data.daily_limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new UserError("El límite diario va de 1 a 500 correos.");
+  const p = pacing(data);
+  await sql`UPDATE mailbox_connections SET daily_limit = ${limit}, hourly_limit = ${p.hourly}, min_gap_seconds = ${p.gap}
+            WHERE user_id = ${userId} AND purpose = 'main'`;
 }
 
 /**

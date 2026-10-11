@@ -10,7 +10,7 @@ import {
   updateLine, type CampaignStatus, type ContactInput,
 } from "@/lib/campaigns";
 import { guessMapping, parseCsv } from "@/lib/csv-import";
-import { disconnectMailbox, updateOutboundMailbox } from "@/lib/mailbox";
+import { disconnectMailbox, updateMainPacing, updateOutboundMailbox } from "@/lib/mailbox";
 
 export async function saveIcpAction(_: ActionState, form: FormData): Promise<ActionState> {
   const g = await guard("admin");
@@ -144,4 +144,12 @@ export async function disconnectOutboundFormAction(mailboxId: string): Promise<{
   await disconnectMailbox(mailboxId);
   revalidatePath("/settings/mailbox");
   return { ok: true };
+}
+
+export async function updateMainPacingAction(userId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard({ self: userId });
+  if ("error" in g) return g;
+  const res = await attempt(() => updateMainPacing(userId, Object.fromEntries(form)));
+  revalidatePath("/settings/mailbox");
+  return res?.error ? res : { ok: true, message: "Ritmo guardado." };
 }

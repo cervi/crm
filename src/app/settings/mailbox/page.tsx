@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { listConnections, listOutboundMailboxes, availableSlots, providerOf, warmupLimit, type Connection } from "@/lib/mailbox";
-import { disconnectOutboundFormAction, updateMailboxAction } from "@/app/actions/outbound";
+import { disconnectOutboundFormAction, updateMailboxAction, updateMainPacingAction } from "@/app/actions/outbound";
 import { sql } from "@/lib/db";
 import { PROVIDER_LIST, PROVIDERS, redirectUri, type Provider } from "@/lib/integrations";
 import { encryptionConfigured } from "@/lib/crypto";
@@ -139,6 +139,19 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                         </section>
                         {conn && (
                           <section className="drawer-section">
+                            <h3>Ritmo de las secuencias</h3>
+                            <p className="meta" style={{ marginTop: 0 }}>Cuántos correos automáticos pueden salir de esta cuenta y cada cuánto (los que escribes tú no cuentan).</p>
+                            <ActionForm action={updateMainPacingAction.bind(null, u.id)} submitLabel="Guardar ritmo" secondary>
+                              <div className="grid-3">
+                                <label className="field"><span className="label">Máximo en 24 h</span><input name="daily_limit" type="number" min={1} max={500} defaultValue={conn.daily_limit} /></label>
+                                <label className="field"><span className="label">Máximo por hora</span><input name="hourly_limit" type="number" min={1} max={200} defaultValue={conn.hourly_limit} /></label>
+                                <label className="field"><span className="label">Margen entre correos (s)</span><input name="min_gap_seconds" type="number" min={0} max={3600} defaultValue={conn.min_gap_seconds} /></label>
+                              </div>
+                            </ActionForm>
+                          </section>
+                        )}
+                        {conn && (
+                          <section className="drawer-section">
                             <h3>Huecos que se ofrecen para reuniones</h3>
                             <ActionForm action={updateMailboxSettingsAction.bind(null, u.id)} submitLabel="Guardar preferencias" secondary>
                               <div className="field">
@@ -263,7 +276,10 @@ export default async function MailboxSettingsPage({ searchParams }: { searchPara
                                 <div className="grid-2">
                                   <label className="field"><span className="label">Límite diario</span><input name="daily_limit" type="number" min={1} max={500} defaultValue={m.daily_limit} /></label>
                                   <label className="field"><span className="label">Calentamiento desde</span><input name="warmup_start" type="date" defaultValue={m.warmup_start} /></label>
+                                  <label className="field"><span className="label">Máximo por hora</span><input name="hourly_limit" type="number" min={1} max={200} defaultValue={m.hourly_limit} /></label>
+                                  <label className="field"><span className="label">Margen entre correos (s)</span><input name="min_gap_seconds" type="number" min={0} max={3600} defaultValue={m.min_gap_seconds} /></label>
                                 </div>
+                                <p className="meta" style={{ margin: 0 }}>Los correos salen espaciados (con algo de variación) para parecer enviados a mano y cuidar la entrega.</p>
                                 <label className="checkbox"><input type="checkbox" name="paused" defaultChecked={m.paused} />En pausa (no envía nada)</label>
                               </ActionForm>
                             </section>
