@@ -40,10 +40,13 @@ const mimeWord = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${Buf
 const wrap76 = (s: string) => s.replace(/.{1,76}/g, (l) => `${l}\r\n`);
 
 /** Mensaje RFC 822 en texto plano, en base64url como lo pide la API de Gmail. */
-export function rawEmail(v: { to: { email: string; name?: string | null }; subject: string; body: string; html?: string; attachments?: MailAttachment[] }) {
+export function rawEmail(v: { to: { email: string; name?: string | null }; subject: string; body: string; html?: string; attachments?: MailAttachment[];
+                                cc?: string[]; bcc?: string[]; extraHeaders?: string[] }) {
   const to = v.to.name ? `"${mimeWord(v.to.name.replace(/"/g, ""))}" <${v.to.email}>` : v.to.email;
   const b64 = (s: string) => wrap76(Buffer.from(s, "utf8").toString("base64"));
-  const head = [`To: ${to}`, `Subject: ${mimeWord(v.subject)}`, "MIME-Version: 1.0"];
+  const clean = (list?: string[]) => (list ?? []).map((x) => x.replace(/[\r\n,<>]/g, "").trim()).filter(Boolean);
+  const head = [`To: ${to}`, ...(clean(v.cc).length ? [`Cc: ${clean(v.cc).join(", ")}`] : []), ...(clean(v.bcc).length ? [`Bcc: ${clean(v.bcc).join(", ")}`] : []),
+                `Subject: ${mimeWord(v.subject)}`, "MIME-Version: 1.0", ...(v.extraHeaders ?? []).map((h) => h.replace(/[\r\n]/g, ""))];
   // Cuerpo: solo texto, o texto y HTML (el HTML lleva el seguimiento de aperturas y clics).
   let bodyPart: string[];
   if (!v.html) {
@@ -113,8 +116,26 @@ export const google: Provider = {
   },
 
   async send(c, v) {
-    const res = await c.call<{ id: string }>(`${GMAIL()}/messages/send`, { method: "POST", json: { raw: rawEmail(v) } });
-    return { ref: `gmail:${res.id}` };
+    const extra: string[] = [];
+    let threadId: string | undefined;
+    // Respuesta en el mismo hilo: el threadId de Gmail y las cabeceras In-Reply-To / References del original.
+    const prev = v.replyToRef?.startsWith("gmail:") ? v.replyToRef.slice(6) : null;
+    if (prev) {
+      try {
+        const q = new URLSearchParams({ format: "metadata" });
+        for (const h of ["Message-ID", "References"]) q.append("metadataHeaders", h);
+        const m = await c.call<GMessage & { threadId?: string }>(`${GMAIL()}/messages/${encodeURIComponent(prev)}?${q}`);
+        const header = (n: string) => m.payload?.headers?.find((h) => h.name.toLowerCase() === n.toLowerCase())?.value ?? null;
+        const mid = header("Message-ID");
+        threadId = m.threadId;
+        if (mid) extra.push(`In-Reply-To: ${mid}`, `References: ${[header("References"), mid].filter(Boolean).join(" ")}`);
+      } catch { /* si no se encuentra el original, sale como correo nuevo */ }
+    }
+    if (v.listUnsubscribe) extra.push(`List-Unsubscribe: <${v.listUnsubscribe}>`, "List-Unsubscribe-Post: List-Unsubscribe=One-Click");
+    const res = await c.call<{ id: string; threadId?: string }>(`${GMAIL()}/messages/send`, {
+      method: "POST", json: { raw: rawEmail({ ...v, extraHeaders: extra }), ...(threadId ? { threadId } : {}) },
+    });
+    return { ref: `gmail:${res.id}`, threadRef: res.threadId ?? null };
   },
 
   async docText(c, fileId) {

@@ -12,6 +12,15 @@ export type MailMessage = {
 };
 
 /** Evento del calendario, igual para todos los proveedores. */
+/** Lo que se envía. `replyToRef`: referencia (gmail:… / msg:…) del correo al que se responde, para ir en el mismo hilo. */
+export type SendInput = {
+  from: string; to: { email: string; name?: string | null }; subject: string; body: string; html?: string; attachments?: MailAttachment[];
+  cc?: string[]; bcc?: string[]; replyToRef?: string | null;
+  /** Enlace de baja con un clic (cabeceras List-Unsubscribe, que piden Gmail y Yahoo a quien envía en volumen). */
+  listUnsubscribe?: string | null;
+};
+export type SendResult = { ref: string; threadRef?: string | null; messageIdHdr?: string | null };
+
 export type CalendarEvent = {
   ref: string;
   subject: string | null;
@@ -54,7 +63,7 @@ export type Provider = {
   refresh(refreshToken: string): Promise<Tokens>;
   profile(c: ApiClient): Promise<{ email: string; displayName: string | null; scheduling: Partial<Scheduling> }>;
   /** Envía un correo; con `html`, va también en HTML (con el texto como alternativa donde se pueda). */
-  send(c: ApiClient, v: { from: string; to: { email: string; name?: string | null }; subject: string; body: string; html?: string; attachments?: MailAttachment[] }): Promise<{ ref: string }>;
+  send(c: ApiClient, v: SendInput): Promise<SendResult>;
   messages(c: ApiClient, since: Date, own: string): Promise<MailMessage[]>;
   /** Texto de un documento del almacenamiento (las notas de una reunión). */
   docText?(c: ApiClient, fileId: string): Promise<string>;

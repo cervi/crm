@@ -8,7 +8,7 @@ import { UserError } from "./errors";
 import { isSessionType } from "./format";
 import { PROVIDERS, ProviderError, providerMessage, type Provider, type ProviderKey, type Tokens } from "./integrations";
 import { apiClient, type ApiClient } from "./integrations/http";
-import type { MailAttachment } from "./integrations/types";
+import type { MailAttachment, SendResult } from "./integrations/types";
 import { ingestMeetingNote } from "./meeting-notes";
 import { DEFAULT_SCHEDULING, formatSlots, freeSlots, NO_SLOTS_TEXT, normalizeScheduling, type Interval, type Scheduling } from "./slots";
 
@@ -24,6 +24,8 @@ export type Connection = {
   status: "active" | "error"; last_error: string | null; scheduling: Scheduling;
   sync_mail: boolean; sync_calendar: boolean; mail_synced_at: Date | null; calendar_synced_at: Date | null; created_at: Date;
   purpose: "main" | "outbound"; daily_limit: number; warmup_start: string; paused: boolean; paused_reason: string | null;
+  /** Ritmo de los envíos automáticos: máximo por hora y margen mínimo entre dos correos. */
+  hourly_limit: number; min_gap_seconds: number; last_sent_at: Date | null;
   /** Firma propia del buzón (si no, la de la persona). */
   signature: string | null; user_signature: string | null;
 };
@@ -33,7 +35,8 @@ type Row = Omit<Connection, "scheduling"> & { scheduling: unknown };
 const selectConnections = (where = sql``) => sql<Row[]>`
   SELECT m.id, m.user_id, u.name AS user_name, m.provider, m.email, m.display_name, m.status, m.last_error, m.scheduling,
          m.sync_mail, m.sync_calendar, m.mail_synced_at, m.calendar_synced_at, m.created_at,
-         m.purpose, m.daily_limit, m.warmup_start::text, m.paused, m.paused_reason, m.signature, u.email_signature AS user_signature
+         m.purpose, m.daily_limit, m.warmup_start::text, m.paused, m.paused_reason, m.signature, u.email_signature AS user_signature,
+         m.hourly_limit, m.min_gap_seconds, m.last_sent_at
   FROM mailbox_connections m JOIN users u ON u.id = m.user_id
   ${where}
   ORDER BY m.created_at`;
@@ -129,6 +132,36 @@ export function warmupLimit(conn: Pick<Connection, "daily_limit" | "warmup_start
   return Math.min(conn.daily_limit, 10 + 5 * days);
 }
 
+/**
+ * Correos automáticos (de secuencias) enviados desde un buzón en las últimas
+ * `hours` horas, como el límite «en 24 horas» de Apollo.
+ */
+export async function automatedSent(mailboxId: string, hours: number): Promise<number> {
+  const [r] = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM emails WHERE mailbox_id = ${mailboxId} AND direction = 'out' AND status = 'sent'
+      AND enrollment_id IS NOT NULL AND sent_at > now() - make_interval(hours => ${hours})`;
+  return r.n;
+}
+
+/**
+ * ¿Puede salir ya un correo automático desde este buzón? Si no, cuándo
+ * volver a intentarlo: límite diario (con calentamiento en los de outbound),
+ * máximo por hora y margen entre correos, para que no salgan todos de golpe.
+ */
+export async function mailboxGate(conn: Connection, now = new Date()): Promise<{ ok: true } | { ok: false; retryAt: Date; reason: string }> {
+  if (conn.status !== "active") return { ok: false, retryAt: new Date(now.getTime() + 3600000), reason: "Buzón desconectado" };
+  if (conn.paused) return { ok: false, retryAt: new Date(now.getTime() + 3600000), reason: "Buzón en pausa" };
+  const daily = conn.purpose === "outbound" ? warmupLimit(conn) : conn.daily_limit;
+  if (await automatedSent(conn.id, 24) >= daily) return { ok: false, retryAt: new Date(now.getTime() + 2 * 3600000), reason: "Límite diario del buzón" };
+  if (await automatedSent(conn.id, 1) >= conn.hourly_limit) return { ok: false, retryAt: new Date(now.getTime() + 15 * 60000), reason: "Límite por hora del buzón" };
+  const gap = conn.min_gap_seconds * 1000;
+  if (conn.last_sent_at && now.getTime() - new Date(conn.last_sent_at).getTime() < gap) {
+    // Un poco de variación: los envíos espaciados de forma irregular parecen más humanos.
+    return { ok: false, retryAt: new Date(new Date(conn.last_sent_at).getTime() + gap + Math.floor(Math.random() * 60000)), reason: "Espaciando los envíos" };
+  }
+  return { ok: true };
+}
+
 export async function sentToday(mailboxId: string): Promise<number> {
   const [r] = await sql<{ n: number }[]>`
     SELECT count(*)::int AS n FROM emails WHERE mailbox_id = ${mailboxId} AND direction = 'out' AND sent_at >= date_trunc('day', now())`;
@@ -194,6 +227,10 @@ type EmailInput = {
   templateId?: string | null;
   /** Archivos adjuntos (ya comprobado su tamaño). */
   attachments?: (MailAttachment & { file_id?: string | null; library_id?: string | null; size?: number })[];
+  /** Copias (CC/BCC) y correo al que responde (para ir en el mismo hilo). */
+  cc?: string[]; bcc?: string[]; replyToEmailId?: string | null;
+  /** Enlace de baja con un clic (cabecera List-Unsubscribe). */
+  listUnsubscribe?: string | null;
   /** Correo ya guardado (p. ej. uno programado que llega su hora). */
   emailId?: string;
 };
@@ -223,10 +260,13 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
     ? await sql<{ id: string }[]>`UPDATE emails SET ${sql(values as unknown as Record<string, never>)} WHERE id = ${v.emailId} RETURNING id`
     : await sql<{ id: string }[]>`INSERT INTO emails ${sql(values as unknown as Record<string, never>)} RETURNING id`;
 
-  let sent: { ref: string };
+  const [prev] = v.replyToEmailId
+    ? await sql<{ external_ref: string | null }[]>`SELECT external_ref FROM emails WHERE id = ${v.replyToEmailId} AND status = 'sent'` : [];
+  let sent: SendResult;
   try {
     sent = await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: v.to, subject: v.subject, body: v.body, html,
-                                                      attachments: v.attachments?.map((a) => ({ name: a.name, mime: a.mime, data: a.data })) }));
+                                                      attachments: v.attachments?.map((a) => ({ name: a.name, mime: a.mime, data: a.data })),
+                                                      cc: v.cc, bcc: v.bcc, replyToRef: prev?.external_ref ?? null, listUnsubscribe: v.listUnsubscribe ?? null }));
   } catch (err) {
     await sql`UPDATE emails SET status = 'failed', error = ${err instanceof Error ? err.message.slice(0, 500) : "Error al enviar"} WHERE id = ${row.id}`;
     throw err;
@@ -236,8 +276,10 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
     due_at: new Date(), done: true, deal_id: v.dealId ?? null, person_id: v.personId ?? null,
     organization_id: v.organizationId ?? null, owner_id: conn.user_id, external_ref: sent.ref,
   }));
-  await sql`UPDATE emails SET status = 'sent', sent_at = now(), external_ref = ${sent.ref}, activity_id = ${activityId}, mailbox_id = ${conn.id}
+  await sql`UPDATE emails SET status = 'sent', sent_at = now(), external_ref = ${sent.ref}, activity_id = ${activityId}, mailbox_id = ${conn.id},
+                   thread_ref = ${sent.threadRef ?? null}, message_id_hdr = ${sent.messageIdHdr ?? null}, reply_to_email = ${v.replyToEmailId ?? null}
             WHERE id = ${row.id}`;
+  await sql`UPDATE mailbox_connections SET last_sent_at = now() WHERE id = ${conn.id}`;
   // Qué adjuntos llevó (si es un programado, ya estaban apuntados).
   if (v.attachments?.length && !v.emailId) {
     for (const a of v.attachments) {

@@ -98,21 +98,37 @@ export const microsoft: Provider = {
   },
 
   async send(c, v) {
+    const recipients = (list?: string[]) => (list ?? []).filter(Boolean).map((address) => ({ emailAddress: { address } }));
+    const content = {
+      subject: v.subject,
+      body: v.html ? { contentType: "HTML", content: v.html } : { contentType: "Text", content: v.body },
+      toRecipients: [{ emailAddress: { address: v.to.email, name: v.to.name ?? undefined } }],
+      ...(v.cc?.length ? { ccRecipients: recipients(v.cc) } : {}),
+      ...(v.bcc?.length ? { bccRecipients: recipients(v.bcc) } : {}),
+      ...(v.attachments?.length ? { attachments: v.attachments.map((a) => ({
+        "@odata.type": "#microsoft.graph.fileAttachment", name: a.name, contentType: a.mime, contentBytes: Buffer.from(a.data).toString("base64"),
+      })) } : {}),
+    };
+    // Respuesta en el mismo hilo: se crea como respuesta al original (Graph no deja poner In-Reply-To a mano).
+    let draft: { id: string; internetMessageId: string; conversationId?: string } | null = null;
+    const prev = v.replyToRef?.startsWith("msg:") ? v.replyToRef.slice(4) : null;
+    if (prev) {
+      try {
+        const q = new URLSearchParams({ $filter: `internetMessageId eq '${prev.replace(/'/g, "''")}'`, $select: "id", $top: "1" });
+        const found = await c.call<{ value?: { id: string }[] }>(`${GRAPH()}/me/messages?${q}`);
+        const original = found.value?.[0]?.id;
+        if (original) {
+          const reply = await c.call<{ id: string }>(`${GRAPH()}/me/messages/${encodeURIComponent(original)}/createReply`, { method: "POST" });
+          draft = await c.call<{ id: string; internetMessageId: string; conversationId?: string }>(
+            `${GRAPH()}/me/messages/${encodeURIComponent(reply.id)}`, { method: "PATCH", json: content });
+        }
+      } catch { draft = null; /* si no se encuentra el original, sale como correo nuevo */ }
+    }
     // Se crea como borrador y se envía: así se conoce su Message-ID y la
     // sincronización de «Enviados» no lo duplica.
-    const draft = await c.call<{ id: string; internetMessageId: string }>(`${GRAPH()}/me/messages`, {
-      method: "POST",
-      json: {
-        subject: v.subject,
-        body: v.html ? { contentType: "HTML", content: v.html } : { contentType: "Text", content: v.body },
-        toRecipients: [{ emailAddress: { address: v.to.email, name: v.to.name ?? undefined } }],
-        ...(v.attachments?.length ? { attachments: v.attachments.map((a) => ({
-          "@odata.type": "#microsoft.graph.fileAttachment", name: a.name, contentType: a.mime, contentBytes: Buffer.from(a.data).toString("base64"),
-        })) } : {}),
-      },
-    });
+    if (!draft) draft = await c.call<{ id: string; internetMessageId: string; conversationId?: string }>(`${GRAPH()}/me/messages`, { method: "POST", json: content });
     await c.call(`${GRAPH()}/me/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
-    return { ref: `msg:${draft.internetMessageId}` };
+    return { ref: `msg:${draft.internetMessageId}`, threadRef: draft.conversationId ?? null, messageIdHdr: draft.internetMessageId };
   },
 
   async messages(c, since) {
