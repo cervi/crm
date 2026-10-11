@@ -1741,7 +1741,10 @@ export type InboxItem = {
   created_at: Date; decided_at: Date | null; executed_at: Date | null;
 };
 
-export async function listActions({ view, dealId, limit = 200 }: { view: "pending" | "log"; dealId?: string; limit?: number }) {
+export type InboxFilter = { type?: string | null; rule?: string | null; q?: string | null };
+
+export async function listActions({ view, dealId, limit = 200, filter }: { view: "pending" | "log"; dealId?: string; limit?: number; filter?: InboxFilter }) {
+  const type = filter?.type || null, rule = filter?.rule || null, q = (filter?.q ?? "").trim().toLowerCase();
   return sql<InboxItem[]>`
     SELECT x.id, x.actor, x.agent_name, r.key AS rule_key, r.name AS rule_name, x.action_type, x.title, x.reason,
            x.payload, x.status, x.mode, x.result, x.error, x.deal_id, d.title AS deal_title,
@@ -1754,9 +1757,29 @@ export async function listActions({ view, dealId, limit = 200 }: { view: "pendin
     LEFT JOIN organizations o ON o.id = d.organization_id
     WHERE ${view === "pending" ? sql`x.status = 'pending'` : sql`x.status <> 'pending'`}
       AND (${dealId ?? null}::uuid IS NULL OR x.deal_id = ${dealId ?? null}::uuid)
+      AND (${type}::text IS NULL OR x.action_type = ${type}::text)
+      AND (${rule}::text IS NULL OR (${rule}::text = 'external' AND x.actor = 'external') OR r.key = ${rule}::text)
+      AND (${q} = '' OR lower(x.title) LIKE ${`%${q}%`} OR lower(coalesce(d.title, '')) LIKE ${`%${q}%`} OR lower(coalesce(o.name, '')) LIKE ${`%${q}%`})
     ORDER BY ${view === "pending" ? sql`x.created_at` : sql`coalesce(x.executed_at, x.decided_at, x.created_at) DESC`}
     LIMIT ${limit}`;
 }
+
+/** Cuántas propuestas pendientes hay de cada tipo y de cada regla (para filtrar la bandeja). */
+export async function pendingFacets(): Promise<{ types: { key: string; n: number }[]; rules: { key: string; label: string; n: number }[] }> {
+  const [types, rules] = await Promise.all([
+    sql<{ key: string; n: number }[]>`SELECT action_type AS key, count(*)::int AS n FROM automation_actions WHERE status = 'pending' GROUP BY 1 ORDER BY 2 DESC`,
+    sql<{ key: string; label: string; n: number }[]>`
+      SELECT CASE WHEN x.actor = 'external' THEN 'external' ELSE coalesce(r.key, 'otros') END AS key,
+             CASE WHEN x.actor = 'external' THEN coalesce(max(x.agent_name), 'Agentes externos') ELSE coalesce(max(r.name), 'Asistente') END AS label,
+             count(*)::int AS n
+      FROM automation_actions x LEFT JOIN automation_rules r ON r.id = x.rule_id
+      WHERE x.status = 'pending' GROUP BY 1 ORDER BY 3 DESC`,
+  ]);
+  return { types, rules };
+}
+
+/** Tipos que se pueden aprobar en bloque: los correos no (cada uno se revisa antes de enviarlo). */
+export const BULK_APPROVABLE = new Set(["create_task", "add_note", "move_stage", "update_deal", "notify"]);
 
 export async function countPending(): Promise<number> {
   const [{ n }] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM automation_actions WHERE status = 'pending'`;

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { actionLabel, isUndoable, type InboxItem } from "@/lib/automations";
 import { dateTime } from "@/lib/format";
-import { approveAction, dismissActionAction, undoActionAction } from "@/app/actions/automations";
+import { approveAction, approveAndNextAction, dismissActionAction, dismissAndNextAction, undoActionAction } from "@/app/actions/automations";
 import { ActionForm } from "../ActionForm";
 import { Icon } from "../Icon";
 import { EmailDraftFields } from "./EmailDraftFields";
@@ -23,14 +23,18 @@ export const proposer = (i: InboxItem) =>
   i.actor === "external" ? (i.agent_name ?? "Agente externo") : (i.rule_name ?? "Asistente");
 
 /** Propuesta pendiente en la bandeja de decisiones (o en el panel del deal). */
-export function ProposalCard({ item, showDeal = true, canSend = false }: { item: InboxItem; showDeal?: boolean; canSend?: boolean }) {
+export function ProposalCard({ item, showDeal = true, canSend = false, next }: { item: InboxItem; showDeal?: boolean; canSend?: boolean;
+  /** En la bandeja: adónde ir después de decidir (la siguiente propuesta). */
+  next?: string }) {
   const p = item.payload;
+  const approve = next ? approveAndNextAction.bind(null, item.id, next) : approveAction.bind(null, item.id);
+  const dismiss = next ? dismissAndNextAction.bind(null, item.id, next) : dismissActionAction.bind(null, item.id);
   return (
     <article className="proposal" aria-label={item.title}>
       <div className="proposal-head">
         <span className="badge ai"><Icon name="spark" />{actionLabel(item.action_type)}</span>
         <span className="meta">{proposer(item)} · {dateTime(item.created_at)}</span>
-        <ActionForm action={dismissActionAction.bind(null, item.id)} submitLabel="Descartar" pendingLabel="…" secondary className="form inline proposal-dismiss" />
+        <ActionForm action={dismiss} submitLabel="Descartar" pendingLabel="…" secondary className="form inline proposal-dismiss" />
       </div>
       <h3>{item.title}</h3>
       <p className="muted proposal-reason">
@@ -41,7 +45,7 @@ export function ProposalCard({ item, showDeal = true, canSend = false }: { item:
         {showDeal && item.lead_id && <> · <Link href={`/leads/${item.lead_id}`}>{item.lead_title}</Link></>}
         {showDeal && item.account_id && <> · <Link href={`/organizations/${item.account_id}`}>{item.account_name}</Link></>}
       </p>
-      <ActionForm action={approveAction.bind(null, item.id)} submitLabel={item.action_type === "draft_email" && canSend ? "Enviar desde mi correo"
+      <ActionForm action={approve} submitLabel={item.action_type === "draft_email" && canSend ? "Enviar desde mi correo"
         : item.action_type === "move_stage" && s(p.stage_name) ? `Mover a «${s(p.stage_name)}»` : APPROVE_LABEL[item.action_type] ?? "Aprobar"} pendingLabel="…" good>
         {item.action_type === "draft_email" && <EmailDraftFields to={s(p.to)} subject={s(p.subject)} body={s(p.body)} canSend={canSend} />}
         {item.action_type === "create_task" && (

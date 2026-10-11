@@ -4,11 +4,12 @@ import { saveAutopilot } from "@/lib/autopilot";
 
 import { adminOnly, guard } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
 import { attempt, type ActionState } from "@/lib/errors";
 import {
   createCustomRule, deleteCustomRule, updateCustomRule,
-  dismissAction, executeAction, runAutomations, setPaused, setPermission, setRuleAutonomy, undoAction, updateRuleParams,
+  BULK_APPROVABLE, dismissAction, executeAction, runAutomations, setPaused, setPermission, setRuleAutonomy, undoAction, updateRuleParams,
   type AgentKind, type Autonomy, type ExecutableAction,
 } from "@/lib/automations";
 
@@ -119,4 +120,42 @@ export async function saveAutopilotAction(_: ActionState, form: FormData): Promi
   const res = await attempt(() => saveAutopilot(Object.fromEntries(form)));
   revalidatePath("/settings/autopilot");
   return res;
+}
+
+/** Aprobar desde la bandeja y pasar a la siguiente propuesta. */
+export async function approveAndNextAction(id: string, next: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const res = await approveAction(id, _, form);
+  if (res && "error" in res && res.error) return res;
+  redirect(next.startsWith("/inbox") ? next : "/inbox");
+}
+
+export async function dismissAndNextAction(id: string, next: string, _: ActionState): Promise<ActionState> {
+  const res = await dismissActionAction(id, _);
+  if (res && "error" in res && res.error) return res;
+  redirect(next.startsWith("/inbox") ? next : "/inbox");
+}
+
+/** Varias a la vez: descartar cualquiera; aprobar solo las que no son correos. */
+export async function bulkInboxAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const g = await guard("write");
+  if ("error" in g) return g;
+  const op = String(form.get("op") ?? "");
+  const ids = form.getAll("id").map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 500);
+  if (!ids.length) return { error: "Marca al menos una propuesta." };
+  let done = 0, skipped = 0, failed = 0;
+  if (op === "dismiss") {
+    for (const id of ids) { try { await dismissAction(id, g.actor); done++; } catch { failed++; } }
+  } else if (op === "approve") {
+    const rows = await sql<{ id: string; action_type: string }[]>`SELECT id, action_type FROM automation_actions WHERE id = ANY(${ids}::uuid[]) AND status = 'pending'`;
+    for (const r of rows) {
+      if (!BULK_APPROVABLE.has(r.action_type)) { skipped++; continue; }
+      try { await executeAction(r.id, { actor: g.actor }); done++; } catch { failed++; }
+    }
+  } else return { error: "Acción no válida." };
+  refresh();
+  const what = op === "dismiss" ? "descartada" : "aprobada";
+  const parts = [`${done} ${what}${done === 1 ? "" : "s"}`];
+  if (skipped) parts.push(`${skipped} correo${skipped === 1 ? "" : "s"} sin tocar: revísalos uno a uno antes de enviarlos`);
+  if (failed) parts.push(`${failed} ya no estaba${failed === 1 ? "" : "n"} pendiente${failed === 1 ? "" : "s"}`);
+  return { ok: true, message: `${parts.join(" · ")}.` };
 }

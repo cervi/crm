@@ -2468,3 +2468,37 @@ fieldset.readonly-fields input, fieldset.readonly-fields select, fieldset.readon
   .cfunnel-row { grid-template-columns: 92px minmax(0, 1fr) 70px; gap: 8px; }
   .cfunnel-step { padding-left: 92px; padding-right: 70px; }
 }
+
+/* Bandeja de la IA: lista a la izquierda, propuesta a la derecha, a todo el ancho */
+.inbox-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 14px; }
+.inbox-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.inbox-search input[name="q"] { min-width: 240px; }
+.inbox-split { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.inbox-side { position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); }
+.inbox-list ul { list-style: none; margin: 0; padding: 0; }
+.inbox-list li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.inbox-list li:last-child { border-bottom: 0; }
+.inbox-list li > input { margin-top: 3px; }
+.inbox-list li.on { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.inbox-list li:hover:not(.on) { background: var(--panel-2); }
+.inbox-list li a { display: grid; gap: 2px; color: inherit; min-width: 0; }
+.inbox-list li a:hover { text-decoration: none; }
+.inbox-list li strong { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.inbox-row-top { display: flex; justify-content: space-between; gap: 8px; }
+.inbox-type { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--accent-ink); font-weight: 600; }
+.inbox-type svg { width: 13px; height: 13px; }
+.inbox-ctx { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-bulk { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+.inbox-bulk .checkbox { margin: 0; font-size: 13px; }
+.inbox-bulk-actions { display: inline-flex; gap: 6px; align-items: center; }
+.inbox-list .form-error, .inbox-list .form-ok { margin: 8px 12px; }
+.inbox-detail { min-width: 0; display: grid; gap: 10px; }
+.inbox-detail .proposal { margin: 0; }
+.inbox-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.inbox-nav-btns { display: inline-flex; gap: 6px; }
+.inbox-nav-btns [aria-disabled="true"] { opacity: .45; pointer-events: none; }
+@media (max-width: 900px) {
+  .inbox-split { grid-template-columns: 1fr; }
+  .inbox-side { position: static; max-height: 360px; }
+  .inbox-search input[name="q"] { min-width: 0; flex: 1; }
+}
