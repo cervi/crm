@@ -895,15 +895,19 @@ async function stopFinished(): Promise<number> {
   n += await stop("Respondió alguien de su empresa", sql`s.same_account = 'stop' AND ${colleague}`);
   // «Retrasar»: el siguiente paso espera N días desde esa respuesta.
   await sql`
-    UPDATE sequence_enrollments e SET next_run_at = greatest(e.next_run_at, x.at + make_interval(days => s.same_account_days))
-    FROM sequences s, LATERAL (
-      SELECT max(r.sent_at) AS at FROM person_organizations me
+    UPDATE sequence_enrollments e SET next_run_at = x.at + make_interval(days => s.same_account_days)
+    FROM sequences s, (
+      SELECT e2.id, max(r.sent_at) AS at
+      FROM sequence_enrollments e2
+      JOIN sequences s2 ON s2.id = e2.sequence_id AND s2.same_account = 'delay'
+      JOIN person_organizations me ON me.person_id = e2.person_id AND me.status = 'current'
       JOIN person_organizations other ON other.organization_id = me.organization_id AND other.status = 'current' AND other.person_id <> me.person_id
-      JOIN sequence_enrollments oe ON oe.sequence_id = e.sequence_id AND oe.person_id = other.person_id
-      JOIN emails r ON r.person_id = other.person_id AND r.direction = 'in' AND r.sent_at > oe.created_at AND r.sent_at > e.created_at
+      JOIN sequence_enrollments oe ON oe.sequence_id = e2.sequence_id AND oe.person_id = other.person_id
+      JOIN emails r ON r.person_id = other.person_id AND r.direction = 'in' AND r.sent_at > oe.created_at AND r.sent_at > e2.created_at
         AND r.reply_class IS DISTINCT FROM 'ooo' AND r.reply_class IS DISTINCT FROM 'bounce'
-      WHERE me.person_id = e.person_id AND me.status = 'current') x
-    WHERE s.id = e.sequence_id AND s.same_account = 'delay' AND e.status = 'active' AND e.next_run_at IS NOT NULL AND x.at IS NOT NULL
+      WHERE e2.status = 'active'
+      GROUP BY e2.id) x
+    WHERE x.id = e.id AND s.id = e.sequence_id AND e.next_run_at IS NOT NULL
       AND e.next_run_at < x.at + make_interval(days => s.same_account_days)`;
   n += await stop("El deal se cerró", sql`EXISTS (
     SELECT 1 FROM deals d WHERE d.id = e.deal_id AND (d.status <> 'open' OR d.deleted_at IS NOT NULL))`);
