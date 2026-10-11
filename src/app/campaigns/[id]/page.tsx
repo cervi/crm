@@ -114,7 +114,7 @@ async function Summary({ id, kpis, ready }: { id: string; kpis: { label: string;
   let worst: { from: string; to: string; rate: number } | null = null;
   a.funnel.forEach((s, i) => {
     const prev = a.funnel[i - 1];
-    if (!prev || prev.value === 0) return;
+    if (!prev || prev.value === 0 || s.late) return;
     const rate = s.value / prev.value;
     if (!worst || rate < worst.rate) worst = { from: prev.label.toLowerCase(), to: s.label.toLowerCase(), rate };
   });

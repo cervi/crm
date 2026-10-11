@@ -39,6 +39,7 @@ function short(v: number, f: Fmt): string {
 }
 function niceMax(v: number) {
   if (v <= 0) return 1;
+  if (v <= 10) return v <= 5 ? Math.max(2, Math.ceil(v)) : Math.ceil(v / 2) * 2;
   const p = 10 ** Math.floor(Math.log10(v));
   for (const m of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p;
   return 10 * p;
@@ -86,7 +87,10 @@ function Tip({ x, y, title, rows, f, note, hint }: { x: number; y: number; title
 }
 
 function Axis({ max, f }: { max: number; f: Fmt }) {
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * max);
+  // Con cifras pequeñas (contar correos, personas…), marcas enteras: nada de «2, 2» por redondear 1,5 y 2,25.
+  const small = f === "number" && max <= 10;
+  const step = max <= 5 ? 1 : 2;
+  const ticks = small ? Array.from({ length: Math.floor(max / step) + 1 }, (_, i) => i * step) : [0, 0.25, 0.5, 0.75, 1].map((t) => t * max);
   const y = (v: number) => PAD.t + (1 - v / max) * (H - PAD.t - PAD.b);
   return (
     <g aria-hidden="true">

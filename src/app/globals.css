@@ -1623,8 +1623,8 @@ main.reports > .sales-head { margin-top: 18px !important; }
 .chart-card.wide { grid-column: 1 / -1; }
 .chart-card h3 { margin: 0; font-size: 15px; }
 .chart-card .chart-sub { margin: -6px 0 0; font-size: 12.5px; color: var(--muted); }
-.sales-chart { display: grid; gap: 8px; }
-.chart-box { position: relative; }
+.sales-chart { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+.chart-box { position: relative; min-width: 0; }
 .chart-box svg { display: block; width: 100%; height: auto; overflow: visible; }
 .chart-box .grid { stroke: var(--border); stroke-width: 1; }
 .chart-box .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -2444,27 +2444,27 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .example-offer .head-actions { flex-wrap: wrap; }
 
 /* Embudo de campaña: barras centradas de un solo color (series-1), conversión entre fases */
-.funnel { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.funnel li { position: relative; display: grid; }
-.funnel-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 96px; align-items: center; gap: 12px; padding: 4px 6px; border-radius: var(--r-sm); color: inherit; }
-a.funnel-row:hover, .funnel li.on .funnel-row { background: var(--panel-2); text-decoration: none; }
-.funnel-label { font-size: 13px; color: var(--text-2); }
-.funnel-track { display: flex; justify-content: center; height: 26px; }
-.funnel-bar { display: block; height: 100%; background: var(--series-1); border-radius: 4px; transition: width .2s; }
-.funnel-bar.empty { width: 2px !important; background: var(--border-strong); }
-.funnel li.on .funnel-bar { filter: brightness(1.08); }
-.funnel-value { display: flex; align-items: baseline; gap: 6px; justify-content: flex-end; font-variant-numeric: tabular-nums; }
-.funnel-value b { font-size: 15px; color: var(--text); }
-.funnel-step { display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); padding-left: 130px; padding-right: 96px; line-height: 1.4; }
-.funnel-flag { font-weight: 600; color: var(--warn); background: var(--warn-soft); border-radius: 9px; padding: 0 7px; }
-.funnel-tip { left: 50%; top: 100%; transform: translate(-50%, 4px); z-index: 6; gap: 3px; min-width: 200px; }
-.funnel-tip strong { color: var(--text); }
+.cfunnel { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.cfunnel li { position: relative; display: grid; }
+.cfunnel-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 96px; align-items: center; gap: 12px; padding: 4px 6px; border-radius: var(--r-sm); color: inherit; }
+a.cfunnel-row:hover, .cfunnel li.on .cfunnel-row { background: var(--panel-2); text-decoration: none; }
+.cfunnel-label { font-size: 13px; color: var(--text-2); }
+.cfunnel-track { display: flex; justify-content: center; height: 26px; }
+.cfunnel-bar { display: block; height: 100%; background: var(--series-1); border-radius: 4px; transition: width .2s; }
+.cfunnel-bar.empty { width: 2px !important; background: var(--border-strong); }
+.cfunnel li.on .cfunnel-bar { filter: brightness(1.08); }
+.cfunnel-value { display: flex; align-items: baseline; gap: 6px; justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.cfunnel-value b { font-size: 15px; color: var(--text); }
+.cfunnel-step { display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); padding-left: 130px; padding-right: 96px; line-height: 1.4; }
+.cfunnel-flag { font-weight: 600; color: var(--warn); background: var(--warn-soft); border-radius: 9px; padding: 0 7px; }
+.cfunnel-tip { left: 50%; top: 100%; transform: translate(-50%, 4px); z-index: 6; gap: 3px; min-width: 200px; }
+.cfunnel-tip strong { color: var(--text); }
 .chart-data summary { cursor: pointer; }
 .chart-data .table-wrap { margin-top: 8px; max-height: 240px; overflow: auto; }
 .badge.open { background: var(--accent-soft); color: var(--accent-ink); }
 fieldset.readonly-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 fieldset.readonly-fields input, fieldset.readonly-fields select, fieldset.readonly-fields textarea { background: var(--panel-2); color: var(--text-2); }
 @media (max-width: 640px) {
-  .funnel-row { grid-template-columns: 92px minmax(0, 1fr) 70px; gap: 8px; }
-  .funnel-step { padding-left: 92px; padding-right: 70px; }
+  .cfunnel-row { grid-template-columns: 92px minmax(0, 1fr) 70px; gap: 8px; }
+  .cfunnel-step { padding-left: 92px; padding-right: 70px; }
 }

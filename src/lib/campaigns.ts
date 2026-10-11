@@ -502,7 +502,7 @@ export async function runCampaignReplies(): Promise<string | number | null> {
 // Analítica de la campaña: embudo por contacto, actividad diaria y respuestas por tipo
 
 export type CampaignAnalytics = {
-  funnel: { key: string; label: string; value: number; note?: string }[];
+  funnel: { key: string; label: string; value: number; note?: string; late?: boolean }[];
   daily: { day: string; sent: number; opened: number; replied: number }[];
   replies: { cls: string; n: number }[];
 };
@@ -527,8 +527,8 @@ export async function campaignAnalytics(id: string): Promise<CampaignAnalytics> 
     { key: "opened", label: "Abrieron", value: f.opened },
     { key: "replied", label: "Respondieron", value: f.replied },
     { key: "interested", label: "Interesados", value: f.interested },
-    { key: "deals", label: "Con deal", value: f.deals },
-    { key: "won", label: "Ganados", value: f.won },
+    { key: "deals", label: "Con deal", value: f.deals, late: true },
+    { key: "won", label: "Ganados", value: f.won, late: true },
   ];
   // Día a día desde el primer envío (como mucho los últimos 60 días).
   const daily = await sql<CampaignAnalytics["daily"]>`
