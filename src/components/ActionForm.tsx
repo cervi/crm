@@ -17,6 +17,8 @@ type Props = {
   secondary?: boolean;
   /** Pide confirmación en el propio formulario explicando la consecuencia (acciones difíciles de deshacer). */
   confirm?: string;
+  /** Solo pide la confirmación si al enviar el campo `field` vale `value` (p. ej. al quitar algo). */
+  confirmWhen?: { field: string; value: string };
 };
 
 /**
@@ -24,7 +26,7 @@ type Props = {
  * Se envía con onSubmit (no con `action`) porque React 19 vacía los campos
  * tras cada envío con `action`, y así se perdería lo escrito al haber un error.
  */
-export function ActionForm({ action, children, submitLabel, pendingLabel, className, resetOnSuccess, danger, good, secondary, confirm }: Props) {
+export function ActionForm({ action, children, submitLabel, pendingLabel, className, resetOnSuccess, danger, good, secondary, confirm, confirmWhen }: Props) {
   const [state, formAction, pending] = useActionState(action, undefined);
   const [, startTransition] = useTransition();
   const ref = useRef<HTMLFormElement>(null);
@@ -56,9 +58,10 @@ export function ActionForm({ action, children, submitLabel, pendingLabel, classN
       className={className ?? "form"}
       onSubmit={(e) => {
         e.preventDefault();
-        if (confirm && !armed) { setArmed(true); return; }
-        setArmed(false);
         const data = new FormData(e.currentTarget);
+        const needsConfirm = Boolean(confirm) && (!confirmWhen || data.get(confirmWhen.field) === confirmWhen.value);
+        if (needsConfirm && !armed) { setArmed(true); return; }
+        setArmed(false);
         startTransition(() => formAction(data));
       }}
     >

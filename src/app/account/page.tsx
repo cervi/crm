@@ -18,7 +18,7 @@ export const metadata = { title: "Mi cuenta" };
 const TABS = [
   { key: "perfil", label: "Perfil y firma", icon: "user" },
   { key: "preferencias", label: "Preferencias", icon: "system" },
-  { key: "seguridad", label: "Contraseña y dispositivos", icon: "settings" },
+  { key: "seguridad", label: "Contraseña y dispositivos", icon: "lock" },
   { key: "avisos", label: "Avisos y resúmenes", icon: "bell" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];

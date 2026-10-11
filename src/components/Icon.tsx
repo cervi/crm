@@ -46,6 +46,7 @@ const PATHS = {
   video: "M3 7h12v10H3zM15 10l6-3v10l-6-3",
   flag: "M5 21V4M5 4h11l-2 4 2 4H5",
   clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
+  lock: "M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 0 1 7 0V11",
   circle: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
 } as const;
 

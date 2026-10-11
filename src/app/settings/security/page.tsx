@@ -74,20 +74,30 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
           </section>
           <section className="panel" aria-label="Recomendaciones">
             <h2>Qué revisar</h2>
-            <ul className="check-list">
-              <li className={posture.admins <= 3 ? "ok" : "todo"}><strong>{posture.admins} administrador{posture.admins === 1 ? "" : "es"}</strong>
-                <span className="meta">{posture.admins <= 3 ? "Bien: cuantos menos, mejor." : "Son muchos: deja como administradores solo a quien lo necesite."} <Link href="/settings/users">Usuarios</Link></span></li>
-              <li className={posture.stale === 0 ? "ok" : "todo"}><strong>{posture.stale} con acceso sin entrar en 60 días</strong>
-                <span className="meta">{posture.stale ? "Si ya no lo usan, dales de baja." : "Nadie con acceso olvidado."} <Link href="/settings/users">Usuarios</Link></span></li>
-              <li className={providers.length && encryptionConfigured() ? "ok" : "todo"}><strong>Entrar con Google o Microsoft</strong>
-                <span className="meta">{providers.length && encryptionConfigured() ? `${posture.sso_users} de ${posture.users} pueden entrar así.` : "Sin configurar: es más seguro que una contraseña."} <Link href="/settings/security?tab=reglas">Reglas y acceso</Link></span></li>
-              <li className={rules.idle_hours ? "ok" : "todo"}><strong>Cierre por inactividad</strong>
-                <span className="meta">{rules.idle_hours ? `Tras ${rules.idle_hours} h sin usarlo hay que volver a entrar.` : "Sin límite: conviene ponerlo si se usa en ordenadores compartidos."}</span></li>
-              <li className={rules.export_admin_only ? "ok" : "todo"}><strong>Descargas de datos</strong>
-                <span className="meta">{rules.export_admin_only ? "Solo los administradores pueden descargar." : "Cualquiera con acceso puede descargar listados en CSV."}</span></li>
-              <li className={posture.temp_pass === 0 && posture.locked === 0 ? "ok" : "todo"}><strong>Contraseñas</strong>
-                <span className="meta">{posture.temp_pass ? `${posture.temp_pass} con contraseña temporal sin cambiar. ` : ""}{posture.locked ? `${posture.locked} bloqueados ahora. ` : ""}{!posture.temp_pass && !posture.locked ? "Todo en orden." : ""}</span></li>
-            </ul>
+            {(() => {
+              const items: { ok: boolean; node: React.ReactNode }[] = [
+                { ok: Boolean(posture.admins <= 3), node: <><strong>{posture.admins} administrador{posture.admins === 1 ? "" : "es"}</strong>
+                <span className="meta">{posture.admins <= 3 ? "Bien: cuantos menos, mejor." : "Son muchos: deja como administradores solo a quien lo necesite."} <Link href="/settings/users">Usuarios</Link></span></> },
+                { ok: Boolean(posture.stale === 0), node: <><strong>{posture.stale} con acceso sin entrar en 60 días</strong>
+                <span className="meta">{posture.stale ? "Si ya no lo usan, dales de baja." : "Nadie con acceso olvidado."} <Link href="/settings/users">Usuarios</Link></span></> },
+                { ok: Boolean(providers.length && encryptionConfigured() && posture.sso_users > 0), node: <><strong>Entrar con Google o Microsoft</strong>
+                <span className="meta">{providers.length && encryptionConfigured() ? (posture.sso_users ? `${posture.sso_users} de ${posture.users} pueden entrar así.` : "Configurado, pero aún nadie entra así.") : "Sin configurar: es más seguro que una contraseña."} <Link href="/settings/security?tab=reglas">Reglas y acceso</Link></span></> },
+                { ok: Boolean(rules.idle_hours), node: <><strong>Cierre por inactividad</strong>
+                <span className="meta">{rules.idle_hours ? `Tras ${rules.idle_hours} h sin usarlo hay que volver a entrar.` : "Sin límite: conviene ponerlo si se usa en ordenadores compartidos."}</span></> },
+                { ok: Boolean(rules.export_admin_only), node: <><strong>Descargas de datos</strong>
+                <span className="meta">{rules.export_admin_only ? "Solo los administradores pueden descargar." : "Cualquiera con acceso puede descargar listados en CSV."}</span></> },
+                { ok: Boolean(posture.temp_pass === 0 && posture.locked === 0), node: <><strong>Contraseñas</strong>
+                <span className="meta">{posture.temp_pass ? `${posture.temp_pass} con contraseña temporal sin cambiar. ` : ""}{posture.locked ? `${posture.locked} bloqueados ahora. ` : ""}{!posture.temp_pass && !posture.locked ? "Todo en orden." : ""}</span></> },
+              ];
+              const todo = items.filter((i) => !i.ok), done = items.filter((i) => i.ok);
+              return (<>
+                {todo.length > 0 && <ul className="check-list">{todo.map((i, n) => <li key={n} className="todo">{i.node}</li>)}</ul>}
+                {done.length > 0 && (todo.length === 0
+                  ? <ul className="check-list">{done.map((i, n) => <li key={n} className="ok">{i.node}</li>)}</ul>
+                  : <details className="check-done"><summary className="meta">Todo en orden: {done.length}</summary>
+                      <ul className="check-list">{done.map((i, n) => <li key={n} className="ok">{i.node}</li>)}</ul></details>)}
+              </>);
+            })()}
           </section>
         </>
       )}
@@ -101,7 +111,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
               <Link href="/settings/security?tab=alertas&todas=1" aria-current={sp.todas === "1" ? "page" : undefined}>Todas</Link>
             </nav>
           </div>
-          <p className="meta" style={{ marginTop: 0 }}>Los administradores reciben aviso de las importantes (intentos fallidos seguidos, administradores nuevos, descargas grandes, un administrador que entra desde otro dispositivo).</p>
+          <p className="meta" style={{ marginTop: 0 }}>Los administradores reciben aviso de las importantes (intentos fallidos seguidos, administradores nuevos, descargas de 500 filas o más, un administrador que entra desde otro dispositivo).</p>
           {alerts.length === 0 ? <p className="muted">Nada que revisar.</p> : (
             <>
               <div className="table-wrap">
@@ -134,7 +144,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
               <label className="field"><span className="label">Cerrar la sesión tras (horas sin usarlo)</span><input name="idle_hours" type="number" min={1} max={720} defaultValue={rules.idle_hours ?? ""} placeholder="sin límite" /></label>
             </div>
             <label className="checkbox"><input type="checkbox" name="export_admin_only" defaultChecked={rules.export_admin_only} />Solo los administradores pueden descargar datos (CSV)</label>
-            <label className="checkbox"><input type="checkbox" name="alert_new_device" defaultChecked={rules.alert_new_device} />Avisar cuando alguien entra desde un dispositivo nuevo</label>
+            <label className="checkbox"><input type="checkbox" name="alert_new_device" defaultChecked={rules.alert_new_device} />Avisar cuando un administrador entra desde un dispositivo nuevo <span className="meta">(los demás quedan en el registro)</span></label>
           </ActionForm>
         </section>
       )}
@@ -159,7 +169,9 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
         ) : (
           <p className="meta" style={{ marginTop: 0 }}>Disponible con {providers.map((k) => PROVIDERS[k].label).join(" y ")}. Cada persona entra con la cuenta de su mismo correo; no le pedimos acceso a nada más.</p>
         )}
-        <ActionForm action={saveSsoSettingsAction} submitLabel="Guardar">
+        <ActionForm action={saveSsoSettingsAction} submitLabel="Guardar acceso con Google y Microsoft" secondary
+                    confirm={sso.passwordLogin ? "Quien no tenga cuenta de Google o Microsoft con su mismo correo dejará de poder entrar desde ya." : undefined}
+                    confirmWhen={sso.passwordLogin ? { field: "password_login", value: "off" } : undefined}>
           <label className="field"><span className="label">Alta automática para el dominio de la empresa</span>
             <input name="sso_domain" defaultValue={sso.domain ?? ""} placeholder="p. ej. aikit.io (vacío = solo quien tenga usuario)" />
             <span className="meta">Quien entre con una cuenta de ese dominio y no tenga usuario se da de alta solo con el rol de abajo. Déjalo vacío para que solo entren los que des de alta tú.</span></label>
@@ -186,7 +198,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
           <p className="callout">Ningún administrador tiene su correo conectado: los enlaces de invitación y de contraseña habrá que copiarlos y enviarlos a mano, y «¿Has olvidado tu contraseña?» no podrá enviar nada.
             Conéctalo en <Link href="/settings/mailbox">Correo, calendario y documentos</Link>.</p>
         ) : (
-          <ActionForm action={saveSystemMailAction} submitLabel="Guardar">
+          <ActionForm action={saveSystemMailAction} submitLabel="Guardar buzón de envío" secondary>
             <label className="field"><span className="label">Enviar desde</span>
               <select name="user_id" defaultValue={mailSetting?.system_mail_user_id ?? ""}>
                 <option value="">Automático ({autoSender?.email ?? mailboxes[0].email})</option>

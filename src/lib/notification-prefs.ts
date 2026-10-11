@@ -14,7 +14,7 @@ export const CATEGORIES = {
   mentions: { label: "Menciones", hint: "Alguien te menciona con @ en una nota.", def: "now" },
   following: { label: "Deals que sigues", hint: "Cambios de fase, notas, archivos y salud de deals y cuentas que sigues.", def: "app" },
   ai: { label: "La IA y los agentes", hint: "Descuentos por aprobar, campañas, secuencias, fichas de reunión.", def: "app" },
-  security: { label: "Seguridad", hint: "Solo administradores: intentos de acceso sospechosos, administradores nuevos y descargas de datos.", def: "now" },
+  security: { label: "Seguridad", hint: "Solo administradores: intentos de acceso sospechosos, administradores nuevos y descargas de datos. Lo urgente (un administrador nuevo, una alerta alta) llega siempre al momento.", def: "digest" },
 } as const;
 export type Category = keyof typeof CATEGORIES;
 export type Channel = "now" | "digest" | "app" | "off";

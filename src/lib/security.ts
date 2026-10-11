@@ -1,5 +1,6 @@
 import { sql } from "./db";
 import { notify } from "./notifications";
+import { UserError } from "./errors";
 
 // ===========================================================================
 // Centro de seguridad: reglas (duración de las sesiones, quién descarga
@@ -22,8 +23,8 @@ export async function saveRules(form: FormData) {
   const days = Math.round(Number(form.get("session_days")));
   const idleRaw = String(form.get("idle_hours") ?? "").trim();
   const idle = idleRaw ? Math.round(Number(idleRaw)) : null;
-  if (!(days >= 1 && days <= 90)) throw new Error("Las sesiones duran entre 1 y 90 días.");
-  if (idle !== null && !(idle >= 1 && idle <= 720)) throw new Error("La inactividad máxima va de 1 a 720 horas, o vacío.");
+  if (!(days >= 1 && days <= 90)) throw new UserError("Las sesiones duran entre 1 y 90 días.");
+  if (idle !== null && !(idle >= 1 && idle <= 720)) throw new UserError("La inactividad máxima va de 1 a 720 horas, o vacío.");
   await sql`UPDATE app_settings SET session_days = ${days}, idle_hours = ${idle}, export_admin_only = ${form.get("export_admin_only") === "on"},
                    alert_new_device = ${form.get("alert_new_device") === "on"}`;
   cache = null;
@@ -43,14 +44,22 @@ export async function raiseAlert(a: { kind: string; title: string; severity?: "i
                             AND at > now() - make_interval(mins => ${a.dedupeMinutes})`;
     if (dup) return;
   }
-  const severity = a.severity ?? "info";
+  let severity = a.severity ?? "info";
+  // Descargas y dispositivos nuevos: como mucho un aviso por persona y hora; el resto queda apuntado sin avisar.
+  if (severity === "warn" && (a.kind === "export" || a.kind === "new_device")) {
+    const who = a.actorId ?? a.userId ?? null;
+    const [dup] = await sql`SELECT 1 FROM security_alerts WHERE kind = ${a.kind} AND severity <> 'info'
+                            AND coalesce(actor_id, user_id) IS NOT DISTINCT FROM ${who}::uuid AND at > now() - interval '1 hour'`;
+    if (dup) severity = "info";
+  }
   await sql`INSERT INTO security_alerts (kind, severity, user_id, actor_id, title, detail)
             VALUES (${a.kind}, ${severity}, ${a.userId ?? null}, ${a.actorId ?? null}, ${a.title.slice(0, 300)}, ${sql.json((a.detail ?? {}) as never)})`;
   if (severity === "info") return;
+  const urgent = severity === "high" || a.kind === "new_admin";
   const admins = await sql<{ id: string }[]>`SELECT id FROM users WHERE kind = 'human' AND is_active AND role = 'admin'`;
   for (const ad of admins) {
     if (ad.id === a.actorId) continue;
-    await notify(sql, { userId: ad.id, kind: `security.${a.kind}`, title: a.title, body: "Revísalo en Ajustes → Seguridad.", link: "/settings/security?tab=alertas" })
+    await notify(sql, { userId: ad.id, kind: `security.${a.kind}`, title: a.title, body: "Revísalo en Ajustes → Seguridad.", link: "/settings/security?tab=alertas", urgent })
       .catch(() => null);
   }
 }
@@ -60,7 +69,7 @@ export async function listAlerts(open = false, limit = 200) {
                actor_name: string | null; acknowledged_at: Date | null; ack_name: string | null }[]>`
     SELECT a.id, a.at, a.kind, a.severity, a.title, a.detail, u.name AS user_name, ac.name AS actor_name, a.acknowledged_at, k.name AS ack_name
     FROM security_alerts a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN users ac ON ac.id = a.actor_id LEFT JOIN users k ON k.id = a.acknowledged_by
-    WHERE (${!open} OR a.acknowledged_at IS NULL)
+    WHERE (${!open} OR (a.acknowledged_at IS NULL AND a.severity <> 'info'))
     ORDER BY a.at DESC LIMIT ${limit}`;
 }
 

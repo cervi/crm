@@ -38,20 +38,27 @@ export default async function UsagePage() {
       FROM users u WHERE u.kind = 'human' AND u.is_active
       ORDER BY u.last_login_at DESC NULLS LAST`,
   ]);
-  const kpis: [string, string | number, string?][] = [
+  const money = (n: number) => `${n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+  // Arriba lo que mira un administrador (accesos, correo, IA); debajo, cuánto hay guardado.
+  const main: [string, string | number, string?][] = [
     ["Usuarios con acceso", c.users, c.invited ? `${c.invited} invitados sin entrar` : undefined],
-    ["Deals", c.deals, `${c.open_deals} abiertos`], ["Contactos", c.persons], ["Empresas", c.orgs], ["Leads", c.leads],
-    ["Archivos", fileSize(c.files_bytes)], ["Correos enviados este mes", c.emails_month, c.seq_emails_month ? `${c.seq_emails_month} de secuencias` : undefined],
-    ["Actividades hechas este mes", c.activities_month], ["Buzones conectados", c.mailboxes],
-    ["IA este mes", spend ? `${spend.month.toFixed(2)} $` : "—", spend?.budget ? `de ${spend.budget} $ de presupuesto` : spend ? `${spend.calls} llamadas` : undefined],
+    ["Buzones conectados", c.mailboxes, c.mailboxes < c.users ? `${c.users - c.mailboxes} sin conectar` : undefined],
+    ["Correos enviados este mes", c.emails_month, c.seq_emails_month ? `${c.seq_emails_month} de secuencias` : undefined],
+    ["Actividades hechas este mes", c.activities_month],
+    ["IA este mes", spend ? money(spend.month) : "—", spend?.budget ? `de ${money(spend.budget)} de presupuesto` : spend ? `${spend.calls} consultas a la IA` : undefined],
+  ];
+  const stored: [string, string | number][] = [
+    ["Deals", `${c.deals.toLocaleString("es-ES")} (${c.open_deals.toLocaleString("es-ES")} abiertos)`], ["Contactos", c.persons.toLocaleString("es-ES")],
+    ["Empresas", c.orgs.toLocaleString("es-ES")], ["Leads", c.leads.toLocaleString("es-ES")], ["Archivos", c.files_bytes ? fileSize(c.files_bytes) : "Sin archivos"],
   ];
   return (
     <main className="page">
       <div className="crumbs"><Link href="/settings">Ajustes</Link></div>
       <div className="page-head"><div><h1>Uso y actividad del equipo</h1><p className="muted" style={{ margin: 0 }}>Cuánto se usa el CRM y quién lo está usando.</p></div></div>
       <section className="kpi-row" aria-label="Uso">
-        {kpis.map(([l, v, h]) => <div key={l} className="kpi"><span className="meta">{l}</span><strong>{v}</strong>{h && <span className="meta">{h}</span>}</div>)}
+        {main.map(([l, v, h]) => <div key={l} className="kpi"><span className="meta">{l}</span><strong>{v}</strong>{h && <span className="meta">{h}</span>}</div>)}
       </section>
+      <p className="usage-stored meta" aria-label="Datos guardados">{stored.map(([l, v]) => <span key={l}>{l}: <strong>{v}</strong></span>)}</p>
       <section className="panel" aria-label="Por persona">
         <h2>Por persona (últimos 30 días)</h2>
         <div className="table-wrap flat"><table>
