@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Brand } from "@/components/Brand";
 import { completeTokenAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
 import { Icon } from "@/components/Icon";
@@ -28,7 +29,7 @@ export default async function AccessPage({ params }: { params: Promise<{ token: 
       : REASON[info.reason];
     return (
       <main className="auth-card">
-        <div className="auth-brand"><Icon name="deals" />CRM</div>
+        <Brand />
         <h1>{r.title}</h1>
         <p>{r.text}</p>
         <div className="form-actions">
@@ -44,7 +45,7 @@ export default async function AccessPage({ params }: { params: Promise<{ token: 
   const providers = encryptionConfigured() ? (["google", "microsoft"] as const).filter((k) => PROVIDERS[k].configured()) : [];
   return (
     <main className="auth-card">
-      <div className="auth-brand"><Icon name="deals" />CRM</div>
+      <Brand />
       <div>
         <h1>{invite ? `Hola, ${info.name.split(" ")[0]}` : "Pon una contraseña nueva"}</h1>
         <p className="meta" style={{ margin: 0 }}>

@@ -44,7 +44,9 @@ export async function loginAction(_: ActionState, form: FormData): Promise<Actio
   }
   await logLogin({ userId: res.user.id, email, method: "password", success: true, ip, ua });
   await startSession(res.user.id);
-  redirect(res.user.must_change_password ? "/account?change=1" : safeNext(form.get("next")));
+  const next = safeNext(form.get("next"));
+  const [pref] = next === "/" ? await sql<{ home: string | null }[]>`SELECT ui_prefs->>'home' AS home FROM users WHERE id = ${res.user.id}` : [];
+  redirect(res.user.must_change_password ? "/account?change=1" : pref?.home || next);
 }
 
 export async function logoutAction(): Promise<void> {
@@ -253,4 +255,43 @@ export async function saveSystemMailAction(_: ActionState, form: FormData): Prom
   });
   revalidatePath("/settings/security");
   return res;
+}
+
+export async function saveRulesAction(_: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const me = await adminOnly();
+    const { saveRules, raiseAlert } = await import("@/lib/security");
+    await saveRules(form);
+    await raiseAlert({ kind: "rules_changed", actorId: me.id, title: "Se han cambiado las reglas de seguridad" });
+  } catch (err) { return { error: toUserMessage(err) }; }
+  revalidatePath("/settings/security");
+  return { ok: true, message: "Reglas guardadas." };
+}
+
+export async function ackAlertsAction(_: ActionState): Promise<ActionState> {
+  const res = await attempt(async () => {
+    const me = await adminOnly();
+    const { acknowledgeAlerts } = await import("@/lib/security");
+    await acknowledgeAlerts(me.id!, "all");
+  });
+  revalidatePath("/settings/security");
+  return res;
+}
+
+export async function saveCompanyAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const res = await attempt(async () => { await adminOnly(); const { saveCompany } = await import("@/lib/company"); await saveCompany(form); });
+  revalidatePath("/", "layout");
+  return res?.error ? res : { ok: true, message: "Guardado." };
+}
+
+/** Preferencias personales: página de inicio y densidad de las tablas. */
+export async function saveUiPrefsAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const me = await currentUser();
+  if (!me) return { error: "Tu sesión ha caducado: vuelve a entrar." };
+  const home = String(form.get("home") ?? "/");
+  const allowed = ["/", "/deals", "/pipelines", "/activities", "/inbox", "/sequences/tasks", "/leads"];
+  const prefs = { home: allowed.includes(home) ? home : "/", density: form.get("density") === "compact" ? "compact" : "comfortable" };
+  await sql`UPDATE users SET ui_prefs = ui_prefs || ${sql.json(prefs)} WHERE id = ${me.id}`;
+  revalidatePath("/", "layout");
+  return { ok: true, message: "Preferencias guardadas." };
 }

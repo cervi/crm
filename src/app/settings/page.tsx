@@ -11,9 +11,13 @@ const GROUPS: (Omit<SettingsGroup, "items"> & { items: Item[] })[] = [
     { href: "/settings/booking", icon: "activities", everyone: true, title: "Enlace de reserva", text: "Tu página para que los contactos elijan hueco en tu calendario.", keywords: "calendly agenda reunion huecos" },
     { href: "/settings/templates", icon: "pencil", everyone: true, title: "Plantillas de correo", text: "Textos para escribir más rápido y seguimiento de aperturas.", keywords: "email plantilla texto aperturas clics" },
   ] },
+  { key: "empresa", title: "Empresa", hint: "Datos de la empresa que se ven en la entrada y los correos.", items: [
+    { href: "/settings/company", icon: "organizations", title: "Ajustes de empresa", text: "Nombre, logo, moneda y zona horaria por defecto.", keywords: "logo nombre moneda zona horaria marca" },
+  ] },
   { key: "equipo", title: "Equipo y accesos", hint: "Quién entra, con qué permisos y cómo se reparte el trabajo.", items: [
     { href: "/settings/users", icon: "persons", title: "Usuarios y permisos", text: "Invitar, roles, dar de baja y recuperar contraseñas.", keywords: "alta baja invitar rol admin comercial contraseña" },
-    { href: "/settings/security", icon: "user", title: "Accesos y seguridad", text: "Entrar con Google o Microsoft, registro de accesos y sesiones.", keywords: "sso login sesiones dominio seguridad" },
+    { href: "/settings/security", icon: "user", title: "Centro de seguridad", text: "Alertas, reglas de sesión y descargas, entrar con Google o Microsoft y registro de accesos.", keywords: "sso login sesiones dominio seguridad alertas reglas exportar dispositivos" },
+    { href: "/settings/usage", icon: "dashboards", title: "Uso y actividad del equipo", text: "Usuarios, registros, correos, IA y quién usa el CRM.", keywords: "uso consumo actividad usuarios resumen" },
     { href: "/settings/assignment", icon: "leads", title: "Reparto de leads y deals", text: "Asignar solos los nuevos, por turnos o por reglas.", keywords: "round robin asignar turnos" },
   ] },
   { key: "ventas", title: "Ventas", hint: "Cómo está montado vuestro proceso comercial.", items: [

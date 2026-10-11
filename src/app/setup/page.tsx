@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Brand } from "@/components/Brand";
 import { setupAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
 import { Icon } from "@/components/Icon";
@@ -13,7 +14,7 @@ export default async function SetupPage() {
   const production = process.env.NODE_ENV === "production";
   return (
     <main className="auth-card">
-      <div className="auth-brand"><Icon name="deals" />CRM</div>
+      <Brand />
       <h1>Puesta en marcha</h1>
       <p>Crea el primer usuario administrador. Después podrás dar acceso al resto del equipo desde Ajustes → Usuarios y permisos.</p>
       <ActionForm action={setupAction} submitLabel="Crear administrador y entrar" pendingLabel="Creando…">

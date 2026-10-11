@@ -98,6 +98,10 @@ export async function updateUser(byId: string, userId: string, input: Record<str
     inviteVoided = voided.some((t) => t.purpose === "invite");
   }
   if (cur.role !== v.role) await audit(byId, userId, "role_changed", { from: cur.role, to: v.role });
+  if (cur.role !== "admin" && v.role === "admin") {
+    const { raiseAlert } = await import("./security");
+    await raiseAlert({ kind: "new_admin", severity: "warn", userId, actorId: byId, title: `${v.name} es ahora administrador` });
+  }
   if (cur.name !== v.name || (cur.email ?? "") !== v.email) await audit(byId, userId, "data_changed", { email_changed: (cur.email ?? "") !== v.email });
   // Si baja de administrador, que vuelva a entrar con sus permisos nuevos.
   if (cur.role === "admin" && v.role !== "admin") await sql`DELETE FROM sessions WHERE user_id = ${userId}`;

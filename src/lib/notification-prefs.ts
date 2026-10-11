@@ -14,6 +14,7 @@ export const CATEGORIES = {
   mentions: { label: "Menciones", hint: "Alguien te menciona con @ en una nota.", def: "now" },
   following: { label: "Deals que sigues", hint: "Cambios de fase, notas, archivos y salud de deals y cuentas que sigues.", def: "app" },
   ai: { label: "La IA y los agentes", hint: "Descuentos por aprobar, campañas, secuencias, fichas de reunión.", def: "app" },
+  security: { label: "Seguridad", hint: "Solo administradores: intentos de acceso sospechosos, administradores nuevos y descargas de datos.", def: "now" },
 } as const;
 export type Category = keyof typeof CATEGORIES;
 export type Channel = "now" | "digest" | "app" | "off";
@@ -33,6 +34,7 @@ export type NotificationPrefs = {
 };
 
 export function categoryOf(kind: string): Category {
+  if (kind.startsWith("security.")) return "security";
   if (/^(email\.(received|opened|reopened)|deal\.booked|doc\.viewed)$/.test(kind)) return "replies";
   if (kind.startsWith("proposal.") || kind.startsWith("sign.")) return "proposals";
   if (kind === "assigned") return "assigned";

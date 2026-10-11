@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Brand } from "@/components/Brand";
 import { redirect } from "next/navigation";
 import { loginAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
@@ -38,7 +39,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <div className="login">
       <aside className="login-side" aria-hidden="true">
-        <div className="auth-brand light"><Icon name="deals" />CRM</div>
+        <Brand light />
         <div>
           <h2>Tu día de ventas, ordenado.</h2>
           <ul>
@@ -50,7 +51,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <p className="meta">Si tienes problemas para entrar, habla con un administrador de tu empresa.</p>
       </aside>
       <main className="auth-card login-card">
-        <div className="auth-brand"><Icon name="deals" />CRM</div>
+        <Brand />
         <div>
           <h1>Entrar</h1>
           <p className="meta">Bienvenido de nuevo.</p>

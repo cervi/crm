@@ -6,6 +6,10 @@ export async function logLogin(v: { userId?: string | null; email?: string | nul
   await sql`INSERT INTO login_events (user_id, email, method, success, reason, ip, user_agent)
             VALUES (${v.userId ?? null}, ${v.email?.toLowerCase().slice(0, 320) ?? null}, ${v.method}, ${v.success}, ${v.reason?.slice(0, 200) ?? null},
                     ${v.ip ?? null}, ${v.ua?.slice(0, 300) ?? null})`.catch(() => null);
+  // Centro de seguridad: intentos fallidos seguidos y entradas desde un dispositivo nuevo.
+  const sec = await import("./security");
+  if (!v.success && v.email && v.method !== "reset") await sec.checkFailedLogins(v.email).catch(() => null);
+  if (v.success && v.userId && v.method !== "reset") await sec.checkNewDevice(v.userId, v.ua ?? null, v.ip ?? null).catch(() => null);
 }
 
 export type LoginEvent = { id: number; user_id: string | null; user_name: string | null; email: string | null; method: string; success: boolean;

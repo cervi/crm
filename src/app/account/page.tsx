@@ -1,4 +1,4 @@
-import { changePasswordAction, signOutOthersAction, updateProfileAction } from "@/app/actions/auth";
+import { changePasswordAction, saveUiPrefsAction, signOutOthersAction, updateProfileAction } from "@/app/actions/auth";
 import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
 import { Avatar } from "@/components/Avatar";
@@ -17,7 +17,8 @@ export const metadata = { title: "Mi cuenta" };
 
 const TABS = [
   { key: "perfil", label: "Perfil y firma", icon: "user" },
-  { key: "seguridad", label: "Contraseña y sesiones", icon: "settings" },
+  { key: "preferencias", label: "Preferencias", icon: "system" },
+  { key: "seguridad", label: "Contraseña y dispositivos", icon: "settings" },
   { key: "avisos", label: "Avisos y resúmenes", icon: "bell" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
@@ -31,6 +32,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const [sig] = await sql<{ email_signature: string | null }[]>`SELECT email_signature FROM users WHERE id = ${user.id}`;
   const [prefs, conn] = await Promise.all([getPrefs(user.id), connectionOf(user.id).catch(() => null)]);
   const hasMail = conn?.status === "active";
+  const [ui] = await sql<{ home: string | null; density: string | null }[]>`SELECT ui_prefs->>'home' AS home, ui_prefs->>'density' AS density FROM users WHERE id = ${user.id}`;
   const hours = Array.from({ length: 24 }, (_, h) => h);
   return (
     <main className="page">
@@ -79,6 +81,30 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
                 </ActionForm>
               </section>
             </>
+          )}
+
+          {tab === "preferencias" && (
+            <section className="panel" aria-labelledby="h-pref">
+              <h2 id="h-pref">Preferencias</h2>
+              <ActionForm action={saveUiPrefsAction} submitLabel="Guardar preferencias" className="form form-narrow">
+                <label className="field"><span className="label">Al entrar, empezar en</span>
+                  <select name="home" defaultValue={ui?.home ?? "/"}>
+                    <option value="/">Hoy (la portada)</option>
+                    <option value="/deals">Mis deals</option>
+                    <option value="/pipelines">Deals (tablero)</option>
+                    <option value="/activities">Actividades</option>
+                    <option value="/sequences/tasks">Tareas de secuencias</option>
+                    <option value="/inbox">Bandeja de la IA</option>
+                    <option value="/leads">Leads</option>
+                  </select></label>
+                <label className="field"><span className="label">Densidad de las tablas</span>
+                  <select name="density" defaultValue={ui?.density ?? "comfortable"}>
+                    <option value="comfortable">Cómoda</option>
+                    <option value="compact">Compacta (más filas a la vista)</option>
+                  </select></label>
+                <p className="meta" style={{ margin: 0 }}>El tema claro u oscuro se cambia desde tu foto, arriba a la derecha.</p>
+              </ActionForm>
+            </section>
           )}
 
           {tab === "seguridad" && (

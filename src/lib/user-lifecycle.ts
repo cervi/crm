@@ -5,6 +5,7 @@ import { publicBase } from "./email-track";
 import { UserError } from "./errors";
 import { logLogin } from "./login-log";
 import { mailHtml } from "./mail-html";
+import { getCompany } from "./company";
 import { listConnections, sendPlainEmail, type Connection } from "./mailbox";
 import { hashPassword, passwordProblem, type Role } from "./session";
 import { parse } from "./validation";
@@ -70,10 +71,11 @@ async function sendSystemEmail(to: { email: string; name?: string | null }, subj
   return conn.email;
 }
 
-const appName = () => process.env.APP_NAME?.trim() || null;
+/** Nombre de la empresa (Ajustes de empresa) o, si no hay, APP_NAME. */
+const appName = async () => (await getCompany()).name || process.env.APP_NAME?.trim() || null;
 /** «del CRM» / «de Aikit», «al CRM» / «a Aikit»: sin artículos raros en asuntos y textos. */
-const appDel = () => (appName() ? `de ${appName()}` : "del CRM");
-const appAl = () => (appName() ? `a ${appName()}` : "al CRM");
+const appDel = async () => { const n = await appName(); return n ? `de ${n}` : "del CRM"; };
+const appAl = async () => { const n = await appName(); return n ? `a ${n}` : "al CRM"; };
 
 /** Enlace público de un token. Sin APP_URL, el del navegador del administrador (para copiarlo). */
 export function accessLink(token: string, origin?: string | null) {
@@ -123,6 +125,10 @@ export async function inviteUser(actorId: string, input: Record<string, unknown>
   }
   const r = await sendInvite(actorId, userId, origin);
   await audit(actorId, userId, "invited", { role: v.role, sent_from: r.sentFrom, sso });
+  if (v.role === "admin") {
+    const { raiseAlert } = await import("./security");
+    await raiseAlert({ kind: "new_admin", severity: "warn", userId, actorId, title: `${v.name} ha sido invitado como administrador` });
+  }
   return r;
 }
 
@@ -136,9 +142,9 @@ async function sendInvite(actorId: string, userId: string, origin?: string | nul
   let sentFrom: string | null = null;
   if (link.startsWith("http")) {
     const first = u.name.split(" ")[0];
-    const text = `Hola, ${first}:\n\n${inviter?.name ?? "Tu equipo"} te ha dado acceso ${appAl()} como ${ROLE_NAME[u.role].toLowerCase()}.`
+    const text = `Hola, ${first}:\n\n${inviter?.name ?? "Tu equipo"} te ha dado acceso ${await appAl()} como ${ROLE_NAME[u.role].toLowerCase()}.`
       + `\n\nCrea tu contraseña con este botón${u.sso_enabled ? " o entra directamente con tu cuenta de Google o Microsoft" : ""}.`;
-    sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, `${inviter?.name ?? "Tu equipo"} te invita ${appAl()}`, text,
+    sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, `${inviter?.name ?? "Tu equipo"} te invita ${await appAl()}`, text,
       { label: "Crear mi contraseña", url: link }, `El enlace caduca en ${INVITE_DAYS} días y solo sirve una vez. Si no esperabas este correo, ignóralo.`, actorId)
       .catch((err) => { console.error("[invitación]", err); return null; });
     await markSent(token, sentFrom);
@@ -177,7 +183,7 @@ export async function sendResetLink(actorId: string, userId: string, origin?: st
   const link = accessLink(token, origin);
   let sentFrom: string | null = null;
   if (link.startsWith("http")) {
-    sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, u.has_password ? `Cambia tu contraseña ${appDel()}` : `Crea tu contraseña ${appDel()}`,
+    sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, u.has_password ? `Cambia tu contraseña ${await appDel()}` : `Crea tu contraseña ${await appDel()}`,
       `Hola, ${u.name.split(" ")[0]}:\n\n${admin?.name ?? "Un administrador"} te ha enviado este enlace para que ${u.has_password ? "pongas una contraseña nueva" : "crees tu contraseña"}.`,
       { label: u.has_password ? "Poner una contraseña nueva" : "Crear mi contraseña", url: link }, `El enlace caduca en ${ADMIN_RESET_HOURS} horas y solo sirve una vez.`, actorId)
       .catch((err) => { console.error("[contraseña]", err); return null; });
@@ -210,7 +216,7 @@ export async function requestPasswordReset(emailRaw: string, ip: string | null, 
   const link = accessLink(token, origin);
   if (!link.startsWith("http")) return;
   const via = !u.has_password && u.sso_enabled ? "\n\nRecuerda que también puedes entrar con tu cuenta de Google o Microsoft, sin contraseña." : "";
-  const sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, u.has_password ? `Cambia tu contraseña ${appDel()}` : `Crea tu contraseña ${appDel()}`,
+  const sentFrom = await sendSystemEmail({ email: u.email, name: u.name }, u.has_password ? `Cambia tu contraseña ${await appDel()}` : `Crea tu contraseña ${await appDel()}`,
     `Hola, ${u.name.split(" ")[0]}:\n\n${u.has_password ? "Hemos recibido una petición para cambiar tu contraseña" : "Nos has pedido un enlace para crear tu contraseña"}. Si has sido tú, usa este botón.${via}`,
     { label: u.has_password ? "Poner una contraseña nueva" : "Crear mi contraseña", url: link },
     `El enlace caduca en ${RESET_MINUTES} minutos y solo sirve una vez. Si no lo has pedido tú, ignora este correo: no cambia nada.`, null)
@@ -272,7 +278,7 @@ export async function completeToken(token: string, password: string, repeat: str
 export async function passwordChangedNotice(userId: string) {
   const [u] = await sql<{ name: string; email: string | null }[]>`SELECT name, email FROM users WHERE id = ${userId}`;
   if (!u?.email) return;
-  await sendSystemEmail({ email: u.email, name: u.name }, `Tu contraseña ${appDel()} ha cambiado`,
+  await sendSystemEmail({ email: u.email, name: u.name }, `Tu contraseña ${await appDel()} ha cambiado`,
     `Hola, ${u.name.split(" ")[0]}:\n\nTu contraseña acaba de cambiar y se han cerrado tus otras sesiones.\n\nSi no has sido tú, avisa cuanto antes a un administrador de tu empresa.`,
     undefined, undefined, null);
 }
@@ -360,6 +366,8 @@ export async function offboardUser(actorId: string, userId: string, input: Recor
   });
   const [toName] = to ? await sql<{ name: string }[]>`SELECT name FROM users WHERE id = ${to}` : [];
   await audit(actorId, userId, "deactivated", { to, to_name: toName?.name ?? null, ...preview });
+  const { raiseAlert } = await import("./security");
+  await raiseAlert({ kind: "deactivated", userId, actorId, title: `${u.name} ha sido dado de baja` });
   return { preview, toName: toName?.name ?? null, name: u.name };
 }
 
@@ -392,4 +400,6 @@ export async function anonymizeUser(actorId: string, userId: string) {
     await tx`UPDATE login_events SET email = NULL, ip = NULL, user_agent = NULL WHERE user_id = ${userId}`;
   });
   await audit(actorId, userId, "anonymized");
+  const { raiseAlert } = await import("./security");
+  await raiseAlert({ kind: "anonymized", userId, actorId, title: "Se han borrado los datos personales de un usuario dado de baja" });
 }

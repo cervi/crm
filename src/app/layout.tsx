@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { sql } from "@/lib/db";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Nav } from "@/components/Nav";
@@ -45,13 +46,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Con contraseña temporal, lo primero es cambiarla.
   if (user.must_change_password && !path.startsWith("/account")) redirect("/account?change=1");
   // Propuestas de la IA esperando decisión (el aviso del menú lateral).
-  const [inboxCount, unread, navPrefs, importing] = await Promise.all([countPending().catch(() => 0), unreadCount(user.id).catch(() => 0),
+  const [inboxCount, unread, navPrefs, importing, [ui]] = await Promise.all([countPending().catch(() => 0), unreadCount(user.id).catch(() => 0),
     getNavPrefs(user.id).catch(() => ({})),
-    runningJob().then((j) => (j && !j.options?.since ? j : null)).catch(() => null)]);
+    runningJob().then((j) => (j && !j.options?.since ? j : null)).catch(() => null),
+    sql<{ density: string | null }[]>`SELECT ui_prefs->>'density' AS density FROM users WHERE id = ${user.id}`.catch(() => [])]);
   // Etiquetas de los tipos de actividad (configurables) disponibles en todo el servidor.
   await activityTypes().catch(() => null);
   return (
-    <html lang="es" data-theme={dataTheme} suppressHydrationWarning>
+    <html lang="es" data-theme={dataTheme} data-density={ui?.density === "compact" ? "compact" : undefined} suppressHydrationWarning>
       <body>
         <div className="shell">
           <Nav inboxCount={inboxCount} prefs={navPrefs} />

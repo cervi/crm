@@ -1,4 +1,5 @@
 import { ActionForm } from "./ActionForm";
+import { getCompany } from "@/lib/company";
 import { DEAL_TYPE_LABEL, ORIGIN_LABEL } from "@/lib/deal-types";
 import { CustomFieldInputs } from "./CustomFieldInputs";
 import { EntityPicker } from "./EntityPicker";
@@ -13,7 +14,7 @@ const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "MXN", "COP", "ARS", "CLP", "PEN
 
 type Option = { id: string; label: string } | null;
 
-export function DealForm({ action, deal, defs, users, pipelines, stages, submitLabel, defaults }: {
+export async function DealForm({ action, deal, defs, users, pipelines, stages, submitLabel, defaults }: {
   action: (s: ActionState, f: FormData) => Promise<ActionState>;
   deal?: Deal | null;
   defs: FieldDefinition[];
@@ -23,6 +24,8 @@ export function DealForm({ action, deal, defs, users, pipelines, stages, submitL
   submitLabel: string;
   defaults?: { pipelineId?: string | null; organization?: Option; person?: Option; ownerId?: string | null };
 }) {
+  // Moneda de los deals nuevos: la de Ajustes de empresa.
+  const defaultCurrency = deal ? deal.currency : (await getCompany()).currency;
   return (
     <ActionForm action={action} submitLabel={submitLabel}>
       <div className="grid-2">
@@ -36,8 +39,8 @@ export function DealForm({ action, deal, defs, users, pipelines, stages, submitL
         <label className="field"><span className="label">Importe</span>
           <input type="number" name="value" min={0} step="0.01" defaultValue={deal?.value ?? ""} /></label>
         <label className="field"><span className="label">Moneda</span>
-          <select name="currency" defaultValue={deal?.currency ?? "EUR"}>
-            {[...new Set([deal?.currency ?? "EUR", ...CURRENCIES])].map((c) => <option key={c} value={c}>{c}</option>)}
+          <select name="currency" defaultValue={deal?.currency ?? defaultCurrency}>
+            {[...new Set([deal?.currency ?? defaultCurrency, ...CURRENCIES])].map((c) => <option key={c} value={c}>{c}</option>)}
           </select></label>
         <label className="field"><span className="label">Cierre previsto</span>
           <input type="date" name="expected_close_date" defaultValue={deal?.expected_close_date ?? ""} /></label>

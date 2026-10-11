@@ -2418,3 +2418,12 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .step-more-menu form { margin: 0; }
 .step-more-menu button { width: 100%; text-align: left; background: none; border: 0; padding: 8px 10px; border-radius: var(--r-sm); font: inherit; cursor: pointer; color: var(--text); }
 .step-more-menu button:hover { background: var(--sunken); }
+.check-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.check-list li { display: grid; gap: 2px; padding: 10px 12px 10px 38px; border: 1px solid var(--border); border-radius: var(--r-sm); position: relative; }
+.check-list li::before { position: absolute; left: 12px; top: 10px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.check-list li.ok::before { content: "✓"; background: var(--good-soft); color: var(--good); }
+.check-list li.todo::before { content: "!"; background: var(--warn-soft); color: var(--warn); }
+[data-density="compact"] th, [data-density="compact"] td { padding-top: 6px; padding-bottom: 6px; }
+[data-density="compact"] .page { --gap: 12px; }
+.company-logo { max-height: 48px; max-width: 200px; object-fit: contain; }
+.brand-logo { max-height: 26px; max-width: 120px; object-fit: contain; }

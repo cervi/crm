@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Brand } from "@/components/Brand";
 import { forgotPasswordAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
 import { Icon } from "@/components/Icon";
@@ -12,7 +13,7 @@ export default async function ForgotPasswordPage() {
   const canSend = Boolean(await systemSender(null));
   return (
     <main className="auth-card">
-      <div className="auth-brand"><Icon name="deals" />CRM</div>
+      <Brand />
       <div>
         <h1>¿Has olvidado tu contraseña?</h1>
         <p className="meta" style={{ margin: 0 }}>Escribe el correo con el que entras y te enviaremos un enlace para poner una nueva.</p>

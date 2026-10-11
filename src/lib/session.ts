@@ -53,9 +53,18 @@ export function passwordProblem(password: string, email?: string | null): string
 // --- Sesiones
 export const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 
+/** Reglas de sesión del centro de seguridad (duración e inactividad máxima), con una caché de un minuto. */
+let rulesCache: { at: number; days: number; idle: number | null } | null = null;
+export async function sessionRules() {
+  if (rulesCache && Date.now() - rulesCache.at < 60_000) return rulesCache;
+  const [r] = await sql<{ session_days: number; idle_hours: number | null }[]>`SELECT session_days, idle_hours FROM app_settings LIMIT 1`.catch(() => []);
+  rulesCache = { at: Date.now(), days: r?.session_days ?? SESSION_DAYS, idle: r?.idle_hours ?? null };
+  return rulesCache;
+}
+
 export async function createSession(userId: string, userAgent?: string | null): Promise<{ token: string; expires: Date }> {
   const token = randomBytes(32).toString("base64url");
-  const expires = new Date(Date.now() + SESSION_DAYS * 86400000);
+  const expires = new Date(Date.now() + (await sessionRules()).days * 86400000);
   await sql`
     INSERT INTO sessions (token_hash, user_id, expires_at, user_agent)
     VALUES (${tokenHash(token)}, ${userId}, ${expires}, ${userAgent?.slice(0, 300) ?? null})`;
@@ -69,13 +78,17 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 /** El usuario de una sesión válida (activo y humano), o null. */
 export async function sessionUser(token: string | undefined | null): Promise<SessionUser | null> {
   if (!token || !TOKEN_RE.test(token)) return null;
-  const [row] = await sql<(SessionUser & { session_id: string; stale: boolean })[]>`
+  const [row] = await sql<(SessionUser & { session_id: string; stale: boolean; idle_hours: number })[]>`
     SELECT u.id, u.name, coalesce(u.email, '') AS email, u.role, u.must_change_password,
-           s.id AS session_id, s.last_seen_at < now() - interval '1 hour' AS stale
+           s.id AS session_id, s.last_seen_at < now() - interval '1 hour' AS stale,
+           extract(epoch FROM now() - s.last_seen_at)::float / 3600 AS idle_hours
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ${tokenHash(token)} AND s.expires_at > now()
       AND u.is_active AND u.kind = 'human' AND (u.password_hash IS NOT NULL OR u.sso_enabled)`;
   if (!row) return null;
+  // Inactividad máxima (regla de seguridad): si lleva más horas sin usarse, hay que volver a entrar.
+  const { idle } = await sessionRules();
+  if (idle && row.idle_hours >= idle) { await sql`DELETE FROM sessions WHERE id = ${row.session_id}`; return null; }
   if (row.stale) await sql`UPDATE sessions SET last_seen_at = now() WHERE id = ${row.session_id}`;
   return { id: row.id, name: row.name, email: row.email, role: row.role, must_change_password: row.must_change_password };
 }
