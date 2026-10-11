@@ -2361,3 +2361,8 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .week-bar .bar span { width: 100%; background: var(--series-1); border-radius: 4px 4px 0 0; }
 .rail-brand[aria-current="page"] { box-shadow: 0 0 0 3px var(--accent-soft); }
 .rail-brand { position: relative; }
+/* La «×» de borrar una vista guardada no es un chip: sin borde ni relleno de botón. */
+.chips .view-chip .view-del { border: 0; background: none; padding: 3px; font-size: 0; line-height: 0; border-radius: 999px; }
+.chips .view-chip .view-del:hover { background: var(--bad-soft); }
+.chips .view-chip.deletable a { padding-right: 28px; }
+.view-chip form { top: 50%; transform: translateY(-50%); right: 6px; }
