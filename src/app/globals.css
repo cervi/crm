@@ -2495,7 +2495,7 @@ fieldset.readonly-fields input, fieldset.readonly-fields select, fieldset.readon
 .inbox-bulk-actions { display: inline-flex; gap: 6px; align-items: center; }
 .inbox-list .form-error, .inbox-list .form-ok { margin: 8px 12px; }
 .inbox-detail { min-width: 0; display: grid; gap: 10px; }
-.inbox-detail .proposal { margin: 0; max-width: none; width: 100%; }
+.inbox-detail .proposal { margin: 0; max-width: none; width: 100%; padding: 18px 20px; gap: 10px; box-shadow: var(--shadow); }
 .inbox-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .inbox-nav-btns { display: inline-flex; gap: 6px; }
 .inbox-nav-btns [aria-disabled="true"] { opacity: .45; pointer-events: none; }
