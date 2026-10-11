@@ -18,7 +18,7 @@ export default async function SentEmailPage({ params }: { params: Promise<{ id: 
   await requireUser();
   const { id } = await params;
   const e = isId(id) ? await getSentEmail(id) : null;
-  if (!e) notFound();
+  if (!e) return <ReceivedEmail id={id} />;
   const human = e.opens.filter((o) => !o.automatic);
   const auto = e.opens.length - human.length;
   const days = new Set(human.map((o) => new Date(o.at).toDateString())).size;
@@ -88,6 +88,40 @@ export default async function SentEmailPage({ params }: { params: Promise<{ id: 
       <section aria-label="Texto">
         <h2 className="section-title">Texto</h2>
         <p className="note-body">{e.body}</p>
+      </section>
+    </main>
+  );
+}
+
+const REPLY_TEXT: Record<string, string> = {
+  interesado: "Interesado", mas_adelante: "Más adelante", no_interesado: "No interesado", baja: "Pide la baja", ooo: "Fuera de la oficina", fuera_oficina: "Fuera de la oficina", otro: "Otra respuesta",
+};
+
+/** Un correo recibido (una respuesta): quién, cuándo, cómo se clasificó y a qué contestaba. */
+async function ReceivedEmail({ id }: { id: string }) {
+  if (!isId(id)) notFound();
+  const [r] = await sql<{ id: string; subject: string; body: string; from_email: string | null; to_email: string | null; sent_at: Date; person_id: string | null;
+                          person_name: string | null; deal_id: string | null; deal_title: string | null; reply_class: string | null; reply_to_email: string | null; prev_subject: string | null }[]>`
+    SELECT e.id, e.subject, e.body, e.from_email, e.to_email, e.sent_at, e.person_id, p.full_name AS person_name, e.deal_id, d.title AS deal_title, e.reply_class,
+           e.reply_to_email, prev.subject AS prev_subject
+    FROM emails e LEFT JOIN persons p ON p.id = e.person_id LEFT JOIN deals d ON d.id = e.deal_id LEFT JOIN emails prev ON prev.id = e.reply_to_email
+    WHERE e.id = ${id} AND e.direction = 'in'`;
+  if (!r) notFound();
+  return (
+    <main className="page medium">
+      <div className="crumbs">{r.person_id ? <Link href={`/persons/${r.person_id}`}>{r.person_name}</Link> : <Link href="/emails">Correos</Link>}</div>
+      <div className="page-head"><h1>{r.subject || "(sin asunto)"}</h1></div>
+      <dl className="dl compact">
+        <div className="dl-row"><dt>De</dt><dd>{r.person_id ? <Link href={`/persons/${r.person_id}`}>{r.person_name ?? r.from_email}</Link> : r.from_email} {r.from_email && <span className="meta">· {r.from_email}</span>}</dd></div>
+        <div className="dl-row"><dt>Para</dt><dd>{r.to_email ?? "—"}</dd></div>
+        <div className="dl-row"><dt>Recibido</dt><dd>{dateTime(r.sent_at)}</dd></div>
+        {r.reply_class && <div className="dl-row"><dt>Tipo de respuesta</dt><dd><span className={`badge ${r.reply_class === "interesado" ? "won" : r.reply_class === "baja" ? "lost" : ""}`}>{REPLY_TEXT[r.reply_class] ?? r.reply_class}</span></dd></div>}
+        {r.reply_to_email && <div className="dl-row"><dt>Responde a</dt><dd><Link href={`/emails/${r.reply_to_email}`}>{r.prev_subject || "(sin asunto)"}</Link></dd></div>}
+        {r.deal_id && <div className="dl-row"><dt>Deal</dt><dd><Link href={`/deals/${r.deal_id}`}>{r.deal_title}</Link></dd></div>}
+      </dl>
+      <section className="panel" aria-label="Texto">
+        <h2 className="section-title">Texto</h2>
+        <p className="note-body">{r.body}</p>
       </section>
     </main>
   );

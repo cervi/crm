@@ -221,6 +221,11 @@ export async function createExample(actor: Actor): Promise<string> {
                     ${opens ? sent : null}, ${actor.id}, ${sent}, ${en.id}, ${stepIds[ev.email]}, ${Boolean(ev.bounced)}, ${st.thread ? lastOut : null})
             RETURNING id`;
           lastOut = outRows[0].id;
+          for (let k = 0; k < opens; k++) {
+            await tx`INSERT INTO email_opens (email_id, at, device, client, place)
+                     VALUES (${lastOut}, ${new Date(sent.getTime() + 3_600_000 + k * 5_400_000)}, ${k % 3 === 2 ? "mobile" : "desktop"},
+                             ${k % 3 === 2 ? "Gmail (iPhone)" : "Outlook"}, ${c.city})`;
+          }
         } else if ("task" in ev) {
           const st = STEPS[ev.task];
           const at = when(ev.at, 10, 0);
