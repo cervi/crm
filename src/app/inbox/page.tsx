@@ -18,6 +18,7 @@ export const metadata = { title: "Bandeja de la IA" };
 /** «hace 3 h», «hace 2 d»: lo bastante para ordenar mentalmente la cola. */
 function age(d: Date) {
   const m = Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / 60000));
+  if (m < 1) return "ahora";
   if (m < 60) return `hace ${m} min`;
   const h = Math.round(m / 60);
   if (h < 24) return `hace ${h} h`;
