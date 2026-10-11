@@ -95,6 +95,25 @@ const env = {
 // Con tus datos: Pipedrive de verdad (api.pipedrive.com); lo demás sigue simulado.
 if (pipedrive) delete env.PIPEDRIVE_API_URL;
 
+// Correo y calendario de verdad: si en .env.local hay credenciales reales de Google o Microsoft,
+// se usan esas (y no las simuladas). Así se ve en el CRM lo que pasa en tu correo.
+const localEnv = (() => {
+  try {
+    return Object.fromEntries(readFileSync(path.join(root, ".env.local"), "utf8").split(/\r?\n/)
+      .map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/)).filter(Boolean).map((m) => [m[1], m[2].replace(/^["']|["']$/g, "")]));
+  } catch { return {}; }
+})();
+const realGoogle = Boolean(localEnv.GOOGLE_CLIENT_ID && localEnv.GOOGLE_CLIENT_SECRET && localEnv.GOOGLE_CLIENT_ID !== "demo");
+const realMicrosoft = Boolean(localEnv.MS_CLIENT_ID && localEnv.MS_CLIENT_SECRET && localEnv.MS_CLIENT_ID !== "demo");
+if (realGoogle) {
+  Object.assign(env, { GOOGLE_CLIENT_ID: localEnv.GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET: localEnv.GOOGLE_CLIENT_SECRET });
+  for (const k of ["GOOGLE_AUTH_URL", "GOOGLE_TOKEN_URL", "GOOGLE_API_BASE"]) delete env[k];
+}
+if (realMicrosoft) {
+  Object.assign(env, { MS_CLIENT_ID: localEnv.MS_CLIENT_ID, MS_CLIENT_SECRET: localEnv.MS_CLIENT_SECRET, MS_TENANT_ID: localEnv.MS_TENANT_ID || "common" });
+  for (const k of ["MS_LOGIN_URL", "MS_GRAPH_URL"]) delete env[k];
+}
+
 const children = [];
 const logs = new Map();
 function start(name, cmd, cmdArgs, extraEnv = {}, waitFor) {
@@ -180,7 +199,11 @@ try {
   3. Revisa tus pipelines, deals, contactos y empresas, actividades, notas y campos.
   4. Agentes e IA: empiezan en PAUSA. Para probarlos sin riesgo, pon las instrucciones en
      «Preguntarme» (solo proponen en la bandeja) y reanúdalos desde «Agentes».
-     El correo y el calendario están simulados: no sale ningún correo a tus clientes.
+${realGoogle || realMicrosoft
+  ? `     CORREO DE VERDAD (${[realGoogle && "Google", realMicrosoft && "Microsoft"].filter(Boolean).join(" y ")}, desde .env.local): conéctalo en Ajustes → Correo
+     y el CRM leerá tus correos y reuniones con los contactos. OJO: lo que envíes (y las secuencias activas) sale de verdad.`
+  : `     El correo y el calendario están simulados: no sale ningún correo a tus clientes.
+     Para leer tu Gmail de verdad, mira «Probar con tu correo» en README.md.`}
 
   Tus datos se quedan en este ordenador, en .pipedrive-data (npm run probar -- --reset para empezar de cero).
   Para parar: Ctrl+C.

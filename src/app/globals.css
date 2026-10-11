@@ -2366,3 +2366,4 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .chips .view-chip .view-del:hover { background: var(--bad-soft); }
 .chips .view-chip.deletable a { padding-right: 28px; }
 .view-chip form { top: 50%; transform: translateY(-50%); right: 6px; }
+.act-card { font-size: 14px; color: var(--text); }

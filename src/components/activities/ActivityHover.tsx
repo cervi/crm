@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Asunto de la actividad con una ficha al pasar el ratón: qué hay que hacer
@@ -42,7 +43,8 @@ export function ActivityHover({ href, children, card }: {
   return (
     <span className="act-hover" ref={anchor} onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
       {href ? <Link href={href} className="act-subject">{children}</Link> : <span className="act-subject">{children}</span>}
-      {pos && (
+      {/* En el <body>: así ninguna cabecera fija de la tabla ni celda recortada lo tapa. */}
+      {pos && createPortal(
         <div className={`act-card${pos.up ? " up" : ""}`} role="tooltip" style={{ top: pos.top, left: pos.left }}
              onMouseEnter={show} onMouseLeave={hide}>
           <div className="act-card-head">
@@ -63,7 +65,8 @@ export function ActivityHover({ href, children, card }: {
               {card.prep && <span className="badge ai">Ficha de preparación lista</span>}
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </span>
   );
