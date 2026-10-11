@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BulkSelectAll } from "./DealBulkBar";
 import { Icon } from "./Icon";
 
@@ -16,10 +16,15 @@ export type DataColumn = {
   pinned?: boolean;
   /** No se puede ocultar (la columna principal). */
   required?: boolean;
+  /** Ancho inicial en px (se puede cambiar arrastrando el borde de la cabecera). */
+  width?: number;
+  /** No recortar el contenido (botones, menús que se despliegan…). */
+  noClip?: boolean;
 };
 export type DataRow = { id: string; className?: string; label?: string; cells: Record<string, ReactNode> };
 
-type Prefs = { order: string[]; hidden: string[]; pinned: string[] };
+type Prefs = { order: string[]; hidden: string[]; pinned: string[]; widths?: Record<string, number> };
+const MIN_W = 60, MAX_W = 800;
 
 const load = (key: string): Prefs | null => {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) as Prefs : null; } catch { return null; }
@@ -61,6 +66,29 @@ export function DataTable({ id, columns, rows, selectable, empty, colSettingsLab
   }, [prefs.order, byKey, columns]);
   const isHidden = (k: string) => !byKey.get(k)?.required && prefs.hidden.includes(k);
   const isPinned = (k: string) => prefs.pinned.includes(k);
+  // Ancho de cada columna: el que haya elegido la persona o uno razonable, para que un texto largo no ensanche la tabla.
+  const firstKey = columns.find((c) => c.required)?.key ?? columns[0]?.key;
+  const widthOf = (k: string) => prefs.widths?.[k] ?? byKey.get(k)?.width ?? (k === firstKey ? 280 : 200);
+  const clips = (k: string) => { const c = byKey.get(k); return !c?.noClip && !/row-actions|done-col|check-col/.test(c?.className ?? ""); };
+  const setWidth = (k: string, w: number | null) => {
+    const widths = { ...(prefs.widths ?? {}) };
+    if (w === null) delete widths[k]; else widths[k] = Math.round(Math.min(MAX_W, Math.max(MIN_W, w)));
+    update({ ...prefs, order: ordered, widths });
+  };
+  // Arrastrar el borde derecho de una cabecera cambia el ancho; doble clic lo devuelve al de siempre.
+  const startResize = (k: string, e: ReactPointerEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX, start = widthOf(k);
+    let last = start;
+    const th = headRefs.current.get(k);
+    const moveFn = (ev: PointerEvent) => {
+      last = Math.min(MAX_W, Math.max(MIN_W, start + ev.clientX - startX));
+      th?.closest("table")?.querySelectorAll<HTMLElement>(`[data-col="${CSS.escape(k)}"]`).forEach((el) => { el.style.maxWidth = `${last}px`; el.style.width = `${last}px`; });
+    };
+    const up = () => { window.removeEventListener("pointermove", moveFn); window.removeEventListener("pointerup", up); document.body.classList.remove("col-resizing"); setWidth(k, last); };
+    window.addEventListener("pointermove", moveFn); window.addEventListener("pointerup", up);
+    document.body.classList.add("col-resizing");
+  };
   const visible = [...ordered.filter((k) => isPinned(k) && !isHidden(k)), ...ordered.filter((k) => !isPinned(k) && !isHidden(k))];
   const pinnedVisible = visible.filter(isPinned);
 
@@ -98,7 +126,14 @@ export function DataTable({ id, columns, rows, selectable, empty, colSettingsLab
               const c = byKey.get(k)!;
               return (
                 <th key={k} ref={(el) => { if (el) headRefs.current.set(k, el); else headRefs.current.delete(k); }} {...cellProps(k, c.className)}>
-                  {c.header ?? c.label}
+                  {clips(k) ? (
+                    <>
+                      <div className="dt-cell" data-col={k} style={{ maxWidth: widthOf(k), width: prefs.widths?.[k] ? widthOf(k) : undefined }}>{c.header ?? c.label}</div>
+                      <span className="col-resize" role="separator" aria-orientation="vertical" aria-label={`Cambiar el ancho de ${c.label}`}
+                            title="Arrastra para cambiar el ancho · doble clic para el de siempre"
+                            onPointerDown={(e) => startResize(k, e)} onDoubleClick={() => setWidth(k, null)} />
+                    </>
+                  ) : (c.header ?? c.label)}
                 </th>
               );
             })}
@@ -116,7 +151,11 @@ export function DataTable({ id, columns, rows, selectable, empty, colSettingsLab
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody onMouseOver={(e) => {
+          // Si el texto está cortado, al pasar el ratón se ve entero.
+          const cell = (e.target as HTMLElement).closest<HTMLElement>(".dt-cell");
+          if (cell && !cell.title && cell.scrollWidth > cell.clientWidth + 1) cell.title = cell.textContent?.trim() ?? "";
+        }}>
           {rows.length === 0 && <tr><td colSpan={visible.length + (selectable ? 2 : 1)} className="empty-row">{empty ?? "Sin resultados."}</td></tr>}
           {rows.map((r) => (
             <tr key={r.id} className={r.className}>
@@ -125,7 +164,13 @@ export function DataTable({ id, columns, rows, selectable, empty, colSettingsLab
                   <input type="checkbox" className="bulk-check" value={r.id} aria-label={`Seleccionar ${r.label ?? ""}`.trim()} />
                 </td>
               )}
-              {visible.map((k) => <td key={k} {...cellProps(k, byKey.get(k)!.className)}>{r.cells[k] ?? <span className="muted">—</span>}</td>)}
+              {visible.map((k) => (
+                <td key={k} {...cellProps(k, byKey.get(k)!.className)}>
+                  {clips(k)
+                    ? <div className="dt-cell" data-col={k} style={{ maxWidth: widthOf(k), width: prefs.widths?.[k] ? widthOf(k) : undefined }}>{r.cells[k] ?? <span className="muted">—</span>}</div>
+                    : r.cells[k] ?? <span className="muted">—</span>}
+                </td>
+              ))}
               <td className="col-settings" />
             </tr>
           ))}
