@@ -192,12 +192,12 @@ export async function createExample(actor: Actor): Promise<string> {
             VALUES ('in', 'sent', ${p.id}, ${o.id}, ${actor.id}, ${address}, ${fromEmail}, ${`Re: ${firstSubject}`}, ${ev.reply}, ${at}, ${at}, ${ev.cls}, ${lastOut})`;
         }
       }
-      // La tarea en la que espera (llamada o LinkedIn): pendiente para hoy, en tu cola de tareas.
+      // La tarea en la que espera (llamada o LinkedIn): pendiente dentro de un rato, en tu cola de tareas.
       if (e.status === "active" && e.waitingTask) {
         const st = STEPS[e.next];
         const [a] = await tx<{ id: string }[]>`
           INSERT INTO activities (type, subject, note, due_at, done, person_id, organization_id, owner_id, created_by_id, enrollment_id, step_kind, priority)
-          VALUES (${STEP_KINDS[st.kind].activity}, ${fill(STEP_KINDS[st.kind].title, vars)}, ${fill(st.body, vars)}, ${when(0, 10, 0)}, false,
+          VALUES (${STEP_KINDS[st.kind].activity}, ${fill(STEP_KINDS[st.kind].title, vars)}, ${fill(st.body, vars)}, ${new Date(Math.ceil((Date.now() + 3_600_000) / 1_800_000) * 1_800_000)}, false,
                   ${p.id}, ${o.id}, ${actor.id}, ${actor.id}, ${en.id}, ${st.kind}, ${st.priority ?? "medium"})
           RETURNING id`;
         await tx`UPDATE sequence_enrollments SET waiting_activity_id = ${a.id} WHERE id = ${en.id}`;
