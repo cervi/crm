@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { saveSwitchesAction } from "@/app/actions/auth";
+import { saveSwitchesAction, setMasterSwitchAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
 import { requireAdminPage } from "@/lib/auth";
 import { dateTime } from "@/lib/format";
-import { SWITCHES, SWITCH_GROUPS, allSwitches, recentBlocked } from "@/lib/switches";
+import { SWITCHES, SWITCH_GROUPS, allSwitches, masterLocked, masterOn, recentBlocked } from "@/lib/switches";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Interruptores" };
@@ -11,7 +11,7 @@ export const metadata = { title: "Interruptores" };
 /** Encender o apagar módulos enteros, con lo que el servidor tiene bloqueado y lo que no ha salido por ello. */
 export default async function SwitchesPage() {
   await requireAdminPage();
-  const [states, blocked] = await Promise.all([allSwitches(), recentBlocked(50)]);
+  const [states, blocked, master] = await Promise.all([allSwitches(), recentBlocked(50), masterOn()]);
   const anyLocked = states.some((s) => s.locked);
   const emailOn = states.find((s) => s.key === "email_out")?.on;
   return (
@@ -20,12 +20,28 @@ export default async function SwitchesPage() {
       <div className="page-head"><div><h1>Interruptores</h1>
         <p className="muted" style={{ margin: 0 }}>Enciende o apaga módulos enteros del CRM. Apagar es inmediato y no borra nada: al encender, todo sigue donde estaba.</p></div></div>
 
+      <section className={`panel master-switch${master ? "" : " off"}`} aria-label="Parada general">
+        <div>
+          <h2>{master ? "Interruptor general: el CRM funciona" : "Parada general: todo apagado"}</h2>
+          <p className="meta" style={{ margin: 0 }}>{master
+            ? "Apaga de golpe todos los módulos de abajo: no sale nada, no se lee nada y no se automatiza nada. Se sigue pudiendo entrar y trabajar a mano."
+            : "Ningún módulo funciona, aunque abajo aparezca encendido. Al volver a encender, cada uno queda como lo dejaste."}</p>
+        </div>
+        {masterLocked() ? <span className="meta">Bloqueado por el servidor</span> : master ? (
+          <ActionForm action={setMasterSwitchAction.bind(null, false)} submitLabel="Apagar todo" pendingLabel="Apagando…" danger className="form inline"
+                      confirm="Se para todo: envíos, secuencias, campañas, IA, lectura de correo, páginas públicas y API. Se puede volver a encender cuando quieras." />
+        ) : (
+          <ActionForm action={setMasterSwitchAction.bind(null, true)} submitLabel="Volver a encender" pendingLabel="Encendiendo…" className="form inline"
+                      confirm="Cada módulo vuelve a como estaba (los bloqueados por el servidor siguen apagados)." />
+        )}
+      </section>
+
       {anyLocked && (
         <p className="callout">Algunos están <strong>bloqueados por el servidor</strong> (variables <code>OUTBOUND_DISABLED</code> o <code>SWITCHES_OFF</code>):
           están apagados y desde aquí no se pueden encender. Para cambiarlos hay que tocar la configuración del servidor.</p>
       )}
 
-      <ActionForm action={saveSwitchesAction} submitLabel="Guardar interruptores"
+      <ActionForm action={saveSwitchesAction} submitLabel="Guardar interruptores" className="form switches-form"
                   confirm={emailOn ? undefined : "Si enciendes «Enviar correos», empezarán a salir los correos programados y los de las secuencias activas."}
                   confirmWhen={emailOn ? undefined : { field: "email_out", value: "on" }}>
         {SWITCH_GROUPS.map(([g, title]) => (
@@ -40,7 +56,8 @@ export default async function SwitchesPage() {
                     )}</div>
                   <label className="switch-toggle">
                     <input type="checkbox" role="switch" name={s.key} defaultChecked={s.on} disabled={s.locked} aria-label={s.label} />
-                    <span className={s.locked ? "meta" : undefined}>{s.locked ? "Bloqueado por el servidor" : s.on ? "Encendido" : "Apagado"}</span>
+                    <span className={s.locked || (s.on && !s.effective) ? "meta" : undefined}>
+                      {s.locked ? "Bloqueado por el servidor" : !s.on ? "Apagado" : s.effective ? "Encendido" : "Parado (general)"}</span>
                   </label>
                 </li>
               ))}

@@ -296,6 +296,19 @@ export async function saveUiPrefsAction(_: ActionState, form: FormData): Promise
   return { ok: true, message: "Preferencias guardadas." };
 }
 
+/** Parada general: apagar todo o volver a encender (cada módulo vuelve a como estaba). */
+export async function setMasterSwitchAction(on: boolean, _: ActionState): Promise<ActionState> {
+  try {
+    const me = await adminOnly();
+    const { setMaster } = await import("@/lib/switches");
+    const { raiseAlert } = await import("@/lib/security");
+    await setMaster(on);
+    await raiseAlert({ kind: "switches", severity: "warn", actorId: me.id, title: on ? "Se ha vuelto a encender el CRM (fin de la parada general)" : "Parada general: todo el CRM apagado" });
+    revalidatePath("/", "layout");
+    return { ok: true, message: on ? "Encendido: cada módulo vuelve a como estaba." : "Todo apagado." };
+  } catch (err) { return { error: toUserMessage(err) }; }
+}
+
 export async function saveSwitchesAction(_: ActionState, form: FormData): Promise<ActionState> {
   try {
     const me = await adminOnly();

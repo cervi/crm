@@ -37,9 +37,13 @@ export const SWITCH_GROUPS = [
 const KEYS = Object.keys(SWITCHES) as SwitchKey[];
 const OUTBOUND: SwitchKey[] = ["email_out", "calendar_invites", "webhooks"];
 
+/** Parada general bloqueada desde el servidor (SWITCHES_OFF=all). */
+export const masterLocked = () => (process.env.SWITCHES_OFF ?? "").split(/[\s,;]+/).includes("all");
+
 /** Apagados (y bloqueados) por el servidor. */
 export function serverLocked(): Set<SwitchKey> {
   const s = new Set<SwitchKey>();
+  if (masterLocked()) KEYS.forEach((k) => s.add(k));
   if (/^(1|true|yes|on|si|sí)$/i.test(process.env.OUTBOUND_DISABLED ?? "")) OUTBOUND.forEach((k) => s.add(k));
   for (const k of (process.env.SWITCHES_OFF ?? "").split(/[\s,;]+/)) if (k in SWITCHES) s.add(k as SwitchKey);
   return s;
@@ -48,11 +52,12 @@ export function serverLocked(): Set<SwitchKey> {
 /** Bloqueo de salida del servidor, sin base de datos (para la capa más baja). */
 export const outboundHardOff = () => /^(1|true|yes|on|si|sí)$/i.test(process.env.OUTBOUND_DISABLED ?? "");
 
-let cache: { at: number; v: Partial<Record<SwitchKey, boolean>> } | null = null;
+type Stored = Partial<Record<SwitchKey | "all", boolean>>;
+let cache: { at: number; v: Stored } | null = null;
 
-async function stored(): Promise<Partial<Record<SwitchKey, boolean>>> {
+async function stored(): Promise<Stored> {
   if (cache && Date.now() - cache.at < 15_000) return cache.v;
-  const [r] = await sql<{ switches: Partial<Record<SwitchKey, boolean>> }[]>`SELECT switches FROM app_settings LIMIT 1`.catch(() => []);
+  const [r] = await sql<{ switches: Stored }[]>`SELECT switches FROM app_settings LIMIT 1`.catch(() => []);
   cache = { at: Date.now(), v: r?.switches ?? {} };
   return cache.v;
 }
@@ -60,21 +65,41 @@ async function stored(): Promise<Partial<Record<SwitchKey, boolean>>> {
 /** ¿Está encendido? Por defecto, sí (salvo que el servidor lo bloquee). */
 export async function isOn(key: SwitchKey): Promise<boolean> {
   if (serverLocked().has(key)) return false;
-  return (await stored())[key] !== false;
+  const v = await stored();
+  if (v.all === false) return false; // Parada general: todo apagado, sin tocar lo elegido en cada uno.
+  return v[key] !== false;
 }
 
-export type SwitchState = { key: SwitchKey; group: string; label: string; help: string; on: boolean; locked: boolean };
+/** ¿Está el CRM funcionando (sin parada general)? */
+export async function masterOn(): Promise<boolean> {
+  if (masterLocked()) return false;
+  return (await stored()).all !== false;
+}
+
+/** Parada general: apaga todo de golpe; al volver a encender, cada módulo queda como estaba. */
+export async function setMaster(on: boolean) {
+  if (masterLocked()) throw new UserError("La parada general está bloqueada desde el servidor (SWITCHES_OFF=all).");
+  const next = { ...(await stored()), all: on };
+  await sql`UPDATE app_settings SET switches = ${sql.json(next as never)}`;
+  cache = null;
+}
+
+/** `on`: lo elegido para ese módulo; `effective`: si funciona de verdad ahora (cuenta la parada general). */
+export type SwitchState = { key: SwitchKey; group: string; label: string; help: string; on: boolean; locked: boolean; effective: boolean };
 
 export async function allSwitches(): Promise<SwitchState[]> {
   const locked = serverLocked();
   const v = await stored();
-  return KEYS.map((k) => ({ key: k, ...SWITCHES[k], on: !locked.has(k) && v[k] !== false, locked: locked.has(k) }));
+  return KEYS.map((k) => {
+    const on = !locked.has(k) && v[k] !== false;
+    return { key: k, ...SWITCHES[k], on, locked: locked.has(k), effective: on && v.all !== false };
+  });
 }
 
 export async function saveSwitches(form: FormData): Promise<{ changed: { key: SwitchKey; on: boolean }[] }> {
   const locked = serverLocked();
   const before = await stored();
-  const next: Partial<Record<SwitchKey, boolean>> = { ...before };
+  const next: Stored = { ...before };
   const changed: { key: SwitchKey; on: boolean }[] = [];
   for (const k of KEYS) {
     if (locked.has(k)) continue;

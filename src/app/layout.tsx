@@ -4,7 +4,7 @@ import { sql } from "@/lib/db";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Nav } from "@/components/Nav";
-import { isOn } from "@/lib/switches";
+import { isOn, masterOn } from "@/lib/switches";
 import { Topbar, type Theme } from "@/components/Topbar";
 import { countPending } from "@/lib/automations";
 import { activityTypes } from "@/lib/activity-types";
@@ -48,11 +48,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Con contraseña temporal, lo primero es cambiarla.
   if (user.must_change_password && !path.startsWith("/account")) redirect("/account?change=1");
   // Propuestas de la IA esperando decisión (el aviso del menú lateral).
-  const [inboxCount, unread, navPrefs, importing, [ui], sendingOff] = await Promise.all([countPending().catch(() => 0), unreadCount(user.id).catch(() => 0),
+  const [inboxCount, unread, navPrefs, importing, [ui], sendingOff, running] = await Promise.all([countPending().catch(() => 0), unreadCount(user.id).catch(() => 0),
     getNavPrefs(user.id).catch(() => ({})),
     runningJob().then((j) => (j && !j.options?.since ? j : null)).catch(() => null),
     sql<{ density: string | null }[]>`SELECT ui_prefs->>'density' AS density FROM users WHERE id = ${user.id}`.catch(() => []),
-    isOn("email_out").then((on) => !on).catch(() => false)]);
+    isOn("email_out").then((on) => !on).catch(() => false), masterOn().catch(() => true)]);
   // Etiquetas de los tipos de actividad (configurables) disponibles en todo el servidor.
   await activityTypes().catch(() => null);
   return (
@@ -65,7 +65,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {sendingOff && (
               // Que nadie dude: con «Enviar correos» apagado no sale nada hacia contactos ni clientes.
               <div className="safe-banner" role="status">
-                <strong>Modo sin envíos.</strong> No sale ningún correo ni invitación a contactos, clientes ni al equipo.
+                {running ? <><strong>Modo sin envíos.</strong> No sale ningún correo ni invitación a contactos, clientes ni al equipo.</>
+                  : <><strong>Parada general.</strong> Todo el CRM está apagado: no sale nada, no se lee el correo y no se automatiza nada. Puedes seguir trabajando a mano.</>}
                 {user.role === "admin" && <> <Link href="/settings/switches">Interruptores</Link></>}
               </div>
             )}
