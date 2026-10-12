@@ -1,0 +1,13 @@
+# Nada local ni secreto entra en la imagen
+node_modules
+.next
+.git
+.env*
+!.env.example
+.demo-data
+.pipedrive-data
+ux-review
+scripts/*.local.*
+src/app/api/zz-test-*
+tsconfig.tsbuildinfo
+*.log
