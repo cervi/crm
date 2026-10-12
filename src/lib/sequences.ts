@@ -1023,6 +1023,9 @@ type Due = {
 } & SequenceSettings;
 
 export async function processSequences(limit = 50): Promise<{ sent: number; tasks: number; manual: number; paused: number; stopped: number; failed: number; waiting: number }> {
+  // Interruptor «Motor de secuencias»: apagado, nada avanza.
+  if (!(await isOn("sequences"))) return { sent: 0, tasks: 0, manual: 0, paused: 0, stopped: 0, failed: 0, waiting: 0 };
+  const canSend = await isOn("email_out");
   const out = { sent: 0, tasks: 0, manual: 0, paused: await handleOutOfOffice(), stopped: 0, failed: 0, waiting: 0 };
   await autoResume();
   out.stopped = await stopFinished();
@@ -1032,10 +1035,7 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
     WITH picked AS (
       SELECT e.id, e.next_run_at AS due_at FROM sequence_enrollments e JOIN sequences s ON s.id = e.sequence_id AND s.is_active AND s.archived_at IS NULL AND s.example IS NULL
       WHERE e.status = 'active' AND e.next_run_at <= now()
-      ORDER BY e.next_run_at, e.created_at LIMIT ${
-  // Interruptor «Motor de secuencias»: apagado, nada avanza.
-  if (!(await isOn("sequences"))) return { sent: 0, tasks: 0, manual: 0, paused: 0, stopped: 0, failed: 0, waiting: 0 };
-  const canSend = await isOn("email_out");limit} FOR UPDATE OF e SKIP LOCKED)
+      ORDER BY e.next_run_at, e.created_at LIMIT ${limit} FOR UPDATE OF e SKIP LOCKED)
     UPDATE sequence_enrollments x SET next_run_at = now() + interval '10 minutes'   -- reclamada: nadie más la procesa a la vez
     FROM picked, sequences s
     WHERE x.id = picked.id AND s.id = x.sequence_id
