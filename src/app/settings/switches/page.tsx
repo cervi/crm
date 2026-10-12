@@ -34,7 +34,10 @@ export default async function SwitchesPage() {
             <ul className="switch-list">
               {states.filter((s) => s.group === g).map((s) => (
                 <li key={s.key}>
-                  <div><strong>{s.label}</strong><span className="meta">{s.help}</span></div>
+                  <div><strong>{s.label}</strong><span className="meta">{s.help}</span>
+                    {s.on && !emailOn && (s.key === "team_mail" || s.key === "sequences" || s.key === "campaigns") && (
+                      <span className="meta tone-warn">Mientras «Enviar correos» esté apagado, sus correos no salen.</span>
+                    )}</div>
                   <label className="switch-toggle">
                     <input type="checkbox" role="switch" name={s.key} defaultChecked={s.on} disabled={s.locked} aria-label={s.label} />
                     <span className={s.locked ? "meta" : undefined}>{s.locked ? "Bloqueado por el servidor" : s.on ? "Encendido" : "Apagado"}</span>
