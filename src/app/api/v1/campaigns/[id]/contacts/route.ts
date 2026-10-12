@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * solos; nadie se repite en la misma campaña.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = checkApiKey(req.headers);
+  const auth = await checkApiKey(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { id } = await params;
   if (!isId(id) || !(await getCampaign(id))) return NextResponse.json({ error: "La campaña no existe." }, { status: 404 });

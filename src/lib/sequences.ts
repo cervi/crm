@@ -1,3 +1,4 @@
+import { isOn, recordBlocked } from "./switches";
 import { z } from "zod";
 import { sql } from "./db";
 import { UserError } from "./errors";
@@ -1031,7 +1032,10 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
     WITH picked AS (
       SELECT e.id, e.next_run_at AS due_at FROM sequence_enrollments e JOIN sequences s ON s.id = e.sequence_id AND s.is_active AND s.archived_at IS NULL AND s.example IS NULL
       WHERE e.status = 'active' AND e.next_run_at <= now()
-      ORDER BY e.next_run_at, e.created_at LIMIT ${limit} FOR UPDATE OF e SKIP LOCKED)
+      ORDER BY e.next_run_at, e.created_at LIMIT ${
+  // Interruptor «Motor de secuencias»: apagado, nada avanza.
+  if (!(await isOn("sequences"))) return { sent: 0, tasks: 0, manual: 0, paused: 0, stopped: 0, failed: 0, waiting: 0 };
+  const canSend = await isOn("email_out");limit} FOR UPDATE OF e SKIP LOCKED)
     UPDATE sequence_enrollments x SET next_run_at = now() + interval '10 minutes'   -- reclamada: nadie más la procesa a la vez
     FROM picked, sequences s
     WHERE x.id = picked.id AND s.id = x.sequence_id
@@ -1118,6 +1122,12 @@ export async function processSequences(limit = 50): Promise<{ sent: number; task
           continue;
         }
         const withUnsub = Boolean(camp) || e.unsubscribe_link;
+        // «Enviar correos» apagado: el correo espera una hora (no falla ni salta el paso).
+        if (!canSend) {
+          await recordBlocked("email_out", "correo", p.email, c.subject, `secuencia «${e.sequence_name}»`);
+          await later(e.id, new Date(Date.now() + 3_600_000));
+          continue;
+        }
         const sent = await sendEmail(conn, actor, {
           to: { email: p.email, name: p.full_name }, subject: c.subject || "(sin asunto)", body: c.text, html: c.html,
           dealId: e.deal_id, personId: e.person_id, organizationId: p.organization_id ?? camp?.organization_id ?? null,

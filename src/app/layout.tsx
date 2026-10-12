@@ -1,8 +1,10 @@
+import Link from "next/link";
 import type { Metadata, Viewport } from "next";
 import { sql } from "@/lib/db";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Nav } from "@/components/Nav";
+import { isOn } from "@/lib/switches";
 import { Topbar, type Theme } from "@/components/Topbar";
 import { countPending } from "@/lib/automations";
 import { activityTypes } from "@/lib/activity-types";
@@ -46,10 +48,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Con contraseña temporal, lo primero es cambiarla.
   if (user.must_change_password && !path.startsWith("/account")) redirect("/account?change=1");
   // Propuestas de la IA esperando decisión (el aviso del menú lateral).
-  const [inboxCount, unread, navPrefs, importing, [ui]] = await Promise.all([countPending().catch(() => 0), unreadCount(user.id).catch(() => 0),
+  const [inboxCount, unread, navPrefs, importing, [ui], sendingOff] = await Promise.all([countPending().catch(() => 0), unreadCount(user.id).catch(() => 0),
     getNavPrefs(user.id).catch(() => ({})),
     runningJob().then((j) => (j && !j.options?.since ? j : null)).catch(() => null),
-    sql<{ density: string | null }[]>`SELECT ui_prefs->>'density' AS density FROM users WHERE id = ${user.id}`.catch(() => [])]);
+    sql<{ density: string | null }[]>`SELECT ui_prefs->>'density' AS density FROM users WHERE id = ${user.id}`.catch(() => []),
+    isOn("email_out").then((on) => !on).catch(() => false)]);
   // Etiquetas de los tipos de actividad (configurables) disponibles en todo el servidor.
   await activityTypes().catch(() => null);
   return (
@@ -59,6 +62,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Nav inboxCount={inboxCount} prefs={navPrefs} />
           <div className="main">
             <Topbar theme={theme} user={{ name: user.name, email: user.email, role: user.role }} unread={unread} />
+            {sendingOff && (
+              // Que nadie dude: con «Enviar correos» apagado no sale nada hacia contactos ni clientes.
+              <div className="safe-banner" role="status">
+                <strong>Modo sin envíos.</strong> No sale ningún correo ni invitación a contactos, clientes ni al equipo.
+                {user.role === "admin" && <> <Link href="/settings/switches">Interruptores</Link></>}
+              </div>
+            )}
             {importing && (
               <ImportBanner canDrive={user.role === "admin"} labels={STEP_LABELS}
                             initial={{ status: importing.status, step: importing.step,

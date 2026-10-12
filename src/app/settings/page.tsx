@@ -16,6 +16,7 @@ const GROUPS: (Omit<SettingsGroup, "items"> & { items: Item[] })[] = [
   ] },
   { key: "equipo", title: "Equipo y accesos", hint: "Quién entra, con qué permisos y cómo se reparte el trabajo.", items: [
     { href: "/settings/users", icon: "persons", title: "Usuarios y permisos", text: "Invitar, roles, dar de baja y recuperar contraseñas.", keywords: "alta baja invitar rol admin comercial contraseña" },
+    { href: "/settings/switches", icon: "settings", title: "Interruptores", text: "Encender o apagar módulos enteros: envíos de correo, secuencias, IA, sincronizaciones, páginas públicas…", keywords: "modo sin envios apagar desactivar produccion seguridad pausa kill switch" },
     { href: "/settings/security", icon: "user", title: "Centro de seguridad", text: "Alertas, reglas de sesión y descargas, entrar con Google o Microsoft y registro de accesos.", keywords: "sso login sesiones dominio seguridad alertas reglas exportar dispositivos" },
     { href: "/settings/usage", icon: "dashboards", title: "Uso y actividad del equipo", text: "Usuarios, registros, correos, IA y quién usa el CRM.", keywords: "uso consumo actividad usuarios resumen" },
     { href: "/settings/assignment", icon: "leads", title: "Reparto de leads y deals", text: "Asignar solos los nuevos, por turnos o por reglas.", keywords: "round robin asignar turnos" },

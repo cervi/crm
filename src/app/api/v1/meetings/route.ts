@@ -1,3 +1,4 @@
+import { isOn } from "@/lib/switches";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkApiKey } from "@/lib/api-auth";
 import { ingestMeetingNote, noteFromPayload } from "@/lib/meeting-notes";
@@ -10,8 +11,9 @@ export const dynamic = "force-dynamic";
  * Acepta JSON o formulario con nombres de campo flexibles. Ver /reuniones.
  */
 export async function POST(req: NextRequest) {
-  const auth = checkApiKey(req.headers);
+  const auth = await checkApiKey(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  if (!(await isOn("meeting_notes"))) return NextResponse.json({ error: "La importación de notas de reuniones está desactivada en este CRM." }, { status: 503 });
   let body: Record<string, unknown>;
   try {
     const type = req.headers.get("content-type") ?? "";

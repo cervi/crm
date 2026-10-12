@@ -295,3 +295,20 @@ export async function saveUiPrefsAction(_: ActionState, form: FormData): Promise
   revalidatePath("/", "layout");
   return { ok: true, message: "Preferencias guardadas." };
 }
+
+export async function saveSwitchesAction(_: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const me = await adminOnly();
+    const { saveSwitches, SWITCHES } = await import("@/lib/switches");
+    const { raiseAlert } = await import("@/lib/security");
+    const { changed } = await saveSwitches(form);
+    if (changed.length) {
+      const text = changed.map((c) => `${SWITCHES[c.key].label}: ${c.on ? "encendido" : "apagado"}`).join(" · ");
+      // Encender algo que llega a otras personas es importante; apagar, informativo.
+      const risky = changed.some((c) => c.on && ["email_out", "calendar_invites", "webhooks"].includes(c.key));
+      await raiseAlert({ kind: "switches", severity: risky ? "warn" : "info", actorId: me.id, title: `Interruptores cambiados: ${text}`.slice(0, 300) });
+    }
+    revalidatePath("/", "layout");
+    return { ok: true, message: changed.length ? "Guardado." : "No había cambios." };
+  } catch (err) { return { error: toUserMessage(err) }; }
+}

@@ -1,3 +1,4 @@
+import { isOn } from "./switches";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { sql } from "./db";
@@ -128,6 +129,7 @@ export async function enrichOrganization(orgId: string): Promise<boolean> {
 
 /** Trabajo: empresas recientes con dominio y sin enriquecer. */
 export async function runEnrichment(): Promise<string | number | null> {
+  if (!(await isOn("web_enrichment"))) return null;
   return runJob("lead_enrich", async () => {
     const rows = await sql<{ id: string }[]>`
       SELECT id FROM organizations WHERE domain IS NOT NULL AND enriched_at IS NULL AND deleted_at IS NULL AND created_at > now() - interval '30 days'

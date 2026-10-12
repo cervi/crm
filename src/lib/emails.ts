@@ -1,3 +1,4 @@
+import { isOn } from "./switches";
 import { parseAttachRefs, resolveAttachments, saveAttachmentRefs, storedAttachments } from "./attachments";
 import { z } from "zod";
 import { sql } from "./db";
@@ -113,6 +114,8 @@ export async function cancelScheduledEmail(user: SessionUser, emailId: string) {
 
 /** Envía los correos programados cuya hora ha llegado (lo llama el ciclo periódico). */
 export async function sendDueEmails(limit = 20): Promise<{ sent: number; failed: number }> {
+  // Con «Enviar correos» apagado, los programados se quedan esperando (no fallan).
+  if (!(await isOn("email_out"))) return { sent: 0, failed: 0 };
   const due = await sql<{ id: string; user_id: string | null; created_by: string | null; to_email: string; to_name: string | null;
                           subject: string; body: string; deal_id: string | null; person_id: string | null; organization_id: string | null;
                           track: boolean; template_id: string | null; body_html: string | null }[]>`

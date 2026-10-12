@@ -32,7 +32,7 @@ export async function saveRules(form: FormData) {
 
 export const ALERT_TEXT: Record<string, string> = {
   failed_logins: "Muchos intentos fallidos", new_admin: "Nuevo administrador", export: "Descarga de datos", new_device: "Entrada desde un dispositivo nuevo",
-  deactivated: "Usuario dado de baja", anonymized: "Datos personales borrados", rules_changed: "Reglas de seguridad cambiadas",
+  deactivated: "Usuario dado de baja", anonymized: "Datos personales borrados", rules_changed: "Reglas de seguridad cambiadas", switches: "Interruptores cambiados",
 };
 
 /** Apunta una alerta y avisa a los administradores (las de nivel medio o alto). */

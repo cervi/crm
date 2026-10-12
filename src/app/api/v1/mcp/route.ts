@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { agentFromHeaders } from "@/lib/agents";
 import { handleRpc } from "@/lib/mcp";
+import { isOn } from "@/lib/switches";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,9 @@ export const dynamic = "force-dynamic";
  * externos. Autenticación: `Authorization: Bearer <clave del agente>`.
  */
 export async function POST(req: Request) {
+  if (!(await isOn("inbound_api"))) {
+    return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32002, message: "Los agentes externos están desactivados en este CRM." } }, { status: 503 });
+  }
   const agent = await agentFromHeaders(req.headers);
   if (!agent) {
     return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "Clave de agente no válida o revocada." } }, {

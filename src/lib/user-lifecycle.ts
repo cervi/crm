@@ -1,3 +1,4 @@
+import { isOn, recordBlocked } from "./switches";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { sql, transaction } from "./db";
@@ -66,6 +67,8 @@ async function sendSystemEmail(to: { email: string; name?: string | null }, subj
                                cta?: { label: string; url: string }, foot?: string, preferUserId?: string | null) {
   const conn = await systemSender(preferUserId);
   if (!conn) return null;
+  // Sin envíos: como si no hubiera buzón (se ofrece el enlace para copiarlo).
+  if (!(await isOn("email_out"))) { await recordBlocked("email_out", "correo", to.email, subject, "acceso al CRM"); return null; }
   const body = [text, cta ? `${cta.label}: ${cta.url}` : "", foot ?? ""].filter(Boolean).join("\n\n");
   await sendPlainEmail(conn, to.email, subject, body, mailHtml(text, cta, foot), { toName: to.name ?? null, track: false });
   return conn.email;

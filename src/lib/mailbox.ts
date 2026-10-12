@@ -1,3 +1,4 @@
+import { assertOn, isOn, recordBlocked } from "./switches";
 import { randomBytes } from "node:crypto";
 import { sql, json, transaction, type Db } from "./db";
 import { publicBase, trackedHtml } from "./email-track";
@@ -265,6 +266,8 @@ async function trackingDefault(): Promise<boolean> {
  * seguimiento de aperturas y clics si está activado.
  */
 export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
+  // Interruptor «Enviar correos» (y modo sin envíos del servidor): antes de apuntar nada.
+  await assertOn("email_out", { kind: "correo", target: v.to.email, subject: v.subject, source: "correo del CRM" });
   const base = publicBase();
   const track = Boolean(base) && (v.track ?? (await trackingDefault()));
   const token = track ? randomBytes(18).toString("base64url") : null;
@@ -312,7 +315,8 @@ export async function sendEmail(conn: Connection, actor: Actor, v: EmailInput) {
 
 /** Envía un correo sin registrarlo en ningún deal (p. ej. el parte del día a uno mismo). */
 export async function sendPlainEmail(conn: Connection, to: string, subject: string, body: string, html?: string | null,
-                                     opts: { toName?: string | null; attachments?: MailAttachment[]; track?: boolean } = {}) {
+                                     opts: { toName?: string | null; attachments?: MailAttachment[]; track?: boolean; source?: string } = {}) {
+  await assertOn("email_out", { kind: "correo", target: to, subject, source: opts.source ?? "correo del sistema" });
   // Sin seguimiento para los correos con enlaces privados (crear o cambiar una contraseña).
   const finalHtml = html ? (opts.track === false ? html : trackHtmlLinks(html, null, null)) : undefined;
   await guarded(conn, (c, p) => p.send(c, { from: conn.email, to: { email: to, name: opts.toName ?? null }, subject, body,
@@ -381,9 +385,12 @@ export async function addActivityToCalendar(activityId: string) {
   if (!conn) throw new UserError("No hay ningún calendario conectado.");
   const minutes = a.duration_minutes ?? conn.scheduling.duration;
   const start = new Date(a.due_at);
+  // Interruptor «Invitar a reuniones»: apagado, el evento va a tu calendario sin invitados.
+  const invite = Boolean(a.email) && (await isOn("calendar_invites"));
+  if (a.email && !invite) await recordBlocked("calendar_invites", "invitación", a.email, a.subject, "reunión en el calendario");
   const ev = await guarded(conn, (c, p) => p.createEvent(c, {
     subject: a.subject, start, end: new Date(start.getTime() + minutes * 60000),
-    attendees: a.email ? [{ email: a.email, name: a.full_name }] : [], online: a.type !== "meeting" && a.type !== "call",
+    attendees: invite ? [{ email: a.email!, name: a.full_name }] : [], online: a.type !== "meeting" && a.type !== "call",
     body: a.note,
   }));
   await sql`UPDATE activities SET external_ref = ${ev.ref}, meeting_url = coalesce(${ev.joinUrl}, meeting_url),
@@ -578,7 +585,7 @@ export async function syncMailbox(conn: Connection): Promise<SyncResult> {
         const done = events.filter((e) => !e.cancelled && e.end.getTime() < Date.now() - 20 * 60000
           && (e.attachments ?? []).some((a) => (a.mimeType === GDOC || !a.mimeType) && NOTES_DOC.test(a.title)));
         let notesError: string | null = null;
-        for (const e of done) {
+        for (const e of (await isOn("meeting_notes")) ? done : []) {
           const [already] = await sql`SELECT 1 FROM meeting_notes WHERE source = 'meet' AND external_id = ${e.ref}`;
           if (already) continue;
           try {
@@ -655,6 +662,7 @@ export async function recordBounce(conn: Connection, text: string, ref: string) 
 /** Sincroniza todas las cuentas activas; un fallo en una no para las demás. */
 export async function syncAllMailboxes(): Promise<SyncResult> {
   const total: SyncResult = { emails: 0, meetings: 0, updated: 0 };
+  if (!(await isOn("mail_sync"))) return total;
   const conns = withScheduling(await selectConnections(sql`WHERE m.status = 'active'`));
   for (const conn of conns) {
     try {

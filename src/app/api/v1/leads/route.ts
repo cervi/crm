@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * Acepta JSON o application/x-www-form-urlencoded. Ver /settings/api.
  */
 export async function POST(req: NextRequest) {
-  const auth = checkApiKey(req.headers);
+  const auth = await checkApiKey(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   let body: Record<string, unknown>;

@@ -1,3 +1,4 @@
+import { isOn } from "./switches";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { resolveMx } from "node:dns/promises";
 import { z } from "zod";
@@ -260,7 +261,7 @@ export async function verifyEmail(email: string, cache = new Map<string, boolean
     FROM person_emails pe JOIN persons p ON p.id = pe.person_id WHERE lower(pe.email) = ${email} LIMIT 1`;
   if (p?.unsubscribed) return { ok: false, note: "Se dio de baja de las comunicaciones" };
   if (p?.bounced) return { ok: false, note: "Ya rebotó antes" };
-  if (process.env.EMAIL_VERIFY_DNS !== "off") {
+  if (process.env.EMAIL_VERIFY_DNS !== "off" && (await isOn("web_enrichment"))) {
     if (!cache.has(domain)) {
       try {
         const mx = await Promise.race([resolveMx(domain), new Promise<never>((_, rej) => setTimeout(() => rej(Object.assign(new Error("timeout"), { code: "ETIMEOUT" })), 5000))]);
@@ -328,6 +329,7 @@ export async function enrollApproved(c: Campaign, limit = 100): Promise<number> 
 
 /** Trabajo: verificar, escribir la primera línea e inscribir lo aprobado. */
 export async function runCampaignPrepare(): Promise<string | number | null> {
+  if (!(await isOn("campaigns"))) return null;
   return runJob("campaign_prepare", async () => {
     const campaigns = await sql<Campaign[]>`SELECT ${campaignCols} ${campaignFrom} WHERE c.status IN ('draft', 'active', 'paused') AND NOT c.example`;
     const cache = new Map<string, boolean | null>();
@@ -422,6 +424,7 @@ export function classifyByRules(text: string): { clase: ReplyClass; dias: number
 
 /** Trabajo: clasifica las respuestas de los contactos de campaña y actúa. */
 export async function runCampaignReplies(): Promise<string | number | null> {
+  if (!(await isOn("campaigns"))) return null;
   return runJob("campaign_replies", async () => {
     const rows = await sql<{ cc_id: string; person_id: string; full_name: string; campaign_id: string; campaign: string; pipeline_id: string | null;
                              owner_id: string | null; mailbox_user: string | null; organization_id: string | null; organization: string | null;

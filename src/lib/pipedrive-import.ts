@@ -1,3 +1,4 @@
+import { isOn } from "./switches";
 import { sql, json, type Db } from "./db";
 import { decrypt, encrypt, encryptionConfigured } from "./crypto";
 import { UserError } from "./errors";
@@ -217,7 +218,7 @@ async function continueImportLocked(budgetMs: number): Promise<ImportJob | null>
 export async function importTick(): Promise<void> {
   const s = await getPipedriveSettings();
   if (!s.connected) return;
-  if (!(await runningJob()) && s.sync) {
+  if (!(await runningJob()) && s.sync && (await isOn("pipedrive_sync"))) {
     const [last] = await sql<{ started_at: Date }[]>`SELECT started_at FROM import_jobs ORDER BY started_at DESC LIMIT 1`;
     if (!last || Date.now() - new Date(last.started_at).getTime() > 60 * 60000) {
       await startImport({ flow: true, files: false, incremental: true }).catch(() => null);

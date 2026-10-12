@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * usuarios_activos y tickets_abiertos.
  */
 export async function POST(req: NextRequest) {
-  const auth = checkApiKey(req.headers);
+  const auth = await checkApiKey(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Se esperaba JSON." }, { status: 400 }); }

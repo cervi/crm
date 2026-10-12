@@ -1,3 +1,4 @@
+import { outboundHardOff } from "../switches";
 import { createHash, randomBytes } from "node:crypto";
 import { UserError } from "../errors";
 
@@ -73,6 +74,8 @@ export function apiClient(opts: {
     return current.access_token;
   }
   async function call<T>(url: string, init: RequestInit & { json?: unknown } = {}, retried = false): Promise<T> {
+    // Última barrera del modo sin envíos: aunque algo se saltara los interruptores, aquí no sale.
+    if (outboundHardOff() && isOutgoing(url, init)) throw new Error("Bloqueado: el CRM está en modo sin envíos (OUTBOUND_DISABLED).");
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${await token()}`);
     if (init.json !== undefined) headers.set("content-type", "application/json");
@@ -96,4 +99,16 @@ export function apiClient(opts: {
 /** Emails dentro de una cabecera como «Ana <ana@x.com>, b@y.com». */
 export function parseAddresses(header: string | null | undefined): string[] {
   return [...(header ?? "").matchAll(/[^\s<>,;"']+@[^\s<>,;"']+/g)].map((m) => m[0].toLowerCase());
+}
+
+/** Peticiones que llegan a otras personas: enviar un correo o un borrador, o crear/cambiar un evento con invitados. */
+function isOutgoing(url: string, init: RequestInit & { json?: unknown }) {
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method === "GET") return false;
+  if (/\/messages\/send\b|\/drafts\/send\b|\/sendMail\b|\/messages\/[^/?]+\/(send|reply|replyAll|forward)\b/i.test(url)) return true;
+  if (/\/(events|calendarView)\b/i.test(url)) {
+    const j = init.json as { attendees?: unknown[] } | undefined;
+    return Boolean(j && Array.isArray(j.attendees) && j.attendees.length > 0) || /sendUpdates=(all|externalOnly)/i.test(url);
+  }
+  return false;
 }

@@ -1,3 +1,4 @@
+import { isOn } from "./switches";
 import { timingSafeEqual, createHash } from "node:crypto";
 
 /** Claves válidas: variable INBOUND_API_KEYS, separadas por comas. */
@@ -10,7 +11,8 @@ const digest = (s: string) => createHash("sha256").update(s).digest();
 export type ApiAuth = { ok: true } | { ok: false; status: 401 | 503; error: string };
 
 /** Comprueba la clave enviada en `Authorization: Bearer …` o `X-Api-Key`. */
-export function checkApiKey(headers: Headers): ApiAuth {
+export async function checkApiKey(headers: Headers): Promise<ApiAuth> {
+  if (!(await isOn("inbound_api"))) return { ok: false, status: 503, error: "La API de entrada está desactivada en este CRM." };
   const keys = configuredKeys();
   if (keys.length === 0) {
     return { ok: false, status: 503, error: "La API de entrada no está configurada (falta INBOUND_API_KEYS)." };

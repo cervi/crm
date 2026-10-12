@@ -1,3 +1,4 @@
+import { isOn } from "./switches";
 import { sql, json } from "./db";
 import { decrypt, encrypt, encryptionConfigured } from "./crypto";
 import { UserError } from "./errors";
@@ -211,6 +212,7 @@ export async function generate(task: AiTask | "test", facts: unknown, opts: { ma
   const [row] = await sql<{ provider: AiProvider; base_url: string | null; model: string | null; api_key: string | null;
                            prompts: Partial<Record<AiTask, string>> }[]>`SELECT provider, base_url, model, api_key, prompts FROM ai_settings`;
   if (!row || row.provider === "none" || !row.model || !row.api_key) return null;
+  if (!(await isOn("ai"))) return null; // Interruptor «IA»: como si no estuviera configurada.
   const blocked = await withinBudget(task);
   if (blocked) {
     await sql`UPDATE ai_settings SET last_error = ${blocked}`;

@@ -1,3 +1,4 @@
+import { assertOn, isOn } from "./switches";
 import { z } from "zod";
 import { checkCondition, writeAgentEmail } from "./stage-agents";
 import { appendSignature, senderVars, signatureFor } from "./signatures";
@@ -1390,21 +1391,23 @@ export async function runAutomations(): Promise<RunResult> {
     try {
       // Primero se traen los correos y reuniones (aunque la IA esté en pausa).
       result.sync = await syncAllMailboxes();
-      const paused = (await getSettings()).paused;
+      // Interruptor «Propuestas de la IA y reglas»: apagado, cuenta como en pausa.
+      const paused = (await getSettings()).paused || !(await isOn("automations"));
       if (!paused) {
         await runLocked(result);
         // Resúmenes de los deals que han cambiado.
         result.briefs = await refreshStaleBriefs().catch(() => 0);
       }
       // El parte del día sale aunque la IA esté en pausa: es información, no una acción.
-      result.digests = await sendDueDigests().catch((err) => { console.error("[parte del día]", err); return 0; });
-      // Firmas: caducar, recordatorios automáticos y avisos de lo que lleva días esperando.
-      await runEsignJobs().catch((err) => console.error("[firmas]", err));
+      const teamMail = (await isOn("team_mail")) && (await isOn("email_out"));
+      result.digests = teamMail ? await sendDueDigests().catch((err) => { console.error("[parte del día]", err); return 0; }) : 0;
+      // Firmas: caducar, recordatorios automáticos y avisos de lo que lleva días esperando (todo son correos).
+      if (await isOn("email_out")) await runEsignJobs().catch((err) => console.error("[firmas]", err));
       // Piloto automático: siguiente paso, llamadas cuando abren una y otra vez, avisos de lo vencido.
       await runAutopilot().catch((err) => console.error("[piloto automático]", err));
       // Avisos por correo (al momento o agrupados), resúmenes semanales y correos sin respuesta.
-      result.notices = await getDigestSettings().then((s) => sendNotificationMail(new Date(), s.hour))
-        .catch((err) => { console.error("[avisos por correo]", err); return 0; });
+      result.notices = teamMail ? await getDigestSettings().then((s) => sendNotificationMail(new Date(), s.hour))
+        .catch((err) => { console.error("[avisos por correo]", err); return 0; }) : 0;
       if (paused) return { ...result, status: "paused" };
       await sql`UPDATE automation_settings SET last_run_at = now()`;
     } finally {
@@ -1621,6 +1624,7 @@ async function perform(a: ActionRow, edits: Record<string, unknown>, actor: Acto
     }
     case "webhook": {
       const url = checkWebhookUrl(str(p.url, ""));
+      await assertOn("webhooks", { kind: "webhook", target: hostOf(url), subject: str(p.event, "") || null, source: "regla" });
       const d = a.deal_id ? await anyDeal(a.deal_id) : null;
       const body = {
         event: p.event ?? null, rule: p.rule_name ?? null, sent_at: new Date().toISOString(),
