@@ -122,6 +122,9 @@ export async function recordBlocked(sw: SwitchKey, kind: string, target: string 
 export async function assertOn(sw: SwitchKey, what: { kind: string; target?: string | null; subject?: string | null; source: string }) {
   if (await isOn(sw)) return;
   await recordBlocked(sw, what.kind, what.target ?? null, what.subject ?? null, what.source);
+  if ((await stored()).all === false && !serverLocked().has(sw)) {
+    throw new UserError("No se ha enviado: el CRM está en parada general (Ajustes → Interruptores).");
+  }
   throw new UserError(serverLocked().has(sw)
     ? `No se ha enviado: este CRM está en modo sin envíos («${SWITCHES[sw].label}» apagado en el servidor).`
     : `No se ha enviado: «${SWITCHES[sw].label}» está apagado en Ajustes → Interruptores.`);
