@@ -47,7 +47,7 @@ export default async function SwitchesPage() {
         {SWITCH_GROUPS.map(([g, title]) => (
           <section key={g} className="panel" aria-label={title}>
             <h2>{title}</h2>
-            <ul className="switch-list">
+            <ul className={`switch-list${master ? "" : " stopped"}`}>
               {states.filter((s) => s.group === g).map((s) => (
                 <li key={s.key}>
                   <div><strong>{s.label}</strong><span className="meta">{s.help}</span>
