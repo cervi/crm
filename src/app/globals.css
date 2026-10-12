@@ -143,8 +143,8 @@ h3 { font-size: 13px; font-weight: 620; color: var(--text-2); margin: 0 0 8px; }
   background: var(--rail); border-right: 1px solid var(--rail-border);
   position: sticky; top: 0; height: 100vh; padding: 10px 0; display: flex; flex-direction: column; align-items: center; gap: 14px; z-index: 30;
 }
-.rail-brand { width: 36px; height: 36px; border-radius: 10px; background: var(--accent); display: grid; place-items: center; }
-.rail-brand svg { width: 20px; height: 20px; stroke: var(--accent-text); }
+.rail-brand { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; }
+.rail-brand svg.logo-mark { width: 36px; height: 36px; stroke: none; display: block; }
 .rail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .rail nav a { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-sm); }
 .rail nav a svg { width: 20px; height: 20px; stroke: var(--muted); }
@@ -242,6 +242,7 @@ h3 { font-size: 13px; font-weight: 620; color: var(--text-2); margin: 0 0 8px; }
 .auth-card p { margin: 0; color: var(--text-2); }
 .auth-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent-ink); }
 .auth-brand svg { width: 20px; height: 20px; stroke: currentColor; }
+.auth-brand svg.logo-mark { width: 28px; height: 28px; stroke: none; }
 
 /* Buscador global */
 .global-search { position: relative; display: flex; align-items: center; }

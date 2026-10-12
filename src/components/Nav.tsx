@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { saveNavPrefsAction } from "@/app/actions/preferences";
 import { arrangeNav, NAV_ITEMS, type NavPrefs } from "@/lib/nav-items";
 import { Icon } from "./Icon";
+import { LogoMark } from "./LogoMark";
 
 export { NAV_ITEMS };
 
@@ -53,7 +54,7 @@ export function Nav({ inboxCount = 0, prefs = {} }: { inboxCount?: number; prefs
   return (
     <aside className="rail">
       {/* El logo es «Hoy» (la portada): siempre arriba y no se puede quitar del menú. */}
-      <Link href="/" className="rail-brand" aria-label="Hoy" data-tip="Hoy" aria-current={path === "/" ? "page" : undefined}><Icon name="deals" /></Link>
+      <Link href="/" className="rail-brand" aria-label="Hoy" data-tip="Hoy" aria-current={path === "/" ? "page" : undefined}><LogoMark size={36} /></Link>
       <nav aria-label="Principal">
         <ul>
           {visible.slice(1, -1).map(link)}
