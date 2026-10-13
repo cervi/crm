@@ -2693,3 +2693,10 @@ tbody tr:hover td { background: var(--panel-2); }
 /* Menú lateral y barra superior: sin peso */
 .rail nav a[aria-current="page"] { box-shadow: none; }
 .topbar-section { font-weight: 600; }
+/* Minimal: barra de fases más ligera y saludo de Hoy más contenido */
+.stagebar { filter: none; }
+.stagebar button { background: var(--sunken); color: var(--muted); font-weight: 500; }
+.stagebar button.done { background: var(--accent-soft); color: var(--accent-ink); }
+.stagebar button.current { font-weight: 600; }
+.b-hero h1 { font-size: clamp(24px, 2.4vw, 30px); }
+.b-kpi strong { font-size: 26px; }
