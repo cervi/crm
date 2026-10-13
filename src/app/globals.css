@@ -2614,3 +2614,82 @@ fieldset.readonly-fields input, fieldset.readonly-fields select, fieldset.readon
 .bulk-edit .drawer-foot { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--panel); }
 .bulk-edit .drawer-foot .form-error { flex-basis: 100%; margin: 0; }
 .bulk-form .btn svg { width: 14px; height: 14px; }
+
+/* =====================================================================
+   Capa minimal: menos cajas, sombras y color. Superficies casi blancas,
+   bordes muy suaves, sin degradados, tipografía más ligera. El color queda
+   para lo que importa (acción principal, estados y datos).
+   ===================================================================== */
+:root {
+  --bg: #fafafa; --panel: #ffffff; --panel-2: #f7f7f8; --sunken: #f3f4f5;
+  --border: #ececee; --border-strong: #dedfe3; --control-border: #e3e4e8; --btn-border: #e6e7ea;
+  --rail-border: #efeff1;
+  --shadow: none; --shadow-pop: 0 10px 30px rgba(17, 24, 39, .10), 0 1px 3px rgba(17, 24, 39, .06);
+  --r: 8px; --r-lg: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f1115; --panel: #14171c; --panel-2: #181b21; --sunken: #121418; --border: #22262d; --border-strong: #2d323a; --rail: #0f1115; --rail-border: #1c1f25; --shadow: none; }
+}
+:root[data-theme="dark"] { --bg: #0f1115; --panel: #14171c; --panel-2: #181b21; --sunken: #121418; --border: #22262d; --border-strong: #2d323a; --rail: #0f1115; --rail-border: #1c1f25; --shadow: none; }
+
+/* Tipografía: menos negrita */
+h1 { font-weight: 600; letter-spacing: -.015em; }
+h2 { font-weight: 600; font-size: 14.5px; }
+h3 { font-weight: 600; }
+.field .label, .field > span:first-child { font-weight: 500; }
+
+/* Botones y controles: planos */
+.btn, a.btn { font-weight: 500; }
+.btn.secondary, a.btn.secondary, select:not([multiple]):not([size]) { box-shadow: none; }
+input:focus, select:focus, textarea:focus, select:not([multiple]):not([size]):focus { box-shadow: 0 0 0 2px var(--accent-soft); }
+
+/* Tablas: sin fondo en la cabecera, filas más limpias */
+th { background: transparent; font-weight: 500; font-size: 12px; color: var(--muted); }
+th, td { border-bottom-color: var(--border); }
+tbody tr:hover td { background: var(--panel-2); }
+
+/* Etiquetas: sin punto, más discretas */
+.badge { font-weight: 500; padding: 3px 8px; }
+.badge.open::before, .badge.won::before, .badge.lost::before, .badge.converted::before, .badge.warn::before { display: none; }
+
+/* Filtros en chip: borde fino */
+.chips a { border-color: var(--border); font-weight: 500; }
+
+/* Avisos: fondo neutro con una línea de color a la izquierda */
+.callout { background: var(--panel-2); color: var(--text-2); border-left: 2px solid var(--warn); border-radius: 4px; }
+.callout.good { background: var(--panel-2); color: var(--text-2); border-left-color: var(--good); }
+.callout.bad { background: var(--panel-2); color: var(--text-2); border-left-color: var(--bad); }
+.callout strong { color: var(--text); }
+.safe-banner { background: var(--panel-2); color: var(--text-2); border-left: 2px solid var(--warn); }
+.safe-banner strong { color: var(--warn); }
+
+/* Hoy: cabecera sin degradado ni sombras */
+.b-hero { background: transparent; color: var(--text); box-shadow: none; border-radius: 0; padding: 4px 0 8px; border-bottom: 1px solid var(--border); }
+.b-hero::after { display: none; }
+.b-hero h1 { color: var(--text); }
+.b-date, .b-focus-src { color: var(--muted); opacity: 1; }
+.b-focus-actions .btn.secondary { background: var(--panel); color: var(--text); border-color: var(--btn-border); }
+.b-focus-actions .btn.secondary:hover { background: var(--panel-2); }
+.b-people a { color: var(--text-2); background: var(--sunken); }
+.b-people a:hover { background: var(--panel-2); }
+.b-people a[aria-current="page"] { background: var(--text); color: var(--panel); }
+.b-people .b-av { background: var(--panel); }
+.b-ring .track { stroke: var(--sunken); }
+.b-ring .fill { stroke: var(--accent); }
+.b-kpi { background: var(--panel); border-color: var(--border); border-radius: var(--r); min-height: 132px; }
+.b-kpi:hover { transform: none; box-shadow: none; border-color: var(--border-strong); }
+.b-kpi-label svg { background: transparent; padding: 0; width: 18px; height: 18px; }
+.b-kpi strong { font-weight: 600; }
+.b-card { border-radius: var(--r); }
+.b-card h2 { font-size: 15px; font-weight: 600; }
+
+/* Entrada: lado izquierdo neutro */
+.login-side { background: var(--panel-2); color: var(--text); border-right: 1px solid var(--border); }
+.login-side h2 { color: var(--text); font-weight: 600; }
+.login-side li svg { stroke: var(--accent); background: transparent; }
+.login-side .meta { color: var(--muted); }
+.auth-brand.light { color: var(--text); }
+
+/* Menú lateral y barra superior: sin peso */
+.rail nav a[aria-current="page"] { box-shadow: none; }
+.topbar-section { font-weight: 600; }
