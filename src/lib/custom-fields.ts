@@ -90,7 +90,7 @@ export function readCustomValues(
   return out;
 }
 
-function coerce(def: FieldDefinition, raw: string): unknown {
+export function coerce(def: FieldDefinition, raw: string): unknown {
   const fail = (what: string) => new UserError(`«${def.label}»: ${what}.`);
   switch (def.field_type) {
     case "number":

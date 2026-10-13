@@ -1,5 +1,9 @@
 "use client";
 
+import { bulkQuickAction } from "@/app/actions/bulk";
+import type { BulkField } from "@/lib/bulk-edit";
+import { BulkEditPanel } from "./bulk/BulkEdit";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { bulkDealsAction } from "@/app/actions/deals";
@@ -34,7 +38,7 @@ export function BulkSelectAll() {
 }
 
 /** Barra que aparece al marcar deals: cambiar responsable, fase, ganar/perder o crear una actividad para todos. */
-export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: { users: Opt[]; stages: Opt[]; reasons: Opt[]; types: Opt[]; sequences?: Opt[] }) {
+export function DealBulkBar({ users, stages, reasons, types, sequences = [], editFields = [] }: { users: Opt[]; stages: Opt[]; reasons: Opt[]; types: Opt[]; sequences?: Opt[]; editFields?: BulkField[] }) {
   const router = useRouter();
   const [count, setCount] = useState(0);
   const [op, setOp] = useState("");
@@ -51,8 +55,8 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
 
   if (count === 0 && !result) return null;
 
-  const LABELS: Record<string, string> = { owner: "Cambiar responsable", stage: "Mover de fase", activity: "Programar actividad", sequence: "Añadir a la secuencia", won: "Marcar como ganados", lost: "Marcar como perdidos" };
-  const risky = op === "won" || op === "lost";
+  const LABELS: Record<string, string> = { owner: "Cambiar responsable", stage: "Mover de fase", activity: "Programar actividad", sequence: "Añadir a la secuencia", won: "Marcar como ganados", lost: "Marcar como perdidos", trash: "Mover a la papelera" };
+  const risky = op === "won" || op === "lost" || op === "trash";
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (risky && !armed) { setArmed(true); return; }
@@ -60,7 +64,7 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
     const data = Object.fromEntries(Array.from(new FormData(e.currentTarget).entries()).map(([k, v]) => [k, String(v)]));
     const ids = selectedIds();
     start(async () => {
-      const r = await bulkDealsAction(ids, data);
+      const r = op === "trash" ? await bulkQuickAction("deal", "trash", ids) : await bulkDealsAction(ids, data);
       setResult(r);
       if (!r.error) {
         document.querySelectorAll<HTMLInputElement>(CHECKS).forEach((c) => { c.checked = false; });
@@ -76,6 +80,7 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
       {count > 0 ? (
         <form onSubmit={submit} className="bulk-form">
           <strong>{count} seleccionado{count === 1 ? "" : "s"}</strong>
+          {editFields.length > 0 && <BulkEditPanel entity="deal" fields={editFields} onDone={setResult} />}
           <select name="op" aria-label="Acción" value={op} onChange={(e) => { setOp(e.target.value); setResult(null); setArmed(false); }} required>
             <option value="">Elegir acción…</option>
             <option value="owner">Cambiar responsable</option>
@@ -84,6 +89,7 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
             {sequences.length > 0 && <option value="sequence">Añadir a una secuencia</option>}
             <option value="won">Marcar como ganados</option>
             <option value="lost">Marcar como perdidos</option>
+            <option value="trash">Mover a la papelera</option>
           </select>
           {op === "owner" && (
             <select name="owner_id" aria-label="Nuevo responsable" defaultValue="">
@@ -121,7 +127,7 @@ export function DealBulkBar({ users, stages, reasons, types, sequences = [] }: {
               <input name="due_date" type="date" aria-label="Fecha" required defaultValue={new Date().toISOString().slice(0, 10)} />
             </>
           )}
-          {armed && <span className="confirm-inline">{op === "lost" ? `Se marcarán ${count} deals como perdidos.` : `Se marcarán ${count} deals como ganados (se crean sus clientes y onboardings).`}</span>}
+          {armed && <span className="confirm-inline">{op === "trash" ? `Se moverán ${count} deals a la papelera (se pueden recuperar durante 30 días).` : op === "lost" ? `Se marcarán ${count} deals como perdidos.` : `Se marcarán ${count} deals como ganados (se crean sus clientes y onboardings).`}</span>}
           <button type="submit" className={armed ? "btn small danger" : "btn small"} disabled={!op || pending}>
             {pending ? "Aplicando…" : !op ? "Aplicar" : armed ? `Sí, ${LABELS[op].toLowerCase()} (${count})` : `${LABELS[op]} (${count})`}
           </button>

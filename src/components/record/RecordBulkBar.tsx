@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { bulkRecordsAction } from "@/app/actions/contact";
+import type { BulkField } from "@/lib/bulk-edit";
+import { BulkEditPanel } from "../bulk/BulkEdit";
 
 type Opt = { value: string; label: string };
 const CHECKS = "input.bulk-check";
@@ -13,7 +15,7 @@ const clear = () => {
 };
 
 /** Barra de acciones en bloque para contactos o empresas. */
-export function RecordBulkBar({ kind, users, types, sequences = [], tags = [] }: { kind: "person" | "organization"; users: Opt[]; types: Opt[]; sequences?: Opt[]; tags?: string[] }) {
+export function RecordBulkBar({ kind, users, types, sequences = [], tags = [], editFields = [] }: { kind: "person" | "organization"; users: Opt[]; types: Opt[]; sequences?: Opt[]; tags?: string[]; editFields?: BulkField[] }) {
   const router = useRouter();
   const [count, setCount] = useState(0);
   const [op, setOp] = useState("");
@@ -48,6 +50,7 @@ export function RecordBulkBar({ kind, users, types, sequences = [], tags = [] }:
       {count > 0 && (
         <form onSubmit={submit} className="bulk-form">
           <strong>{count} seleccionado{count === 1 ? "" : "s"}</strong>
+          {editFields.length > 0 && <BulkEditPanel entity={kind} fields={editFields} onDone={setResult} />}
           <select name="op" aria-label="Acción" value={op} onChange={(e) => { setOp(e.target.value); setResult(null); setArmed(false); }} required>
             <option value="">Elegir acción…</option>
             <option value="owner">Cambiar responsable</option>

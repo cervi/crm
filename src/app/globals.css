@@ -2604,3 +2604,13 @@ fieldset.readonly-fields input, fieldset.readonly-fields select, fieldset.readon
 .master-switch.off { border-color: var(--bad); box-shadow: inset 4px 0 0 var(--bad), var(--shadow); background: var(--bad-soft); }
 .switches-form { margin-bottom: 24px; }
 .switches-form .form-actions { position: sticky; bottom: 0; z-index: 3; padding: 12px 0; background: var(--bg); border-top: 1px solid var(--border); }
+
+/* Edición en grupo (panel lateral) */
+.bulk-edit .drawer-head h2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bulk-edit .drawer-head .count { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); }
+.bulk-edit .drawer-body { display: grid; gap: 14px; align-content: start; }
+.bulk-field { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid transparent; border-radius: var(--r-sm); }
+.bulk-field.on { border-color: var(--accent); background: var(--accent-soft); }
+.bulk-edit .drawer-foot { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--panel); }
+.bulk-edit .drawer-foot .form-error { flex-basis: 100%; margin: 0; }
+.bulk-form .btn svg { width: 14px; height: 14px; }

@@ -10,6 +10,12 @@ import { listMyDeals, myDealCounts, MY_DEAL_FILTERS, type MyDealFilter } from "@
 import { listPipelines } from "@/lib/pipelines";
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
+import { DealBulkBar } from "@/components/DealBulkBar";
+import { bulkFields } from "@/lib/bulk-edit";
+import { listLostReasons } from "@/lib/deals";
+import { activeActivityTypes } from "@/lib/activity-types";
+import { listSequences } from "@/lib/sequences";
+import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Mis deals" };
@@ -80,7 +86,17 @@ export default async function MyDealsPage({ searchParams }: {
         <button className="btn secondary">Buscar</button>
       </form>
 
-      <DataTable id="my-deals"
+      {me.role !== "viewer" && (
+        <DealBulkBar users={humans.map((u) => ({ value: u.id, label: u.name }))}
+          stages={(await sql<{ id: string; name: string; pipeline: string }[]>`
+            SELECT s.id, s.name, p.name AS pipeline FROM stages s JOIN pipelines p ON p.id = s.pipeline_id
+            WHERE s.is_active AND p.is_active ORDER BY p.position, s.position`).map((s) => ({ value: s.id, label: `${s.pipeline} · ${s.name}` }))}
+          reasons={(await listLostReasons()).map((r) => ({ value: r.id, label: r.label }))}
+          types={(await activeActivityTypes()).map((t) => ({ value: t.key, label: t.label }))}
+          sequences={(await listSequences()).filter((q) => q.is_active && q.steps > 0).map((q) => ({ value: q.id, label: q.name }))}
+          editFields={await bulkFields("deal")} />
+      )}
+      <DataTable id="my-deals" selectable={me.role !== "viewer"}
         empty={sp.q || pipelineId ? <>No hay deals con estos filtros. <Link href={qs({ q: undefined, pipeline: undefined })}>Quitar filtros</Link></>
           : filter === "no_next" ? <>Todos tienen un siguiente paso. Así da gusto.</>
           : filter === "overdue" ? <>Nada vencido.</>

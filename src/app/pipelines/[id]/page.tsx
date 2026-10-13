@@ -20,6 +20,7 @@ import { deleteViewAction, saveViewAction } from "@/app/actions/views";
 import { ActionForm } from "@/components/ActionForm";
 import { DataTable } from "@/components/DataTable";
 import { DealBulkBar } from "@/components/DealBulkBar";
+import { bulkFields } from "@/lib/bulk-edit";
 import { Icon } from "@/components/Icon";
 import { listUsers } from "@/lib/users";
 import { isId } from "@/lib/validation";
@@ -175,7 +176,8 @@ export default async function PipelinePage({ params, searchParams }: { params: P
               stages={pipelineStages.map((st) => ({ value: st.id, label: st.name }))}
               reasons={reasons.map((r) => ({ value: r.id, label: r.label }))}
               types={types.map((t) => ({ value: t.key, label: t.label }))}
-              sequences={seqs.filter((q) => q.is_active && q.steps > 0).map((q) => ({ value: q.id, label: q.name }))} />
+              sequences={seqs.filter((q) => q.is_active && q.steps > 0).map((q) => ({ value: q.id, label: q.name }))}
+              editFields={await bulkFields("deal")} />
 
             <DataTable id={`deals${sp.cols ? `:${sp.cols}` : ""}`} selectable empty={filtered ? "No hay deals con estos filtros." : <>Todavía no hay deals en este pipeline. <Link href={`/deals/new?pipeline=${id}`}>Crear el primero</Link></>}
               columns={[

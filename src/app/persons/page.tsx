@@ -3,6 +3,7 @@ import { ExportLink } from "@/components/ExportLink";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
 import { RecordBulkBar } from "@/components/record/RecordBulkBar";
+import { bulkFields } from "@/lib/bulk-edit";
 import { ListFiltersBar } from "@/components/record/ListFilters";
 import { listPersons, type ListFilters } from "@/lib/persons";
 import { listUsers } from "@/lib/users";
@@ -38,7 +39,7 @@ export default async function PersonsPage({ searchParams }: { searchParams: Prom
       </div>
       <ListFiltersBar base="/persons" sp={sp} users={humans} tags={tags.map((t) => ({ value: t.id, label: t.name }))} placeholder="Buscar por nombre, email o empresa" />
       <RecordBulkBar kind="person" users={humans} types={types.map((t) => ({ value: t.key, label: t.label }))}
-                     sequences={sequences.filter((s) => s.is_active && s.steps > 0).map((s) => ({ value: s.id, label: s.name }))} tags={tags.map((t) => t.name)} />
+                     sequences={sequences.filter((s) => s.is_active && s.steps > 0).map((s) => ({ value: s.id, label: s.name }))} tags={tags.map((t) => t.name)}  editFields={await bulkFields("person")} />
       <DataTable id="persons" selectable empty={<>No hay contactos{filtered && " con esos filtros"}.</>}
         columns={[
           { key: "name", label: "Nombre", required: true, pinned: true },

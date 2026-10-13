@@ -3,6 +3,7 @@ import { ExportLink } from "@/components/ExportLink";
 import { Avatar } from "@/components/Avatar";
 import { Icon } from "@/components/Icon";
 import { RecordBulkBar } from "@/components/record/RecordBulkBar";
+import { bulkFields } from "@/lib/bulk-edit";
 import { ListFiltersBar } from "@/components/record/ListFilters";
 import { listOrganizations } from "@/lib/organizations";
 import type { ListFilters } from "@/lib/persons";
@@ -37,7 +38,7 @@ export default async function OrganizationsPage({ searchParams }: { searchParams
         <Link href="/organizations/new" className="btn"><Icon name="plus" />Nueva empresa</Link>
       </div>
       <ListFiltersBar base="/organizations" sp={sp} users={humans} tags={tags.map((t) => ({ value: t.id, label: t.name }))} placeholder="Buscar por nombre o dominio" />
-      <RecordBulkBar kind="organization" users={humans} types={types.map((t) => ({ value: t.key, label: t.label }))} tags={tags.map((t) => t.name)} />
+      <RecordBulkBar kind="organization" users={humans} types={types.map((t) => ({ value: t.key, label: t.label }))} tags={tags.map((t) => t.name)}  editFields={await bulkFields("organization")} />
       <DataTable id="organizations" selectable empty={<>No hay empresas{filtered && " con esos filtros"}.</>}
         columns={[
           { key: "name", label: "Nombre", required: true, pinned: true },

@@ -8,6 +8,8 @@ import { ScoreBadge } from "@/components/ScoreBadge";
 import { FitBadge } from "@/components/FitBadge";
 import { date, FUNNEL_STAGES, STATUS_LABELS, sourceLabel } from "@/lib/format";
 import { DataTable } from "@/components/DataTable";
+import { BulkBar } from "@/components/bulk/BulkEdit";
+import { bulkFields } from "@/lib/bulk-edit";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -71,7 +73,13 @@ export default async function LeadsPage({ searchParams }: {
         </AutoSubmitSelect>
         <button className="sr-only" tabIndex={-1}>Buscar</button>
       </form>
-      <DataTable id="leads" empty={sp.q || sp.source || sp.funnel || sp.temp || sp.fit || status !== "open"
+      {me.role !== "viewer" && (
+        <BulkBar entity="lead" fields={await bulkFields("lead")} quick={[
+          status === "archived" ? { op: "reopen", label: "Reabrir" } : { op: "archive", label: "Archivar" },
+          { op: "trash", label: "Mover a la papelera", danger: true, confirm: "Se pueden recuperar desde la papelera durante 30 días." },
+        ]} />
+      )}
+      <DataTable id="leads" selectable={me.role !== "viewer"} empty={sp.q || sp.source || sp.funnel || sp.temp || sp.fit || status !== "open"
         ? <>No hay leads con estos filtros. <Link href="/leads">Quitar filtros</Link></>
         : <>Todavía no hay leads abiertos. Llegan solos desde tus formularios o puedes <Link href="/leads/new">crear uno a mano</Link>.</>}
         columns={[

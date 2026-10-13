@@ -7,6 +7,10 @@ import { sql } from "@/lib/db";
 import { date, money } from "@/lib/format";
 import { HealthBadge } from "@/components/HealthBadge";
 import { isId } from "@/lib/validation";
+import { RecordBulkBar } from "@/components/record/RecordBulkBar";
+import { bulkFields } from "@/lib/bulk-edit";
+import { activeActivityTypes } from "@/lib/activity-types";
+import { listTags } from "@/lib/contact-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Clientes" };
@@ -51,7 +55,12 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
         <Link href={qs({ owner: me.id })} aria-current={owner === me.id ? "page" : undefined}>Mis clientes</Link>
         {users.filter((u) => u.kind === "human" && u.id !== me.id).map((u) => <Link key={u.id} href={qs({ owner: u.id })} aria-current={owner === u.id ? "page" : undefined}>{u.name}</Link>)}
       </nav>
-      <DataTable id="accounts" empty={<>Sin clientes{filter ? " con este filtro" : ""}. Un cliente aparece aquí al ganar su primer deal (o al darle un contrato).</>}
+      {me.role !== "viewer" && (
+        <RecordBulkBar kind="organization" users={users.filter((u) => u.kind === "human").map((u) => ({ value: u.id, label: u.name }))}
+          types={(await activeActivityTypes()).map((t) => ({ value: t.key, label: t.label }))} tags={(await listTags()).map((t) => t.name)}
+          editFields={await bulkFields("organization")} />
+      )}
+      <DataTable id="accounts" selectable={me.role !== "viewer"} empty={<>Sin clientes{filter ? " con este filtro" : ""}. Un cliente aparece aquí al ganar su primer deal (o al darle un contrato).</>}
         columns={[
           { key: "name", label: "Cliente", required: true, pinned: true },
           { key: "health", label: "Salud" },

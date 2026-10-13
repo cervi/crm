@@ -108,6 +108,7 @@ const LABELS: Record<string, string> = {
   "deal.participant_removed": "Contacto quitado del deal",
   "activity.created": "Actividad creada",
   "activity.completed": "Actividad completada",
+  "activity.updated": "Actividad actualizada",
   "activity.deleted": "Actividad borrada",
   "doc.viewed": "Documento abierto",
   "sign.sent": "Contrato enviado a firmar",

@@ -12,7 +12,8 @@ import { DataTable } from "@/components/DataTable";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { QuickDone } from "@/components/activities/QuickDone";
 import { ActivityHover } from "@/components/activities/ActivityHover";
-import { ActivityBulkBar } from "@/components/activities/ActivityBulkBar";
+import { BulkBar } from "@/components/bulk/BulkEdit";
+import { bulkFields } from "@/lib/bulk-edit";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Actividades" };
@@ -181,7 +182,10 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
           </div>
 
           {showingTeam && <p className="callout" style={{ margin: "0 0 12px" }}>No tienes nada pendiente: te enseñamos las del equipo.</p>}
-          <ActivityBulkBar />
+          <BulkBar entity="activity" fields={await bulkFields("activity")} quick={[
+            { op: "complete", label: "Marcar como hechas" },
+            { op: "delete", label: "Borrar", danger: true, confirm: "Se borran las pendientes marcadas (las hechas no se tocan). No se puede deshacer." },
+          ]} />
           <DataTable id="activities" selectable
             empty={period === "done" ? "Todavía no hay actividades hechas." : "Nada pendiente aquí. 🎉"}
             columns={[
